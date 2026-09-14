@@ -69,6 +69,10 @@ test('Movimenti: una spesa si salva; un trasferimento al broker mostra il colleg
   await dialogo.getByRole('button', { name: 'Salva movimento' }).click();
   await expect(dialogo).toBeHidden();
   await expect(page.getByText('Spesa e2e').first()).toBeVisible();
+  // Una spesa ha il segno meno; un trasferimento fra conti propri no.
+  await expect(page.getByText(/^−12,50\s*€$/).first()).toBeVisible();
+  await expect(page.getByText(/^250,00\s*€$/).first()).toBeVisible();
+  await expect(page.getByText(/^−250,00\s*€$/)).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Modifica Versamento broker e2e' }).click();
   await dialogo.locator('#movement-type').selectOption('Investment');

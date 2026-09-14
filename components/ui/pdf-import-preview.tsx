@@ -135,8 +135,8 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, onC
             </select></td>
             {/* La lettura del PDF puo' sbagliare una cifra: l'importo si corregge qui.
                 Resta sempre positivo, il verso lo dice il tipo. */}
-            <td className={`whitespace-nowrap p-2 tabular-nums ${outgoing ? 'text-[#c75f44]' : 'text-[#2d7b65]'}`}>
-              <span aria-hidden>{outgoing ? '−' : '+'}</span>
+            <td className={`whitespace-nowrap p-2 tabular-nums ${spostamento ? 'text-[#28312f]' : outgoing ? 'text-[#c75f44]' : 'text-[#2d7b65]'}`}>
+              <span aria-hidden>{spostamento ? '' : outgoing ? '−' : '+'}</span>
               <Input type="number" inputMode="decimal" min="0.01" step="0.01" aria-label={t('amount')} aria-invalid={row.selected && !(row.amount > 0)}
                 value={Number.isNaN(row.amount) ? '' : row.amount} disabled={isSaving} className="ml-1 inline-block w-28 text-right"
                 onChange={e => cambiaImporto(index, e.target.value === '' ? Number.NaN : Math.abs(Number(e.target.value)))} />
