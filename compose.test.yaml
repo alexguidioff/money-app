@@ -1,0 +1,63 @@
+# Lo stack dei test end-to-end. Progetto Compose distinto (`-p money-test`),
+# porta 3011, database e backup in memoria: niente in comune con l'app vera, che
+# vive su 3010 con i suoi volumi. Usa le immagini appena costruite dal gate, cosi'
+# si prova esattamente quello che sta per essere pubblicato.
+#
+#   docker compose -p money-test -f compose.test.yaml up -d --wait
+#   docker compose -p money-test -f compose.test.yaml down -v
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      TZ: Europe/Rome
+      POSTGRES_DB: money
+      POSTGRES_USER: money
+      POSTGRES_PASSWORD: money-test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U money -d money"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  api:
+    image: money-app-api:latest
+    environment:
+      TZ: Europe/Rome
+      DATABASE_URL: postgresql+psycopg://money_app:money-app-test@db:5432/money
+      DATABASE_ADMIN_URL: postgresql+psycopg://money:money-test@db:5432/money
+      MONEY_APP_DB_PASSWORD: money-app-test
+      MONEY_APP_ORIGIN: http://127.0.0.1:3011
+      CORS_ORIGINS: http://127.0.0.1:3011,http://localhost:3011
+      MONEY_BACKUPS_DIR: /backups
+    tmpfs:
+      - /backups
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\""]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  web:
+    image: money-app-web:latest
+    environment:
+      TZ: Europe/Rome
+    depends_on:
+      - api
+
+  gateway:
+    image: nginx:1.27-alpine
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:3011:80"

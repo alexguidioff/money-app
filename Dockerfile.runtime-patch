@@ -1,0 +1,3 @@
+FROM money-app-web:latest
+
+COPY dist /app/dist

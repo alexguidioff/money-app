@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Lo stesso marchio del menu laterale: tessera color accento con l'euro
+       scuro dentro. A 16 pixel il bordo del badge di lucide sparirebbe, quindi
+       l'euro e' disegnato con tratti spessi invece che ricalcato. -->
+  <rect width="32" height="32" rx="8" fill="#d9f373"/>
+  <g fill="none" stroke="#342d14" stroke-width="3" stroke-linecap="round">
+    <path d="M21.6 11.4a7 7 0 1 0 0 9.2"/>
+    <path d="M8.8 14.7h8.6"/>
+    <path d="M8.8 17.9h8.6"/>
+  </g>
+</svg>

@@ -1,0 +1,84 @@
+# Nome fisso del progetto: le immagini si chiamano money-app-api e money-app-web
+# qualunque sia la cartella del clone, ed e' con questi nomi che le cercano lo
+# stack dei test (compose.test.yaml) e scripts/gate.sh.
+name: money-app
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      # In UTC, fra le 22 e mezzanotte "oggi" per il container sarebbe ancora
+      # ieri: sballerebbero i giorni trascorsi nel periodo e i confronti.
+      TZ: ${MONEY_TZ:-Europe/Rome}
+      POSTGRES_DB: money
+      POSTGRES_USER: money
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-money-local}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U money -d money"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - money-db:/var/lib/postgresql/data
+      - money-db-backups:/backups
+    restart: unless-stopped
+
+  api:
+    build: ./backend
+    environment:
+      TZ: ${MONEY_TZ:-Europe/Rome}
+      # L'app parla al database con un ruolo senza privilegi: le politiche di
+      # riga non si applicano ai superutenti ne' al proprietario delle tabelle,
+      # quindi con la vecchia connessione l'isolamento fra utenti sarebbe finto.
+      DATABASE_URL: postgresql+psycopg://money_app:${MONEY_APP_DB_PASSWORD:-money-app-local}@db:5432/money
+      # Usata solo per creare schema e politiche all'avvio e per i dump.
+      DATABASE_ADMIN_URL: postgresql+psycopg://money:${POSTGRES_PASSWORD:-money-local}@db:5432/money
+      MONEY_APP_DB_PASSWORD: ${MONEY_APP_DB_PASSWORD:-money-app-local}
+      MONEY_XLSX_PATH: /imports/Money.xlsx
+      # Da qui l'API capisce se sta dietro HTTPS: se l'indirizzo comincia per
+      # https:// il cookie di sessione prende il flag Secure da solo.
+      MONEY_APP_ORIGIN: ${MONEY_APP_ORIGIN:-http://localhost:3010}
+      MONEY_COOKIE_SECURE: ${MONEY_COOKIE_SECURE:-}
+      CORS_ORIGINS: http://localhost:${MONEY_WEB_PORT:-3010},http://127.0.0.1:${MONEY_WEB_PORT:-3010},${MONEY_APP_ORIGIN:-http://localhost:3010}
+    volumes:
+      # Mount the containing folder instead of the single workbook. OneDrive
+      # commonly replaces a saved file atomically; a file-level bind mount
+      # then points at a removed inode and makes refreshes intermittently fail.
+      # Sola lettura: l'app non scrive piu' sul workbook, lo legge solo per l'import.
+      - ${MONEY_XLSX_HOST_DIR:-./imports}:/imports:ro
+      - money-db-backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # L'interfaccia passa dal gateway, quindi questa porta serve solo per
+      # parlare all'API direttamente. E' parametrica perche' altrimenti due
+      # installazioni sulla stessa macchina si contendono la 8000.
+      - "${MONEY_BIND_ADDRESS:-127.0.0.1}:${MONEY_API_PORT:-8000}:8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+    environment:
+      TZ: ${MONEY_TZ:-Europe/Rome}
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  gateway:
+    image: nginx:1.27-alpine
+    environment:
+      TZ: ${MONEY_TZ:-Europe/Rome}
+    depends_on:
+      - api
+      - web
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${MONEY_BIND_ADDRESS:-127.0.0.1}:${MONEY_WEB_PORT:-3010}:80"
+    restart: unless-stopped
+
+volumes:
+  money-db:
+  money-db-backups:

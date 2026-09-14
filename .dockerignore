@@ -1,0 +1,10 @@
+node_modules
+.vinext
+.wrangler
+.git
+data
+imports
+backend/__pycache__
+backend/app/__pycache__
+backend
+.env

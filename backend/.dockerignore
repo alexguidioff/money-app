@@ -1,0 +1,5 @@
+# Il contesto dell API e questa cartella: le cache locali cambiavano il
+# contesto e costringevano a ricostruire immagini identiche.
+.pytest_cache
+__pycache__
+**/__pycache__
