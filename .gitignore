@@ -55,7 +55,7 @@ next-env.d.ts
 test-results/
 
 # appunti di lavoro in radice: citano conti, movimenti e importi veri.
-# Restano sul disco; nel repository vanno solo README e AI.md.
+# Restano sul disco; nel repository vanno solo i README e AI.md.
 /*.md
 !/README.md
 !/AI.md

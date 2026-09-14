@@ -1,6 +1,6 @@
 # Money
 
-[Italiano](README.md) · [English](README.en.md) · [Deutsch](README.de.md) · **Español** · [Français](README.fr.md)
+[Italiano](README.it.md) · [English](README.md) · [Deutsch](README.de.md) · **Español** · [Français](README.fr.md)
 
 Una app de finanzas personales que funciona **en tu casa**: tus movimientos,
 tus cuentas y tus inversiones se quedan en tu propia base de datos, en una
