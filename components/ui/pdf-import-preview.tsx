@@ -13,7 +13,7 @@ export type PDFTransaction = {
   date: string | null;
   amount: number;
   type: 'income' | 'expense' | 'saving' | 'transfer';
-  transactionType: 'Income' | 'Expenses' | 'Transfers';
+  transactionType: TipoMovimento;
   accountName: string | null;
   destinationName: string | null;
   goal: string | null;
@@ -23,9 +23,18 @@ export type PDFTransaction = {
   errorCode?: string;
 };
 
-export function PDFImportPreview({ transactions, accounts, onConfirm, onCancel, feedback }: {
+// Gli stessi tipi, nello stesso ordine, del modulo "Nuovo movimento". Il
+// risparmio non c'e': non e' un movimento, e' quello che resta di entrate e spese.
+const TIPI = [['Expenses', 'typeExpense'], ['Income', 'typeIncome'], ['Transfers', 'typeTransfer'],
+  ['Investment', 'typeInvestment'], ['Debt', 'typeDebt']] as const satisfies readonly (readonly [string, TranslationKey])[];
+type TipoMovimento = (typeof TIPI)[number][0];
+// Spostano denaro fra due conti: vogliono una destinazione e non hanno categoria.
+const SPOSTAMENTI: readonly TipoMovimento[] = ['Transfers', 'Investment', 'Debt'];
+
+export function PDFImportPreview({ transactions, accounts, categoriesByType, onConfirm, onCancel, feedback }: {
   transactions: PDFTransaction[];
   accounts: { name: string }[];
+  categoriesByType: Record<string, string[]>;
   onConfirm: (approvedTransactions: PDFTransaction[]) => Promise<void>;
   onCancel: () => void;
   feedback: { ok: boolean; message: string } | null;
@@ -41,7 +50,7 @@ export function PDFImportPreview({ transactions, accounts, onConfirm, onCancel, 
     setRows(current => current.map((row, i) => i === index ? { ...row, ...patch } : row));
   const selected = rows.filter(row => row.selected);
   const invalid = selected.some(row => !row.date || !row.accountName || row.amount <= 0 ||
-    (row.transactionType === 'Transfers' && (!row.destinationName || row.destinationName === row.accountName)));
+    (SPOSTAMENTI.includes(row.transactionType) && (!row.destinationName || row.destinationName === row.accountName)));
   const accountOptions = <><option value="">{t('statementChooseAccount')}</option>{accounts.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}</>;
 
   return <div className="flex min-h-0 flex-col gap-4">
@@ -63,7 +72,12 @@ export function PDFImportPreview({ transactions, accounts, onConfirm, onCancel, 
         <tbody>{rows.map((row, index) => {
           // Il risparmio non e' un tipo di movimento: si deriva da entrate e spese, e
           // una riga "Risparmi" veniva rifiutata al salvataggio.
-          const outgoing = row.transactionType === 'Expenses' || row.transactionType === 'Transfers';
+          const outgoing = row.transactionType !== 'Income';
+          const spostamento = SPOSTAMENTI.includes(row.transactionType);
+          const categorie = categoriesByType[row.transactionType] ?? [];
+          // La categoria letta dal file resta fra le scelte anche se non e' nel
+          // vocabolario; "Da categorizzare" e' la voce vuota.
+          const scelte = Array.from(new Set([row.categoryAutomatic ? '' : row.category, ...categorie].filter(Boolean)));
           return <tr key={index} className="border-b">
             <td className="p-2"><input type="checkbox" aria-label={t('statementSelectRow', { row: index + 1 })} checked={row.selected} disabled={isSaving}
               onChange={e => updateRow(index, { selected: e.target.checked })} /></td>
@@ -71,16 +85,25 @@ export function PDFImportPreview({ transactions, accounts, onConfirm, onCancel, 
               onChange={e => updateRow(index, { date: e.target.value })} className="w-36" /></td>
             <td className="min-w-44 p-2">{row.description}{row.duplicate && <p className="text-xs text-amber-700">{t('statementDuplicate')}{row.duplicateOf && <> · #{row.duplicateOf.id} · {formatDate(row.duplicateOf.date)} · {formatEuro(row.duplicateOf.amount)} · {row.duplicateOf.description}</>}</p>}
               {row.errorCode && <p className="text-xs text-red-700">{t(Object.hasOwn(translations.it, row.errorCode) ? row.errorCode as TranslationKey : 'statementRowInvalid')}</p>}</td>
-            <td className="p-2"><Input aria-label={t('category')} value={row.category} disabled={isSaving} onChange={e => updateRow(index, { category: e.target.value, categoryAutomatic: false })} className="w-40" /></td>
+            <td className="p-2"><select aria-label={t('category')} value={spostamento || row.categoryAutomatic ? '' : row.category} disabled={isSaving || spostamento} className="w-40 rounded border p-2 disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]"
+              onChange={e => updateRow(index, { category: e.target.value, categoryAutomatic: !e.target.value })}>
+              <option value="">{spostamento ? t('categoryNotApplicable') : t('categoryAutomatic')}</option>
+              {!spostamento && scelte.map(categoria => <option key={categoria} value={categoria}>{categoria}</option>)}
+            </select></td>
             <td className={`whitespace-nowrap p-2 tabular-nums ${outgoing ? 'text-[#c75f44]' : 'text-[#2d7b65]'}`}>{outgoing ? '−' : '+'}{formatEuro(row.amount)}</td>
             <td className="p-2"><select aria-label={t('type')} value={row.transactionType} disabled={isSaving} className="rounded border p-2"
-              onChange={e => updateRow(index, { transactionType: e.target.value as PDFTransaction['transactionType'] })}>
-              <option value="Income">{t('incomeType')}</option><option value="Expenses">{t('expensesType')}</option>
-              <option value="Transfers">{t('transfersType')}</option>
+              onChange={e => {
+                const tipo = e.target.value as TipoMovimento;
+                // Una categoria di spesa non vale per un'entrata: cambiando tipo si
+                // tiene solo se esiste anche fra quelle del tipo nuovo.
+                const tiene = !row.categoryAutomatic && (categoriesByType[tipo] ?? []).includes(row.category);
+                updateRow(index, { transactionType: tipo, ...(tiene ? {} : { categoryAutomatic: true }) });
+              }}>
+              {TIPI.map(([tipo, etichetta]) => <option key={tipo} value={tipo}>{t(etichetta)}</option>)}
             </select></td>
             <td className="p-2"><select aria-label={t('account')} aria-invalid={row.selected && !row.accountName} value={row.accountName ?? ''} disabled={isSaving} className="rounded border p-2"
               onChange={e => updateRow(index, { accountName: e.target.value || null })}>{accountOptions}</select></td>
-            <td className="p-2">{row.transactionType === 'Transfers' && <select aria-label={t('fieldDestinationAccount')} value={row.destinationName ?? ''} disabled={isSaving} className="rounded border p-2"
+            <td className="p-2">{spostamento && <select aria-label={t('fieldDestinationAccount')} value={row.destinationName ?? ''} disabled={isSaving} className="rounded border p-2"
               onChange={e => updateRow(index, { destinationName: e.target.value || null })}>{accountOptions}</select>}</td>
           </tr>;
         })}</tbody>

@@ -362,9 +362,12 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
             saved_count += 1
         except Exception as error:
             session.rollback()
-            code = str(error) if str(error) in {
+            # Le regole del movimento rispondono con un codice nel dettaglio: un
+            # investimento senza conto broker deve dire questo, non "riga non valida".
+            codice = error.detail.get("code") if isinstance(error, HTTPException) and isinstance(error.detail, dict) else str(error)
+            code = codice if codice in {
                 "statementInvalidType", "statementInvalidAmount", "statementAccountRequired",
-                "statementDestinationRequired"} else "statementRowInvalid"
+                "statementDestinationRequired", "investmentNeedsBroker", "debtNeedsLiability"} else "statementRowInvalid"
             errors.append({"index": index, "code": code})
     return {"success": not errors, "saved": saved_count, "errors": errors}
 
@@ -3224,6 +3227,10 @@ async def create_recurring_transaction(
     session: Session = Depends(get_session)
 ):
     """Crea una transazione ricorrente (template)"""
+    # Il risparmio non e' un tipo di movimento: un modello "Savings" genererebbe
+    # movimenti che nessun conto, budget o report considera.
+    if data.transactionType not in VALID_TRANSACTION_TYPES:
+        raise HTTPException(422, detail="statementInvalidType")
     try:
         start_date = datetime.strptime(data.start_date, '%Y-%m-%d').date()
         template = Transaction(

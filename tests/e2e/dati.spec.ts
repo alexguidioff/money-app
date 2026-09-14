@@ -37,6 +37,19 @@ test('import di un estratto conto CSV: anteprima, conto per tutte le righe, conf
   const anteprima = page.getByRole('dialog');
   await expect(anteprima.getByText('Supermercato e2e')).toBeVisible();
   await anteprima.getByLabel('Conto per tutte le righe').selectOption('Banca');
+  // Stessi tipi del modulo "Nuovo movimento", senza il risparmio che non e' un movimento.
+  const tipo = anteprima.getByLabel('Tipo', { exact: true }).first();
+  await expect(tipo.locator('option')).toHaveText(['Spesa', 'Entrata', 'Trasferimento', 'Investimento', 'Debito']);
+  // Le categorie si scelgono da un elenco che segue il tipo.
+  const categoria = anteprima.getByLabel('Categoria', { exact: true }).first();
+  await expect(categoria.locator('option', { hasText: 'Groceries' })).toHaveCount(1);
+  await categoria.selectOption('Groceries');
+  await tipo.selectOption('Income');
+  await expect(categoria).toHaveValue('');
+  await expect(categoria.locator('option', { hasText: 'Salary' })).toHaveCount(1);
+  await expect(categoria.locator('option', { hasText: 'Groceries' })).toHaveCount(0);
+  await tipo.selectOption('Expenses');
+  await categoria.selectOption('Groceries');
   await anteprima.getByRole('button', { name: /Conferma e aggiungi \(2\)/ }).click();
   await expect(anteprima).toBeHidden();
   expect(await movimenti(page)).toEqual(expect.arrayContaining(['Supermercato e2e', 'Rimborso e2e']));
