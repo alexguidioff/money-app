@@ -828,6 +828,20 @@ function MoneyDashboardInner() {
   const apiUrl = configuredApiUrl ?? (typeof window === 'undefined'
     ? 'http://api:8000'
     : '');
+  // I nomi degli strumenti da proporre nelle operazioni collegate: quelli
+  // configurati e quelli gia' usati nel ledger. Si chiedono all'apertura del
+  // pannello, cosi' uno strumento appena creato c'e' gia'.
+  const [nomiStrumenti, setNomiStrumenti] = useState<string[]>([]);
+  useEffect(() => {
+    if (!linkLedgerOpen) return;
+    const controller = new AbortController();
+    fetch(`${apiUrl}/api/investments/instruments`, { signal: controller.signal })
+      .then((r) => r.ok ? r.json() as Promise<{ items: Array<{ name: string }> }> : { items: [] })
+      .then((data) => setNomiStrumenti(Array.from(new Set([...data.items.map((i) => i.name), ...investmentLedger.map((op) => op.name)]))
+        .filter(Boolean).sort((a, b) => a.localeCompare(b))))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [linkLedgerOpen, apiUrl, investmentLedger]);
 
   // Di settingsData a loadData serve un solo numero. Tenere nelle dipendenze
   // l'intero oggetto - che loadData stesso riscrive a ogni giro, con una
@@ -2398,6 +2412,7 @@ function MoneyDashboardInner() {
                 {linkLedgerOpen && (
                   <div className="space-y-2">
                     <p className="text-[11px] text-[#52615d]">{t('linkToLedgerDesc')}</p>
+                    <datalist id="strumenti-esistenti">{nomiStrumenti.map((nome) => <option key={nome} value={nome} />)}</datalist>
                     {linkedLedgerRows.map((row, index) => (
                       <div key={index} className="space-y-2 rounded-md border border-black/8 bg-white p-2">
                         <div className="flex items-center justify-between gap-2">
@@ -2413,7 +2428,7 @@ function MoneyDashboardInner() {
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('instrument')}
-                            <Input value={row.name} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, name: event.target.value } : item))} className="h-8 bg-white text-xs" />
+                            <Input list="strumenti-esistenti" autoComplete="off" value={row.name} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, name: event.target.value } : item))} className="h-8 bg-white text-xs" />
                           </label>
                           <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('operation')}
                             <select value={row.transactionType} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, transactionType: event.target.value as 'Buy' | 'Sell' } : item))} className="h-8 w-full rounded-md border border-input bg-white px-2 text-xs">

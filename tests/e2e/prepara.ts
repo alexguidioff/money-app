@@ -24,6 +24,9 @@ export default async function prepara(config: FullConfig) {
     occurred_on: new Date().toISOString().slice(0, 10), transaction_type: 'Transfers', amount: 250,
     account_name: 'Banca', destination_name: 'Broker', details: 'Versamento broker e2e' } });
   if (!trasferimento.ok()) throw new Error(`Trasferimento: ${trasferimento.status()} ${await trasferimento.text()}`);
+  // Uno strumento senza ticker: niente chiamate alla fonte delle quotazioni.
+  const strumento = await api.post('/api/investments/instruments', { data: { name: 'ETF e2e' } });
+  if (!strumento.ok()) throw new Error(`Strumento: ${strumento.status()} ${await strumento.text()}`);
 
   const stato = await api.storageState();
   mkdirSync('test-results', { recursive: true });

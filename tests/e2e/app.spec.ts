@@ -83,6 +83,17 @@ test('Movimenti: una spesa si salva; un trasferimento al broker mostra il colleg
   await expect(dialogo.locator('#movement-category')).toBeEnabled();
   await expect(dialogo.locator('#movement-category option', { hasText: 'Groceries' })).toHaveCount(1);
   await dialogo.getByRole('button', { name: 'Annulla' }).click();
+
+  // Registrando anche nel ledger, lo strumento si sceglie fra quelli che ci sono.
+  await page.getByRole('button', { name: 'Nuovo movimento' }).first().click();
+  await dialogo.locator('#movement-type').selectOption('Investment');
+  await dialogo.locator('#movement-account').selectOption('Banca');
+  await dialogo.getByLabel('Registra anche nel ledger').check();
+  const strumento = dialogo.locator('input[list="strumenti-esistenti"]');
+  await expect(strumento).toBeVisible();
+  await expect(dialogo.locator('#strumenti-esistenti option[value="ETF e2e"]')).toHaveCount(1);
+  await strumento.fill('ETF e2e');
+  await dialogo.getByRole('button', { name: 'Annulla' }).click();
   expect(errori).toEqual([]);
 });
 
