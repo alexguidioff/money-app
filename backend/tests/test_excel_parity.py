@@ -106,10 +106,13 @@ def _db_budget_actual(session, year: int, month: int, budget_type: str) -> dict[
 class BudgetDashboardParityTests(TestCase):
     """Fase 3.1: Budget Dashboard (Expenses / Income / Savings)."""
 
-    def test_expenses_august_2026(self):
-        expected = _load_tracking_totals(2026, 8, "Expenses")
+    def test_expenses_december_2025(self):
+        # Un mese che il workbook copre per intero. Il workbook si ferma al 4
+        # agosto 2026: da li' in poi i movimenti nuovi stanno solo nell'app, e
+        # confrontare un mese successivo diventerebbe rosso a ogni import.
+        expected = _load_tracking_totals(2025, 12, "Expenses")
         with SessionLocal() as session:
-            actual = _db_budget_actual(session, 2026, 8, "Expenses")
+            actual = _db_budget_actual(session, 2025, 12, "Expenses")
         self.assertEqual({k.strip().lower(): v for k, v in expected.items()}, {k: v for k, v in actual.items() if v})
 
     def test_expenses_april_2024(self):

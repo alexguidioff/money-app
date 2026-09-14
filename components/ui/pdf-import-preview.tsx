@@ -49,7 +49,7 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, onC
   const updateRow = (index: number, patch: Partial<(typeof rows)[number]>) =>
     setRows(current => current.map((row, i) => i === index ? { ...row, ...patch } : row));
   const selected = rows.filter(row => row.selected);
-  const invalid = selected.some(row => !row.date || !row.accountName || row.amount <= 0 ||
+  const invalid = selected.some(row => !row.date || !row.accountName || !(row.amount > 0) ||
     (SPOSTAMENTI.includes(row.transactionType) && (!row.destinationName || row.destinationName === row.accountName)));
   const accountOptions = <><option value="">{t('statementChooseAccount')}</option>{accounts.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}</>;
 
@@ -90,7 +90,14 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, onC
               <option value="">{spostamento ? t('categoryNotApplicable') : t('categoryAutomatic')}</option>
               {!spostamento && scelte.map(categoria => <option key={categoria} value={categoria}>{categoria}</option>)}
             </select></td>
-            <td className={`whitespace-nowrap p-2 tabular-nums ${outgoing ? 'text-[#c75f44]' : 'text-[#2d7b65]'}`}>{outgoing ? '−' : '+'}{formatEuro(row.amount)}</td>
+            {/* La lettura del PDF puo' sbagliare una cifra: l'importo si corregge qui.
+                Resta sempre positivo, il verso lo dice il tipo. */}
+            <td className={`whitespace-nowrap p-2 tabular-nums ${outgoing ? 'text-[#c75f44]' : 'text-[#2d7b65]'}`}>
+              <span aria-hidden>{outgoing ? '−' : '+'}</span>
+              <Input type="number" inputMode="decimal" min="0.01" step="0.01" aria-label={t('amount')} aria-invalid={row.selected && !(row.amount > 0)}
+                value={Number.isNaN(row.amount) ? '' : row.amount} disabled={isSaving} className="ml-1 inline-block w-28 text-right"
+                onChange={e => updateRow(index, { amount: e.target.value === '' ? Number.NaN : Math.abs(Number(e.target.value)) })} />
+            </td>
             <td className="p-2"><select aria-label={t('type')} value={row.transactionType} disabled={isSaving} className="rounded border p-2"
               onChange={e => {
                 const tipo = e.target.value as TipoMovimento;

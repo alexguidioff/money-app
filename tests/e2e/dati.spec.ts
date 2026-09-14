@@ -50,9 +50,14 @@ test('import di un estratto conto CSV: anteprima, conto per tutte le righe, conf
   await expect(categoria.locator('option', { hasText: 'Groceries' })).toHaveCount(0);
   await tipo.selectOption('Expenses');
   await categoria.selectOption('Groceries');
+  // Un importo letto male si corregge prima di salvare.
+  const importo = anteprima.getByLabel('Importo', { exact: true }).first();
+  await expect(importo).toHaveValue('45.2');
+  await importo.fill('54.20');
   await anteprima.getByRole('button', { name: /Conferma e aggiungi \(2\)/ }).click();
   await expect(anteprima).toBeHidden();
   expect(await movimenti(page)).toEqual(expect.arrayContaining(['Supermercato e2e', 'Rimborso e2e']));
+  await expect(page.getByText('54,20', { exact: false }).first()).toBeVisible();
 });
 
 test('export e reimport completo: i dati tornano uguali', async ({ page }, info) => {
