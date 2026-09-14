@@ -5924,13 +5924,15 @@ function SplitTransactionDialog({ transaction, accounts, apiUrl, categoriesByTyp
   onClose: () => void; onDone: () => Promise<void>;
 }) {
   const { t, formatEuro } = useI18n();
-  const meta = Math.round((transaction.amount - Math.ceil(transaction.amount * 100 / 2) / 100) * 100) / 100;
+  // La lista manda le uscite con il segno meno: la divisione ragiona sull'importo.
+  const totale = Math.abs(transaction.amount);
+  const meta = Math.round((totale - Math.ceil(totale * 100 / 2) / 100) * 100) / 100;
   const [parte, setParte] = useState({ amount: String(meta), type: transaction.transactionType === 'Income' ? 'Income' : 'Transfers',
     category: '', destination: '', details: transaction.details ?? '' });
   const [errore, setErrore] = useState('');
   const [salvando, setSalvando] = useState(false);
   const importo = Number(parte.amount);
-  const resta = Math.round((transaction.amount - importo) * 100) / 100;
+  const resta = Math.round((totale - importo) * 100) / 100;
   const spostamento = parte.type === 'Transfers';
   const valido = importo > 0 && resta > 0 && (spostamento ? Boolean(parte.destination) : Boolean(parte.category));
 
@@ -5956,7 +5958,7 @@ function SplitTransactionDialog({ transaction, accounts, apiUrl, categoriesByTyp
     <DialogContent className="sm:max-w-md">
       <DialogHeader>
         <DialogTitle>{t('splitMovementTitle')}</DialogTitle>
-        <DialogDescription>{transaction.description} · {t('splitMovementDesc', { total: formatEuro(transaction.amount) })}</DialogDescription>
+        <DialogDescription>{transaction.description} · {t('splitMovementDesc', { total: formatEuro(totale) })}</DialogDescription>
       </DialogHeader>
       <form className="space-y-3" onSubmit={conferma}>
         <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('splitNewPart')}

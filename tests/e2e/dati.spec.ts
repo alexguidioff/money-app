@@ -32,7 +32,7 @@ test('import di un estratto conto CSV: anteprima, conto per tutte le righe, conf
   await page.getByRole('button', { name: 'Importa da CSV' }).click();
   await (await scelta).setFiles({
     name: 'estratto.csv', mimeType: 'text/csv',
-    buffer: Buffer.from('data,descrizione,importo\n02/03/2026,Supermercato e2e,-45.20\n05/03/2026,Rimborso e2e,12.00\n'),
+    buffer: Buffer.from('data,descrizione,importo\n02/03/2026,Supermercato e2e,-45.20\n05/03/2026,Rimborso e2e,12.00\n06/03/2026,Bar e2e,-27.00\n'),
   });
   const anteprima = page.getByRole('dialog');
   await expect(anteprima.getByText('Supermercato e2e')).toBeVisible();
@@ -58,7 +58,7 @@ test('import di un estratto conto CSV: anteprima, conto per tutte le righe, conf
   // due parti restano pari al totale mentre se ne corregge una.
   await anteprima.getByRole('button', { name: 'Dividi la riga 1' }).click();
   const importi = anteprima.getByLabel('Importo', { exact: true });
-  await expect(importi).toHaveCount(3);
+  await expect(importi).toHaveCount(4);
   await expect(importi.nth(0)).toHaveValue('27.1');
   await expect(importi.nth(1)).toHaveValue('27.1');
   await importi.nth(1).fill('20');
@@ -67,29 +67,33 @@ test('import di un estratto conto CSV: anteprima, conto per tutte le righe, conf
   await anteprima.getByLabel('Conto destinazione', { exact: true }).first().selectOption('Broker');
   // Una divisione si puo' anche annullare.
   await anteprima.getByRole('button', { name: 'Dividi la riga 3' }).click();
-  await expect(importi).toHaveCount(4);
+  await expect(importi).toHaveCount(5);
   await anteprima.getByRole('button', { name: 'Annulla la divisione della riga 3' }).click();
-  await expect(importi).toHaveCount(3);
+  await expect(importi).toHaveCount(4);
   await expect(importi.nth(2)).toHaveValue('12');
-  await anteprima.getByRole('button', { name: /Conferma e aggiungi \(3\)/ }).click();
+  await anteprima.getByRole('button', { name: /Conferma e aggiungi \(4\)/ }).click();
   await expect(anteprima).toBeHidden();
   const salvati = await movimenti(page);
   expect(salvati.filter((d) => d === 'Supermercato e2e')).toHaveLength(2);
   expect(salvati).toContain('Rimborso e2e');
   await expect(page.getByText('34,20', { exact: false }).first()).toBeVisible();
 
-  // Un movimento gia' salvato si divide dalla lista.
-  await page.getByRole('button', { name: 'Dividi Rimborso e2e' }).click();
+  // Una spesa gia' salvata si divide dalla lista: meta' resta spesa, meta'
+  // diventa un trasferimento. La lista mostra le uscite col segno meno, e la
+  // divisione non deve confondersi.
+  await page.getByRole('button', { name: 'Dividi Bar e2e' }).click();
   const divisione = page.getByRole('dialog');
-  await divisione.getByLabel('Importo della nuova parte').fill('5');
-  await divisione.getByLabel('Tipo').selectOption('Income');
-  await divisione.getByLabel('Categoria').selectOption('Salary');
+  await expect(divisione.getByLabel('Importo della nuova parte')).toHaveValue('13.5');
+  await divisione.getByLabel('Importo della nuova parte').fill('10');
+  await expect(divisione.getByText(/Resta sull’originale: 17,00/)).toBeVisible();
+  await divisione.getByLabel('Tipo').selectOption('Transfers');
+  await divisione.getByLabel('Conto destinazione').selectOption('Broker');
   await divisione.getByRole('button', { name: 'Dividi', exact: true }).click();
   await expect(divisione).toBeHidden();
   const risposta = await page.request.get('/api/transactions?limit=500');
-  const rimborsi = ((await risposta.json()) as { items: Array<{ details: string | null; amount: number }> }).items
-    .filter((t) => t.details === 'Rimborso e2e').map((t) => t.amount).sort((a, b) => a - b);
-  expect(rimborsi).toEqual([5, 7]);
+  const bar = ((await risposta.json()) as { items: Array<{ details: string | null; amount: number; transactionType: string }> }).items
+    .filter((t) => t.details === 'Bar e2e').map((t) => [t.transactionType, Math.abs(t.amount)]).sort();
+  expect(bar).toEqual([['Expenses', 17], ['Transfers', 10]]);
 });
 
 test('export e reimport completo: i dati tornano uguali', async ({ page }, info) => {
