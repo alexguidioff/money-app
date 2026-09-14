@@ -45,12 +45,12 @@ from app.database import Base
 from app.fire_routes import (FlussoPayload, ProfiloPayload, RegolePayload, crea_flusso, elenco_flussi, fire,
                              leggi_profilo, leggi_regole, salva_profilo, salva_regole, spostamento_pensioni)
 from app.main import (AccountPayload, BudgetCreatePayload, BudgetUpdatePayload, GoalPayload, InvestmentTxPayload,
-                      LiabilityPayload, NotePayload, RecurringTransactionCreate, SettingValueUpdate, TransactionPayload,
+                      LiabilityPayload, NotePayload, RecurringTransactionCreate, SettingValueUpdate, SplitPayload, TransactionPayload,
                       create_account, create_budget, create_goal, create_investment_tx, create_note,
                       create_recurring_transaction, create_transaction, liabilities, list_backups_endpoint,
-                      list_recurring_transactions, save_liability, update_budget, update_setting)
+                      list_recurring_transactions, save_liability, split_transaction, update_budget, update_setting)
 from app.models import (Account, AccountValuation, AppSetting, BudgetPlan, Goal, IncomeStream, InvestmentInstrument,
-                        LiabilityProfile, LookupOption, MarketPrice, Note, RetirementProfile, TransactionLedgerLink)
+                        LiabilityProfile, LookupOption, MarketPrice, Note, RetirementProfile, Transaction, TransactionLedgerLink)
 from app.notifications import elenco as notifiche
 
 
@@ -265,6 +265,8 @@ def _gestori(session: Session) -> dict[str, tuple[type[BaseModel], Any]]:
         "budgetUpdate": (BudgetUpdatePayload, lambda p: update_budget(
             session.scalars(select(BudgetPlan.id).where(BudgetPlan.category == "Groceries")).first(), p, session)),
         "recurring": (RecurringTransactionCreate, lambda p: asyncio.run(create_recurring_transaction(p, session))),
+        "split": (SplitPayload, lambda p: split_transaction(session.scalars(select(Transaction.id).where(
+            Transaction.transaction_type == "Expenses", Transaction.category == "Housing")).first(), p, session)),
     }
 
 

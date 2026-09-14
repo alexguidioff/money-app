@@ -54,10 +54,42 @@ test('import di un estratto conto CSV: anteprima, conto per tutte le righe, conf
   const importo = anteprima.getByLabel('Importo', { exact: true }).first();
   await expect(importo).toHaveValue('45.2');
   await importo.fill('54.20');
-  await anteprima.getByRole('button', { name: /Conferma e aggiungi \(2\)/ }).click();
+  // Pagata per intero, ma solo in parte propria: la riga si divide in due, e le
+  // due parti restano pari al totale mentre se ne corregge una.
+  await anteprima.getByRole('button', { name: 'Dividi la riga 1' }).click();
+  const importi = anteprima.getByLabel('Importo', { exact: true });
+  await expect(importi).toHaveCount(3);
+  await expect(importi.nth(0)).toHaveValue('27.1');
+  await expect(importi.nth(1)).toHaveValue('27.1');
+  await importi.nth(1).fill('20');
+  await expect(importi.nth(0)).toHaveValue('34.2');
+  await anteprima.getByLabel('Tipo', { exact: true }).nth(1).selectOption('Transfers');
+  await anteprima.getByLabel('Conto destinazione', { exact: true }).first().selectOption('Broker');
+  // Una divisione si puo' anche annullare.
+  await anteprima.getByRole('button', { name: 'Dividi la riga 3' }).click();
+  await expect(importi).toHaveCount(4);
+  await anteprima.getByRole('button', { name: 'Annulla la divisione della riga 3' }).click();
+  await expect(importi).toHaveCount(3);
+  await expect(importi.nth(2)).toHaveValue('12');
+  await anteprima.getByRole('button', { name: /Conferma e aggiungi \(3\)/ }).click();
   await expect(anteprima).toBeHidden();
-  expect(await movimenti(page)).toEqual(expect.arrayContaining(['Supermercato e2e', 'Rimborso e2e']));
-  await expect(page.getByText('54,20', { exact: false }).first()).toBeVisible();
+  const salvati = await movimenti(page);
+  expect(salvati.filter((d) => d === 'Supermercato e2e')).toHaveLength(2);
+  expect(salvati).toContain('Rimborso e2e');
+  await expect(page.getByText('34,20', { exact: false }).first()).toBeVisible();
+
+  // Un movimento gia' salvato si divide dalla lista.
+  await page.getByRole('button', { name: 'Dividi Rimborso e2e' }).click();
+  const divisione = page.getByRole('dialog');
+  await divisione.getByLabel('Importo della nuova parte').fill('5');
+  await divisione.getByLabel('Tipo').selectOption('Income');
+  await divisione.getByLabel('Categoria').selectOption('Salary');
+  await divisione.getByRole('button', { name: 'Dividi', exact: true }).click();
+  await expect(divisione).toBeHidden();
+  const risposta = await page.request.get('/api/transactions?limit=500');
+  const rimborsi = ((await risposta.json()) as { items: Array<{ details: string | null; amount: number }> }).items
+    .filter((t) => t.details === 'Rimborso e2e').map((t) => t.amount).sort((a, b) => a - b);
+  expect(rimborsi).toEqual([5, 7]);
 });
 
 test('export e reimport completo: i dati tornano uguali', async ({ page }, info) => {

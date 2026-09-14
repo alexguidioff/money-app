@@ -3,7 +3,7 @@
 import { downloadFile, responseError } from '@/lib/download';
 import { previewEffectiveDate } from '@/lib/effective-date';
 import { nettoOperazioni } from '@/lib/ledger-preview';
-import { accountPayload, budgetCreatePayload, budgetUpdatePayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
+import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
 import { SyntheticEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Flame,
   AlertCircle,
@@ -41,6 +41,7 @@ import { Flame,
   Search,
   Save,
   Settings,
+  Split,
   StickyNote,
   Users,
   LogOut,
@@ -737,6 +738,7 @@ function MoneyDashboardInner() {
   // La pagina Movimenti si ricarica da sola la sua pagina di dati: da qui le si
   // dice soltanto che qualcosa e' cambiato.
   const [movimentiVersione, setMovimentiVersione] = useState(0);
+  const [daDividere, setDaDividere] = useState<Transaction | null>(null);
   // Quanti caricamenti sono in volo: serve a dire che si sta aggiornando senza
   // far sparire quello che c'e' gia' a schermo.
   const [inCorso, setInCorso] = useState(0);
@@ -2251,6 +2253,7 @@ function MoneyDashboardInner() {
               onEditTransaction={openEditTransaction}
               onDuplicateTransaction={openDuplicateTransaction}
               onDeleteTransaction={handleDeleteTransaction}
+              onSplitTransaction={setDaDividere}
               onBudgetUpdate={handleBudgetUpdate}
               onBudgetCreate={handleBudgetCreate}
               onBudgetDelete={handleBudgetDelete}
@@ -2662,6 +2665,13 @@ function MoneyDashboardInner() {
           })()}
         </DialogContent>
       </Dialog>
+      {daDividere && <SplitTransactionDialog transaction={daDividere} accounts={accounts} apiUrl={apiUrl}
+        categoriesByType={settingsData.categoriesByType} onClose={() => setDaDividere(null)}
+        onDone={async () => {
+          setDaDividere(null);
+          await loadDataRef.current(undefined, ['ledger', 'overview', 'budget', 'goals']).catch(() => undefined);
+          setMovimentiVersione((versione) => versione + 1);
+        }} />}
     </main>
   );
 }
@@ -2784,6 +2794,7 @@ function SectionView({
   onEditTransaction,
   onDuplicateTransaction,
   onDeleteTransaction,
+  onSplitTransaction,
   onBudgetUpdate,
   onBudgetCreate,
   onBudgetDelete,
@@ -2872,6 +2883,7 @@ function SectionView({
   onEditTransaction: (transaction: Transaction) => void;
   onDuplicateTransaction: (transaction: Transaction) => void;
   onDeleteTransaction: (transaction: Transaction) => Promise<void>;
+  onSplitTransaction: (transaction: Transaction) => void;
   onBudgetUpdate: (id: number, payload: { category?: string; amount?: number }) => Promise<void>;
   onBudgetCreate: (category: string, amount: number) => Promise<void>;
   onBudgetDelete: (id: number) => Promise<void>;
@@ -3088,7 +3100,7 @@ function SectionView({
             <Button type="button" variant="outline" size="sm" className="ml-auto h-9 rounded-lg bg-white" disabled={bulkBusy || totaleMovimenti === 0} onClick={() => void selectAll()}>{bulkBusy ? t('updating') : t('selectFiltered')}</Button>
           </div>
           {bulkError && <p role="alert" className="px-6 text-[#bd5e46]">{bulkError}</p>}
-          <CardContent className="px-3 sm:px-6">{movimenti.length ? <><div className={`divide-y divide-black/5 ${caricandoMovimenti ? 'opacity-60' : ''}`}>{movimenti.map((transaction) => <div key={transaction.id} className="flex items-center gap-2"><input type="checkbox" aria-label={t('selectMovement', { description: transaction.description })} checked={selection.has(String(transaction.id))} onChange={e => setSelection(old => { const next = new Set(old); e.target.checked ? next.add(String(transaction.id)) : next.delete(String(transaction.id)); return next; })} /><div className="min-w-0 flex-1"><TransactionRow transaction={transaction} onRefund={openRefundedTransaction} onEdit={onEditTransaction} onDuplicate={onDuplicateTransaction} onDelete={onDeleteTransaction} /></div></div>)}</div>{movimenti.length < totaleMovimenti && <div className="border-t border-black/5 py-4 text-center"><Button type="button" variant="outline" disabled={caricandoMovimenti} onClick={() => setPagina((corrente) => corrente + 1)}>{caricandoMovimenti ? t('updating') : t('showMore100')}</Button></div>}</> : <p className="py-12 text-center text-sm text-[#71807c]">{caricandoMovimenti ? t('updating') : t('noMovementsMatchFilters')}</p>}</CardContent>
+          <CardContent className="px-3 sm:px-6">{movimenti.length ? <><div className={`divide-y divide-black/5 ${caricandoMovimenti ? 'opacity-60' : ''}`}>{movimenti.map((transaction) => <div key={transaction.id} className="flex items-center gap-2"><input type="checkbox" aria-label={t('selectMovement', { description: transaction.description })} checked={selection.has(String(transaction.id))} onChange={e => setSelection(old => { const next = new Set(old); e.target.checked ? next.add(String(transaction.id)) : next.delete(String(transaction.id)); return next; })} /><div className="min-w-0 flex-1"><TransactionRow transaction={transaction} onRefund={openRefundedTransaction} onEdit={onEditTransaction} onDuplicate={onDuplicateTransaction} onDelete={onDeleteTransaction} onSplit={onSplitTransaction} /></div></div>)}</div>{movimenti.length < totaleMovimenti && <div className="border-t border-black/5 py-4 text-center"><Button type="button" variant="outline" disabled={caricandoMovimenti} onClick={() => setPagina((corrente) => corrente + 1)}>{caricandoMovimenti ? t('updating') : t('showMore100')}</Button></div>}</> : <p className="py-12 text-center text-sm text-[#71807c]">{caricandoMovimenti ? t('updating') : t('noMovementsMatchFilters')}</p>}</CardContent>
         </Card>
         {selection.size > 0 && <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-xl border bg-white p-4 shadow-lg">
           <span>{t('selectedCount', { count: selection.size })}</span>
@@ -5900,7 +5912,88 @@ const TRANSACTION_ICON_STYLES = {
 // genitore puo' passarne una sola, stabile, e `memo` qui sotto ha senso.
 // Con cento righe in pagina, un carattere digitato nella ricerca ne
 // ridisegnava cento; adesso nessuna.
-const TransactionRow = memo(function TransactionRow({ transaction, onEdit, onDuplicate, onDelete, onRefund }: { transaction: Transaction; onEdit?: (transaction: Transaction) => void; onDuplicate?: (transaction: Transaction) => void; onDelete?: (transaction: Transaction) => void; onRefund?: (transaction: Transaction) => void }) {
+// Si dividono solo i movimenti la cui cifra non e' legata ad altro: il server
+// applica la stessa regola, qui serve a non mostrare un pulsante che fallirebbe.
+function divisibile(transaction: Transaction) {
+  return ['Expenses', 'Income', 'Transfers'].includes(transaction.transactionType) && !transaction.refundOfId
+    && !transaction.refundedById && !transaction.linkedLedger?.length && !transaction.liabilitySplit;
+}
+
+function SplitTransactionDialog({ transaction, accounts, apiUrl, categoriesByType, onClose, onDone }: {
+  transaction: Transaction; accounts: Account[]; apiUrl: string; categoriesByType: Record<string, string[]>;
+  onClose: () => void; onDone: () => Promise<void>;
+}) {
+  const { t, formatEuro } = useI18n();
+  const meta = Math.round((transaction.amount - Math.ceil(transaction.amount * 100 / 2) / 100) * 100) / 100;
+  const [parte, setParte] = useState({ amount: String(meta), type: transaction.transactionType === 'Income' ? 'Income' : 'Transfers',
+    category: '', destination: '', details: transaction.details ?? '' });
+  const [errore, setErrore] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const importo = Number(parte.amount);
+  const resta = Math.round((transaction.amount - importo) * 100) / 100;
+  const spostamento = parte.type === 'Transfers';
+  const valido = importo > 0 && resta > 0 && (spostamento ? Boolean(parte.destination) : Boolean(parte.category));
+
+  async function conferma(event: SyntheticEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSalvando(true);
+    setErrore('');
+    try {
+      const response = await fetch(`${apiUrl}/api/transactions/${transaction.id}/split`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(splitPayload(parte)),
+      });
+      if (!response.ok) throw new Error(await responseError(response, t));
+      await onDone();
+    } catch (error) {
+      setErrore(error instanceof Error ? error.message : t('cannotSaveGeneric'));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  const campo = 'h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]';
+  return <Dialog open onOpenChange={(open) => { if (!open && !salvando) onClose(); }}>
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>{t('splitMovementTitle')}</DialogTitle>
+        <DialogDescription>{transaction.description} · {t('splitMovementDesc', { total: formatEuro(transaction.amount) })}</DialogDescription>
+      </DialogHeader>
+      <form className="space-y-3" onSubmit={conferma}>
+        <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('splitNewPart')}
+          <Input type="number" inputMode="decimal" min="0.01" step="0.01" required value={parte.amount}
+            onChange={(e) => setParte((p) => ({ ...p, amount: e.target.value }))} />
+          <span className={`block text-[11px] font-normal ${resta > 0 ? 'text-[#71807c]' : 'text-[#a94f3a]'}`}>{resta > 0 ? t('splitRemaining', { amount: formatEuro(resta) }) : t('splitInvalidAmount')}</span>
+        </label>
+        <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('fieldType')}
+          <select className={campo} value={parte.type} onChange={(e) => setParte((p) => ({ ...p, type: e.target.value, category: '' }))}>
+            <option value="Expenses">{t('typeExpense')}</option><option value="Income">{t('typeIncome')}</option><option value="Transfers">{t('typeTransfer')}</option>
+          </select>
+        </label>
+        {spostamento
+          ? <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('fieldDestinationAccount')}
+            <select className={campo} required value={parte.destination} onChange={(e) => setParte((p) => ({ ...p, destination: e.target.value }))}>
+              <option value="">{t('selectAccount')}</option>
+              {accounts.filter((a) => a.isActive !== false && a.name !== transaction.accountName).map((a) => <option key={a.id} value={a.name}>{a.name}</option>)}
+            </select></label>
+          : <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('fieldCategory')}
+            <select className={campo} required value={parte.category} onChange={(e) => setParte((p) => ({ ...p, category: e.target.value }))}>
+              <option value="">{t('selectPlaceholder')}</option>
+              {(categoriesByType[parte.type] ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
+            </select></label>}
+        <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('fieldDescription')}
+          <Input value={parte.details} onChange={(e) => setParte((p) => ({ ...p, details: e.target.value }))} />
+        </label>
+        {errore && <p role="alert" className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{errore}</p>}
+        <DialogFooter className="mx-0 mb-0 mt-5 border-0 bg-transparent p-0">
+          <Button type="button" variant="outline" disabled={salvando} onClick={onClose}>{t('cancel')}</Button>
+          <Button type="submit" disabled={salvando || !valido} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{salvando ? t('savingEllipsis') : t('splitRow')}</Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>;
+}
+
+const TransactionRow = memo(function TransactionRow({ transaction, onEdit, onDuplicate, onDelete, onRefund, onSplit }: { transaction: Transaction; onEdit?: (transaction: Transaction) => void; onDuplicate?: (transaction: Transaction) => void; onDelete?: (transaction: Transaction) => void; onRefund?: (transaction: Transaction) => void; onSplit?: (transaction: Transaction) => void }) {
   const { t, formatEuro, formatDate } = useI18n();
   // Un tipo che l'API conosce e questa tabella no farebbe esplodere la riga, e
   // con lei tutta la pagina: meglio l'icona del giroconto che una schermata bianca.
@@ -5912,7 +6005,7 @@ const TransactionRow = memo(function TransactionRow({ transaction, onEdit, onDup
     : linkedCount === 1
       ? `${transaction.linkedLedger?.[0]?.name ?? ''} (${transaction.linkedLedger?.[0]?.transactionType ?? ''})`
       : transaction.linkedLedger?.map((item) => `${item.name} (${item.transactionType})`).join(', ');
-  return <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3.5 sm:flex-nowrap"><span className={`grid size-9 shrink-0 place-items-center rounded-xl ${style.className}`}><Icon className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{transaction.description}</p><div className="flex gap-2 text-[11px]">{transaction.incomplete && <span className="text-[#a05f4e]">{t('incompleteMovements')}</span>}{transaction.countsInBudget === false && !['Transfers', 'Investment', 'Debt'].includes(transaction.transactionType) && <span className="text-[#87918e]">{t('excludeBudget')}</span>}{transaction.refundedById && <button type="button" className="text-[#2d7b65] underline" onClick={() => onRefund?.(transaction)}>{t('refunded')}</button>}{transaction.liabilitySplit && <span className={transaction.liabilitySplit.classified ? 'text-[#8a5a46]' : 'text-[#a05f4e]'}>{transaction.liabilitySplit.classified ? t('debtSplitSummary', { principal: formatEuro(transaction.liabilitySplit.principal), interest: formatEuro(transaction.liabilitySplit.interest) }) : t('debtUnclassified')}</span>}</div><p className="mt-0.5 truncate text-xs text-[#87918e]">{transaction.category}{transaction.accountName ? ` · ${transaction.accountName}` : ''}{transaction.destinationName ? ` → ${transaction.destinationName}` : ''}</p></div><div className="hidden text-right text-xs text-[#87918e] sm:block"><p>{formatDate(`${transaction.effectiveOn}T12:00:00`, { day: 'numeric', month: 'short' })}</p>{transaction.effectiveOn !== transaction.occurredOn && <p className="mt-0.5 text-[11px] text-[#a0a8a5]">{t('occurredOnNote', { date: formatDate(`${transaction.occurredOn}T12:00:00`, { day: 'numeric', month: 'short' }) })}</p>}</div><p className={`w-24 text-right text-sm font-semibold tabular-nums ${transaction.amount > 0 ? 'text-[#2d7b65]' : 'text-[#28312f]'}`}>{transaction.amount > 0 ? '+' : '−'}{formatEuro(Math.abs(transaction.amount))}</p>{linkedCount > 0 && <span title={linkedTooltip} aria-label={linkedCount === 1 ? t('ledgerLinkedCount_one') : t('ledgerLinkedCount_other', { count: linkedCount })} className="grid size-7 shrink-0 place-items-center rounded-full bg-[#e5f3ed] text-[#2d7b65]"><LineChartIcon className="size-3.5" /></span>}{onEdit && onDuplicate && onDelete && <div className="flex shrink-0 basis-full justify-end sm:basis-auto"><Button type="button" size="icon" variant="ghost" title={t('edit')} aria-label={`${t('edit')} ${transaction.description}`} onClick={() => onEdit(transaction)}><Pencil className="size-4" /></Button><Button type="button" size="icon" variant="ghost" title={t('duplicate')} aria-label={`${t('duplicate')} ${transaction.description}`} onClick={() => onDuplicate(transaction)}><Copy className="size-4" /></Button><Button type="button" size="icon" variant="ghost" title={t('delete')} aria-label={`${t('delete')} ${transaction.description}`} onClick={() => onDelete(transaction)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button></div>}</div>;
+  return <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3.5 sm:flex-nowrap"><span className={`grid size-9 shrink-0 place-items-center rounded-xl ${style.className}`}><Icon className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{transaction.description}</p><div className="flex gap-2 text-[11px]">{transaction.incomplete && <span className="text-[#a05f4e]">{t('incompleteMovements')}</span>}{transaction.countsInBudget === false && !['Transfers', 'Investment', 'Debt'].includes(transaction.transactionType) && <span className="text-[#87918e]">{t('excludeBudget')}</span>}{transaction.refundedById && <button type="button" className="text-[#2d7b65] underline" onClick={() => onRefund?.(transaction)}>{t('refunded')}</button>}{transaction.liabilitySplit && <span className={transaction.liabilitySplit.classified ? 'text-[#8a5a46]' : 'text-[#a05f4e]'}>{transaction.liabilitySplit.classified ? t('debtSplitSummary', { principal: formatEuro(transaction.liabilitySplit.principal), interest: formatEuro(transaction.liabilitySplit.interest) }) : t('debtUnclassified')}</span>}</div><p className="mt-0.5 truncate text-xs text-[#87918e]">{transaction.category}{transaction.accountName ? ` · ${transaction.accountName}` : ''}{transaction.destinationName ? ` → ${transaction.destinationName}` : ''}</p></div><div className="hidden text-right text-xs text-[#87918e] sm:block"><p>{formatDate(`${transaction.effectiveOn}T12:00:00`, { day: 'numeric', month: 'short' })}</p>{transaction.effectiveOn !== transaction.occurredOn && <p className="mt-0.5 text-[11px] text-[#a0a8a5]">{t('occurredOnNote', { date: formatDate(`${transaction.occurredOn}T12:00:00`, { day: 'numeric', month: 'short' }) })}</p>}</div><p className={`w-24 text-right text-sm font-semibold tabular-nums ${transaction.amount > 0 ? 'text-[#2d7b65]' : 'text-[#28312f]'}`}>{transaction.amount > 0 ? '+' : '−'}{formatEuro(Math.abs(transaction.amount))}</p>{linkedCount > 0 && <span title={linkedTooltip} aria-label={linkedCount === 1 ? t('ledgerLinkedCount_one') : t('ledgerLinkedCount_other', { count: linkedCount })} className="grid size-7 shrink-0 place-items-center rounded-full bg-[#e5f3ed] text-[#2d7b65]"><LineChartIcon className="size-3.5" /></span>}{onEdit && onDuplicate && onDelete && <div className="flex shrink-0 basis-full justify-end sm:basis-auto"><Button type="button" size="icon" variant="ghost" title={t('edit')} aria-label={`${t('edit')} ${transaction.description}`} onClick={() => onEdit(transaction)}><Pencil className="size-4" /></Button><Button type="button" size="icon" variant="ghost" title={t('duplicate')} aria-label={`${t('duplicate')} ${transaction.description}`} onClick={() => onDuplicate(transaction)}><Copy className="size-4" /></Button>{onSplit && divisibile(transaction) && <Button type="button" size="icon" variant="ghost" title={t('splitRow')} aria-label={`${t('splitRow')} ${transaction.description}`} onClick={() => onSplit(transaction)}><Split className="size-4" /></Button>}<Button type="button" size="icon" variant="ghost" title={t('delete')} aria-label={`${t('delete')} ${transaction.description}`} onClick={() => onDelete(transaction)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button></div>}</div>;
 })
 function RecurringTransactionsView({ accounts, data, categoriesByType, onCreate, onDelete, onGenerate }: { accounts: Account[]; data: RecurringTransactionData[]; categoriesByType: Record<string, string[]>; onCreate: (payload: Record<string, string | number | null>) => Promise<void>; onDelete: (id: number) => Promise<void>; onGenerate: (until: string) => Promise<number> }) {
   const { t, locale } = useI18n();

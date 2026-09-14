@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { expect, it } from 'vitest';
 import type { RetirementProfile } from '@/components/settings/retirement-profile-form';
 import { accountPayload, budgetCreatePayload, budgetUpdatePayload, expenseRulesPayload, goalPayload, incomeStreamPayload,
-  ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
+  ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, splitPayload, transactionPayload } from '@/lib/payloads';
 
 /*
  * I corpi che il frontend manda, costruiti dalle stesse funzioni che usano i
@@ -82,6 +82,10 @@ const richieste = [
   { endpoint: 'recurring', case: 'trasferimento mensile', body: recurringPayload({
     description: 'Accantonamento', amount: '200', category: '', type: 'Transfers', recurrence: 'FREQ=MONTHLY;BYMONTHDAY=15',
     startDate: oggi, endDate: annoProssimo }, modulo({ accountName: 'Banca', destinationName: 'Casa' })) },
+  { endpoint: 'split', case: 'meta\' affitto da farsi restituire', body: splitPayload({
+    amount: '450', type: 'Transfers', category: 'Housing', destination: 'Casa', details: 'Affitto, parte di Mary' }) },
+  { endpoint: 'split', case: 'parte con un\'altra categoria', body: splitPayload({
+    amount: '100', type: 'Expenses', category: 'Groceries', destination: 'Casa', details: '' }) },
 ];
 
 it('i corpi delle richieste sono costruiti e scritti per il backend', () => {

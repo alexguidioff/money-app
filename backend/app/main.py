@@ -870,6 +870,65 @@ def update_transaction(tx_id: int, payload: TransactionPayload, session: Session
     return _transaction_to_dict(tx, session)
 
 
+class SplitPayload(BaseModel):
+    amount: float
+    transaction_type: str
+    category: str | None = None
+    destination_name: str | None = None
+    details: str | None = None
+
+
+DIVISIBILI = {"Expenses", "Income", "Transfers"}
+
+
+@app.post("/api/transactions/{tx_id}/split", status_code=201)
+def split_transaction(tx_id: int, payload: SplitPayload, session: Session = Depends(get_session)) -> dict:
+    """Toglie una parte a un movimento e ne fa un movimento a se'.
+
+    Serve alla spesa pagata per intero ma solo in parte propria: la carta paga
+    40, 20 sono una spesa e 20 un trasferimento verso chi li deve restituire.
+    Stesso conto e stessa data dell'originale; tipo, categoria e destinazione
+    sono quelli della parte nuova. Tutto in una transazione: o si dividono
+    entrambi, o non cambia niente.
+
+    Restano interi i movimenti la cui cifra e' legata ad altro: investimenti e
+    debiti (operazioni e piani collegati), rimborsi, e quelli con un dettaglio
+    di debito o con operazioni del ledger agganciate.
+    """
+    tx = session.get(Transaction, tx_id)
+    if tx is None or tx.is_recurring_template:
+        raise HTTPException(status_code=404, detail=f"Movimento {tx_id} non trovato")
+    legato = (tx.transaction_type not in DIVISIBILI or tx.refund_of_id is not None
+              or session.scalar(select(Transaction.id).where(Transaction.refund_of_id == tx.id).limit(1)) is not None
+              or session.scalar(select(TransactionLedgerLink.id).where(TransactionLedgerLink.transaction_id == tx.id).limit(1)) is not None
+              or session.scalar(select(LiabilityTransactionDetail.id).where(LiabilityTransactionDetail.transaction_id == tx.id).limit(1)) is not None)
+    if legato:
+        raise HTTPException(status_code=409, detail="splitNotAllowed")
+    if payload.transaction_type not in DIVISIBILI:
+        raise HTTPException(status_code=422, detail="statementInvalidType")
+    parte = Decimal(str(payload.amount))
+    if not parte.is_finite() or parte != parte.quantize(Decimal(".01")) or not Decimal("0") < parte < tx.amount:
+        raise HTTPException(status_code=422, detail="splitInvalidAmount")
+
+    nuovo = Transaction()
+    _apply_transaction_payload(nuovo, TransactionPayload(
+        occurred_on=tx.occurred_on.isoformat(), transaction_type=payload.transaction_type,
+        category=payload.category, amount=float(parte), account_name=tx.account_name,
+        destination_name=payload.destination_name, details=payload.details if payload.details is not None else tx.details,
+    ), session)
+    tx.amount -= parte
+    session.add(nuovo)
+    try:
+        session.flush()
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(status_code=409, detail=f"Conflitto sui dati del movimento: {exc.orig}") from exc
+    session.refresh(tx)
+    session.refresh(nuovo)
+    return {"original": _transaction_to_dict(tx, session), "created": _transaction_to_dict(nuovo, session)}
+
+
 @app.delete("/api/transactions/{tx_id}")
 def delete_transaction(tx_id: int, session: Session = Depends(get_session)):
     """Elimina un movimento."""

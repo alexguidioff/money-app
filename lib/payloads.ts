@@ -149,3 +149,15 @@ export function recurringPayload(draft: RecurringDraft, values: FormData) {
     recurrence_end_date: draft.endDate || null,
   };
 }
+
+/** La parte da togliere a un movimento per farne uno a se'. */
+export function splitPayload(parte: { amount: string; type: string; category: string; destination: string; details: string }) {
+  const spostamento = parte.type === 'Transfers';
+  return {
+    amount: Number(parte.amount),
+    transaction_type: parte.type,
+    category: spostamento ? null : parte.category || null,
+    destination_name: spostamento ? parte.destination || null : null,
+    details: parte.details,
+  };
+}
