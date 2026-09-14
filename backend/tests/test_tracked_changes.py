@@ -51,7 +51,9 @@ class TrackedChangesTests(unittest.TestCase):
         # I duplicati vengono letti una volta sola, non per riga.
         self.assertEqual(len(queries), 1)
         self.assertEqual(sum('FROM transactions' in query for query in queries), 1)
-        self.assertEqual([r["duplicate"] for r in result], [True, True, False, False])
+        # Il movimento esistente vale per una riga sola: la seconda da 12,50 e'
+        # un'altra spesa, e l'importo diverso non e' un doppione.
+        self.assertEqual([r["duplicate"] for r in result], [True, False, False, False])
         self.assertEqual(result[0]["duplicateOf"]["id"], tx_id)
 
     def test_completeness_types_and_database_filter(self):

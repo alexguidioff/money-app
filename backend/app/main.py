@@ -270,22 +270,73 @@ def restore_backup_endpoint(filename: str) -> dict:
         raise HTTPException(status_code=500, detail=f"Restore fallito: {exc}") from exc
 
 
+# Quanti giorni possono separare lo stesso movimento fra l'estratto conto e l'app:
+# la banca registra alla contabilizzazione, a mano si scrive il giorno della spesa
+# (l'affitto segnato il primo del mese e addebitato il cinque).
+GIORNI_DUPLICATO = 5
+
+
+def _parole(testo: str | None) -> set[str]:
+    return set(re.findall(r"[^\W_]{3,}", (testo or "").lower()))
+
+
+def _coppia(per_giorno, usati: set[int], giorno: date, importo: Decimal, opposto: str | None) -> list:
+    """Due movimenti dello stesso giorno e conto, non ancora usati, che sommano l'importo."""
+    for distanza in sorted(range(-GIORNI_DUPLICATO, GIORNI_DUPLICATO + 1), key=abs):
+        liberi = [item for item in per_giorno.get(giorno + timedelta(days=distanza), [])
+                  if item.id not in usati and item.transaction_type != opposto]
+        for i, primo in enumerate(liberi):
+            for secondo in liberi[i + 1:]:
+                if primo.account_name == secondo.account_name and abs(primo.amount) + abs(secondo.amount) == importo:
+                    return [primo, secondo]
+    return []
+
+
 def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
+    """Le righe lette da un estratto conto, con i possibili doppioni gia' segnati.
+
+    Un doppione si riconosce da importo e data, non dalla descrizione: quella
+    della banca ("Hai ricevuto un bonifico da ...") non somiglia mai a quella
+    scritta a mano ("affitto maggio"), che spesso nemmeno c'e'. La descrizione
+    serve solo a scegliere fra piu' candidati. Ogni movimento gia' presente vale
+    per una riga sola: due caffe' da 1,50 nello stesso giorno sono due, e se
+    nell'app ce n'e' uno solo, il secondo va importato.
+
+    Una spesa divisa si registra spesso in due movimenti (la propria parte e
+    quella da farsi restituire): se nessun movimento ha l'importo della riga,
+    vale anche una coppia dello stesso giorno e dello stesso conto che lo somma.
+    """
     if not raw_transactions:
         raise HTTPException(422, detail="statementEmpty")
-    normalize = lambda value: " ".join(re.sub(r"[^\w\s]", "", value.lower()).split())
-    existing = defaultdict(list)
-    for item in session.execute(select(Transaction.id, Transaction.occurred_on, Transaction.amount, Transaction.details)
+    per_importo = defaultdict(list)
+    per_giorno = defaultdict(list)
+    for item in session.execute(select(Transaction.id, Transaction.occurred_on, Transaction.amount,
+                                       Transaction.details, Transaction.transaction_type, Transaction.account_name)
                                 .where(REAL_MOVEMENT)).all():
-        existing[(item.amount, normalize(item.details or ""))].append(item)
+        per_importo[abs(item.amount)].append(item)
+        per_giorno[item.occurred_on].append(item)
+    usati: set[int] = set()
     rows = []
     for tx in raw_transactions:
         occurred = tx.get("occurredOn")
         description = tx.get("details") or tx.get("description") or ""
         amount = abs(Decimal(str(tx.get("rawAmount", tx.get("amount", 0)))))
         day = date.fromisoformat(occurred) if occurred else None
-        match = next((item for item in existing[(amount, normalize(description))]
-                      if day and item.occurred_on and abs((day - item.occurred_on).days) <= 3), None)
+        # Un'entrata non e' mai il doppione di una spesa, ne' il contrario; un
+        # giroconto puo' essere l'uno o l'altro, a seconda del conto.
+        opposto = {"Income": "Expenses", "Expenses": "Income"}.get(tx.get("transactionType"))
+        candidati = [item for item in per_importo[amount]
+                     if item.id not in usati and day and item.occurred_on
+                     and abs((day - item.occurred_on).days) <= GIORNI_DUPLICATO
+                     and item.transaction_type != opposto]
+        parole = _parole(description)
+        match = min(candidati, key=lambda item: (-len(parole & _parole(item.details)),
+                                                 abs((day - item.occurred_on).days), item.id), default=None)
+        coppia = [] if match or not day else _coppia(per_giorno, usati, day, amount, opposto)
+        if match is not None:
+            usati.add(match.id)
+        usati.update(item.id for item in coppia)
+        match = match or (coppia[0] if coppia else None)
         rows.append({
             "id": None, "date": occurred, "description": description,
             "details": description,
@@ -297,7 +348,9 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
             "destinationName": tx.get("destinationName"), "goal": tx.get("goal"),
             "duplicate": match is not None,
             "duplicateOf": {"id": match.id, "date": match.occurred_on.isoformat(),
-                            "amount": float(match.amount), "description": match.details} if match else None,
+                            "amount": float(sum(abs(item.amount) for item in coppia) if coppia else match.amount),
+                            "description": " + ".join(filter(None, (item.details for item in coppia))) if coppia
+                            else match.details} if match else None,
         })
     return {"success": True, "transactions": rows, "count": len(rows)}
 
