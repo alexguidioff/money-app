@@ -297,3 +297,17 @@ class RisparmioMensileTests(BudgetBase):
         self._entrate_e_spese()
         dati = budget_dashboard(2026, 1, "Savings", self.session)
         self.assertEqual((dati["plannedTotal"], dati["actualTotal"]), (0, 800.0))
+
+
+class QuadraturaDelMeseTests(BudgetBase):
+    """La card "Quanto mette da parte il mese" guarda il mese, non l'anno fino a li'."""
+
+    def test_il_piano_del_mese_ha_la_sua_quadratura(self) -> None:
+        from app.core_routes import budgets
+        for mese, entrate, spese in ((8, "1736", "1287.44"), (9, "250", "147.11")):
+            self.session.add_all([_piano(mese, "Stipendio", entrate, tipo="Income"), _piano(mese, "Casa", spese)])
+        self.session.commit()
+        saldo = budgets(2026, 9, "Savings", self.session)["balance"]
+        self.assertEqual((250.0, 147.11, 102.89), (saldo["income"], saldo["expenses"], saldo["savings"]))
+        anno = budget_annual(2026, "Expenses", self.session)["balance"]
+        self.assertEqual((1986.0, 1434.55), (anno["income"], anno["expenses"]))

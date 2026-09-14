@@ -150,3 +150,25 @@ test('Impostazioni: una preferenza resta dopo aver ricaricato', async ({ page })
   await expect(page.getByLabel('Colore principale')).toHaveValue('Green');
   expect(errori).toEqual([]);
 });
+
+test('Budget: la card del risparmio del mese guarda solo il mese', async ({ page }) => {
+  // Mostrava entrate e spese dell'anno fino a quel mese sotto il titolo "il mese".
+  const errori = raccogliErrori(page);
+  const oggi = new Date();
+  const anno = oggi.getFullYear(), mese = oggi.getMonth() + 1, altro = mese > 1 ? mese - 1 : mese + 1;
+  for (const [m, tipo, categoria, importo] of [[mese, 'Income', 'Salary', 250], [mese, 'Expenses', 'Housing', 147.11],
+    [altro, 'Income', 'Salary', 1736], [altro, 'Expenses', 'Housing', 1287.44]] as const) {
+    const risposta = await page.request.post('/api/budgets', { data: { year: anno, month: m, budget_type: tipo, category: categoria, amount: importo } });
+    expect(risposta.ok()).toBe(true);
+  }
+  await avvia(page);
+  await apri(page, 'Budget');
+  await page.getByRole('button', { name: 'Risparmi', exact: true }).click();
+  await page.getByRole('button', { name: 'Piano', exact: true }).click();
+  const card = page.locator('[data-slot="card"]', { has: page.getByText('Quanto mette da parte il mese') });
+  await expect(card.getByText(/^250,00\s*€$/)).toBeVisible();
+  await expect(card.getByText(/^147,11\s*€$/)).toBeVisible();
+  await expect(card.getByText(/102,89/).first()).toBeVisible();
+  await expect(card.getByText(/1\.986,00/)).toHaveCount(0);
+  expect(errori).toEqual([]);
+});

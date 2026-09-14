@@ -1391,7 +1391,10 @@ def budgets(year: int, month: int, budget_type: str = "Expenses", session: Sessi
         # veniva mostrato a zero.
         actual_total = derived_savings(session, year, month)
     return {"items": items, "plannedTotal": sum(item["amount"] for item in items),
-            "actualTotal": actual_total}
+            "actualTotal": actual_total,
+            # La quadratura del solo mese: la card del piano mensile mostrava
+            # quella dell'anno fino a quel mese, sotto il titolo "il mese".
+            "balance": _budget_balance(session, year, month)}
 
 
 @router.get("/api/calculations")

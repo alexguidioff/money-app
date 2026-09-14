@@ -263,11 +263,14 @@ export type BudgetData = {
   items: BudgetItem[];
   plannedTotal: number;
   actualTotal: number;
+  balance: BudgetBalance;
 };
 
 type BudgetSuggestion = { category: string; median: number; average: number; max: number; monthsWithSpending: number; monthsConsidered: number };
 export type BudgetSuggestionsData = { period: string; monthsBack: number; budgetType: string; items: BudgetSuggestion[] };
 type BudgetBalance = { income: number; expenses: number; savings: number; storedSavings: number; hasIncomePlan: boolean };
+const BUDGET_VUOTO: BudgetData = { items: [], plannedTotal: 0, actualTotal: 0,
+  balance: { income: 0, expenses: 0, savings: 0, storedSavings: 0, hasIncomePlan: false } };
 type BudgetGroupSplit = { group: 'Needs' | 'Wants' | 'Other'; planned: number; actual: number; plannedShare: number; actualShare: number };
 
 export type AnnualBudgetData = {
@@ -745,7 +748,7 @@ function MoneyDashboardInner() {
   const [summaryBreakdown, setSummaryBreakdown] = useState<SummaryBreakdown | null>(null);
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [budgetData, setBudgetData] = useState<BudgetData>({ items: [], plannedTotal: 0, actualTotal: 0 });
+  const [budgetData, setBudgetData] = useState<BudgetData>(BUDGET_VUOTO);
   const [budgetSuggestions, setBudgetSuggestions] = useState<BudgetSuggestion[]>([]);
   const [annualBudgetData, setAnnualBudgetData] = useState<AnnualBudgetData>({ year: 2026, items: [], monthTotals: [], balance: { income: 0, expenses: 0, savings: 0, storedSavings: 0, hasIncomePlan: false } });
   const [budgetDashboardData, setBudgetDashboardData] = useState<BudgetDashboardData | null>(null);
@@ -1067,7 +1070,7 @@ function MoneyDashboardInner() {
   // tipo, quindi azzerarli subito per non mostrare le categorie delle Spese
   // mentre il fetch di quelle delle Entrate (o Risparmi) e' in volo.
   useEffect(() => {
-    setBudgetData({ items: [], plannedTotal: 0, actualTotal: 0 });
+    setBudgetData(BUDGET_VUOTO);
     setBudgetDashboardData(null);
     setBudgetTrendsData({ years: [], comparison: [] });
     setAnnualBudgetData({ year: selectedYear, items: [], monthTotals: [], balance: { income: 0, expenses: 0, savings: 0, storedSavings: 0, hasIncomePlan: false } });
@@ -3165,7 +3168,7 @@ function SectionView({
         {budgetView === 'plan' && <div className="space-y-5">
           {period.scope === 'month' ? <>
             <BudgetPlanMonthTotals data={budgetData} budgetType={budgetType} calculations={calculationData} year={selectedYear} month={selectedMonth} />
-            {budgetType === 'Savings' ? <BudgetBalanceCard balance={annualBudgetData.balance} scope="month" /> : <BudgetEditor data={budgetData} canEdit={canEditBudgetYear} editableYears={editableBudgetYears} budgetType={budgetType} suggestions={budgetSuggestions} onUpdate={onBudgetUpdate} onCreate={onBudgetCreate} onDelete={onBudgetDelete} onCopy={onBudgetCopy} onCategoryGroupChange={onCategoryGroupChange} />}
+            {budgetType === 'Savings' ? <BudgetBalanceCard balance={budgetData.balance} scope="month" /> : <BudgetEditor data={budgetData} canEdit={canEditBudgetYear} editableYears={editableBudgetYears} budgetType={budgetType} suggestions={budgetSuggestions} onUpdate={onBudgetUpdate} onCreate={onBudgetCreate} onDelete={onBudgetDelete} onCopy={onBudgetCopy} onCategoryGroupChange={onCategoryGroupChange} />}
           </> : budgetType === 'Savings' ? <BudgetBalanceCard balance={annualBudgetData.balance} scope="year" /> : <AnnualBudgetEditor data={annualBudgetData} onApply={onAnnualBudgetApply} />}
         </div>}
         </>}
