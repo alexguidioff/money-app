@@ -724,7 +724,7 @@ function MoneyDashboardInner() {
   const selectedYear = period.year;
   const selectedMonth = period.month;
   const [budgetType, setBudgetType] = useState<'Expenses' | 'Income' | 'Savings'>('Expenses');
-  const [effectivePreview, setEffectivePreview] = useState<{ occurred: string; type: string; amount: number; origine: string }>({ occurred: '', type: '', amount: 0, origine: '' });
+  const [effectivePreview, setEffectivePreview] = useState<{ occurred: string; type: string; amount: number; origine: string }>(MODULO_VUOTO);
   const overviewYear = period.year;
   const overviewMonth = period.scope === 'year' ? null : period.month;
   const [overviewCompareTo, setOverviewCompareTo] = useState<'none' | 'prior_period' | 'prior_year'>('prior_year');
@@ -1728,6 +1728,7 @@ function MoneyDashboardInner() {
   const downloadData = () => { void download('data'); };
 
   function openNewTransaction() {
+    setEffectivePreview(MODULO_VUOTO);
     setEditingTransaction(null);
     setDuplicatingTransaction(null);
     setSaveError('');
@@ -1745,6 +1746,7 @@ function MoneyDashboardInner() {
   }
 
   const openEditTransaction = useCallback((transaction: Transaction) => {
+    setEffectivePreview(MODULO_VUOTO);
     setEditingTransaction(transaction);
     setDuplicatingTransaction(null);
     setSaveError('');
@@ -1759,6 +1761,7 @@ function MoneyDashboardInner() {
   }, [loadLinkedLedgerItems]);
 
   const openDuplicateTransaction = useCallback((transaction: Transaction) => {
+    setEffectivePreview(MODULO_VUOTO);
     setEditingTransaction(null);
     setDuplicatingTransaction(transaction);
     setSaveError('');
@@ -5124,6 +5127,11 @@ function ReportsView({ year, month, downloadBusy, downloadError, canManageBackup
   const { t, monthNames } = useI18n();
   return <div className="space-y-5">{downloadBusy && <p role="status">{t('downloadPreparing')}</p>}{downloadError && <p role="alert" className="text-sm text-[#a65b49]">{downloadError}</p>}<Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('exportReport')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('exportReportForPeriod', { period: formatPeriodRef(monthNames, year, month) })} · {t('exportReportSubtitle')}</p></CardHeader><CardContent className="flex flex-wrap gap-3"><Button disabled={downloadBusy} onClick={() => onDownload('excel')} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileSpreadsheet className="size-4" />{t('downloadExcel')}</Button><Button disabled={downloadBusy} variant="outline" onClick={() => onDownload('pdf')}><Download className="size-4" />{t('downloadPdf')}</Button></CardContent></Card><Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('dataExchangeTitle')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('downloadDataHint')}</p></CardHeader><CardContent><Button disabled={downloadBusy} variant="outline" onClick={onDownloadData}><Download className="size-4" />{t('downloadData')}</Button></CardContent></Card><ImportDataCard onImportData={onImportData} importing={importing} />{canManageBackups && <BackupsCard apiUrl={apiUrl} onRestored={onReload} />}</div>;
 }
+
+// Quello che il modulo del movimento ha letto dai campi mentre li si compila.
+// Va svuotato a ogni apertura: rimasto dal movimento precedente, il suo tipo
+// decideva le categorie offerte per quello nuovo.
+const MODULO_VUOTO = { occurred: '', type: '', amount: 0, origine: '' };
 
 function uniqueOptions(current: string, options: string[]) {
   return Array.from(new Set([current, ...options].filter(Boolean)));

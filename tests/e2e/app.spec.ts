@@ -75,6 +75,14 @@ test('Movimenti: una spesa si salva; un trasferimento al broker mostra il colleg
   await expect(dialogo.getByText('Operazioni collegate')).toBeVisible();
   await expect(dialogo.getByText(/viene salvato come Investimento/)).toBeVisible();
   await dialogo.getByRole('button', { name: 'Annulla' }).click();
+
+  // Il tipo scelto nel movimento precedente non deve decidere le categorie del
+  // successivo: aprendo la spesa, restavano quelle (nessuna) dell'investimento.
+  await page.getByRole('button', { name: 'Modifica Spesa e2e' }).click();
+  await expect(dialogo.locator('#movement-type')).toHaveValue('Expenses');
+  await expect(dialogo.locator('#movement-category')).toBeEnabled();
+  await expect(dialogo.locator('#movement-category option', { hasText: 'Groceries' })).toHaveCount(1);
+  await dialogo.getByRole('button', { name: 'Annulla' }).click();
   expect(errori).toEqual([]);
 });
 
