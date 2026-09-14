@@ -94,6 +94,24 @@ test('Movimenti: una spesa si salva; un trasferimento al broker mostra il colleg
   await expect(dialogo.locator('#strumenti-esistenti option[value="ETF e2e"]')).toHaveCount(1);
   await strumento.fill('ETF e2e');
   await dialogo.getByRole('button', { name: 'Annulla' }).click();
+
+  // Una spesa gia' salvata diventa un investimento creando l'operazione dal
+  // modulo di modifica. Senza conto broker di destinazione non parte nessun
+  // salvataggio (a video arrivava il codice "movementIncomplete"); con il conto
+  // l'operazione si crea e si collega.
+  await page.getByRole('button', { name: 'Modifica Spesa e2e' }).click();
+  await dialogo.locator('#movement-type').selectOption('Investment');
+  await dialogo.getByRole('button', { name: '+ Crea', exact: true }).click();
+  const nomeOperazione = dialogo.getByLabel('Strumento', { exact: true });
+  await expect(nomeOperazione).toHaveAttribute('list', 'strumenti-esistenti');
+  await nomeOperazione.fill('ETF e2e');
+  await dialogo.getByRole('button', { name: 'Crea e collega' }).click();
+  expect(await dialogo.locator('#movement-destination').evaluate((campo) => campo.matches(':invalid'))).toBe(true);
+  await expect(dialogo.getByText('movementIncomplete')).toHaveCount(0);
+  await dialogo.locator('#movement-destination').selectOption('Broker');
+  await dialogo.getByRole('button', { name: 'Crea e collega' }).click();
+  await expect(dialogo.locator('li', { hasText: 'ETF e2e' })).toBeVisible();
+  await dialogo.getByRole('button', { name: 'Annulla' }).click();
   expect(errori).toEqual([]);
 });
 

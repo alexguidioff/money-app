@@ -15,6 +15,13 @@ describe('messaggi d\'errore di import ed export', () => {
     expect(await responseError(risposta(400, { detail: { code: 'importInvalid', reason: 'x' } }), t)).toBe(t('importInvalid'));
   });
 
+  it('un movimento incompleto dice quali campi mancano, con i loro nomi', async () => {
+    const conParametri = (chiave: TranslationKey, params?: Record<string, string>) =>
+      String(translations.it[chiave]).replace(/\{\{(\w+)\}\}/g, (_, nome: string) => params?.[nome] ?? '');
+    const corpo = { detail: { code: 'movementIncomplete', fields: ['destination', 'category'] } };
+    expect(await responseError(risposta(422, corpo), conParametri)).toBe('Mancano dei campi obbligatori: Conto destinazione, Categoria.');
+  });
+
   it('login mancante e file troppo grande hanno la loro frase anche senza corpo', async () => {
     expect(await responseError(new Response('', { status: 401 }), t)).toBe(t('downloadLoginRequired'));
     expect(await responseError(new Response('', { status: 413 }), t)).toBe(t('uploadTooLarge'));

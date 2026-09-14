@@ -1,6 +1,6 @@
 'use client';
 
-import { downloadFile, responseError } from '@/lib/download';
+import { campiMancanti, downloadFile, responseError } from '@/lib/download';
 import { previewEffectiveDate } from '@/lib/effective-date';
 import { nettoOperazioni } from '@/lib/ledger-preview';
 import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
@@ -829,11 +829,11 @@ function MoneyDashboardInner() {
     ? 'http://api:8000'
     : '');
   // I nomi degli strumenti da proporre nelle operazioni collegate: quelli
-  // configurati e quelli gia' usati nel ledger. Si chiedono all'apertura del
-  // pannello, cosi' uno strumento appena creato c'e' gia'.
+  // configurati e quelli gia' usati nel ledger. Si chiedono a ogni apertura del
+  // modulo, cosi' uno strumento appena creato c'e' gia'.
   const [nomiStrumenti, setNomiStrumenti] = useState<string[]>([]);
   useEffect(() => {
-    if (!linkLedgerOpen) return;
+    if (!newTransactionOpen) return;
     const controller = new AbortController();
     fetch(`${apiUrl}/api/investments/instruments`, { signal: controller.signal })
       .then((r) => r.ok ? r.json() as Promise<{ items: Array<{ name: string }> }> : { items: [] })
@@ -841,7 +841,7 @@ function MoneyDashboardInner() {
         .filter(Boolean).sort((a, b) => a.localeCompare(b))))
       .catch(() => undefined);
     return () => controller.abort();
-  }, [linkLedgerOpen, apiUrl, investmentLedger]);
+  }, [newTransactionOpen, apiUrl, investmentLedger]);
 
   // Di settingsData a loadData serve un solo numero. Tenere nelle dipendenze
   // l'intero oggetto - che loadData stesso riscrive a ogni giro, con una
@@ -1192,12 +1192,11 @@ function MoneyDashboardInner() {
         // la terza il motivo vero spariva.
         let detail = '';
         try {
-          const errBody = await response.json() as { detail?: string | { msg?: string }[] | { code?: string } };
+          const errBody = await response.json() as { detail?: string | { msg?: string }[] | { code?: string; fields?: string[] } };
           detail = typeof errBody.detail === 'string' ? errBody.detail
             : Array.isArray(errBody.detail) ? errBody.detail.map((item) => item.msg).join('; ')
-            : errBody.detail?.code === 'investmentNeedsBroker' ? t('investmentNeedsBroker')
-            : errBody.detail?.code === 'debtNeedsLiability' ? t('debtNeedsLiability')
-            : errBody.detail?.code === 'ledgerGroupUnbalanced' ? t('ledgerGroupUnbalanced')
+            : errBody.detail?.code === 'movementIncomplete' ? campiMancanti(errBody.detail.fields, t)
+            : errBody.detail?.code && Object.hasOwn(translations.it, errBody.detail.code) ? t(errBody.detail.code as TranslationKey)
             : errBody.detail?.code ?? '';
         } catch { /* ignore */ }
         if (detail) setSaveError(detail);
@@ -1236,7 +1235,9 @@ function MoneyDashboardInner() {
   async function investimentoSalvato(): Promise<string | null> {
     if (!editingTransaction) return null;
     if (editingTransaction.transactionType === 'Investment') return editingTransaction.id;
-    if (!movementFormRef.current || !await salvaMovimento(new FormData(movementFormRef.current), false)) return null;
+    // Il modulo non passa dal submit: senza questo i campi obbligatori (il conto
+    // broker di destinazione) arrivavano vuoti e il server rispondeva con un codice.
+    if (!movementFormRef.current?.reportValidity() || !await salvaMovimento(new FormData(movementFormRef.current), false)) return null;
     setEditingTransaction((corrente) => corrente && { ...corrente, transactionType: 'Investment' });
     return editingTransaction.id;
   }
@@ -2349,6 +2350,7 @@ function MoneyDashboardInner() {
             <DialogDescription>{editingTransaction ? t('editMovementDesc') : duplicatingTransaction ? t('duplicateMovementDesc') : t('newMovementDesc')}</DialogDescription>
           </DialogHeader>
           <form ref={movementFormRef} key={editingTransaction ? `edit-${editingTransaction.id}` : duplicatingTransaction ? `duplicate-${duplicatingTransaction.id}` : 'new'} className="space-y-4" onSubmit={handleSaveTransaction} onChange={(event) => { const form = new FormData(event.currentTarget); setEffectivePreview({ occurred: String(form.get('occurred_on') ?? ''), type: String(form.get('transaction_type') ?? ''), amount: Math.abs(Number(form.get('amount') || 0)), origine: String(form.get('account_name') ?? '') }); }}>
+            <datalist id="strumenti-esistenti">{nomiStrumenti.map((nome) => <option key={nome} value={nome} />)}</datalist>
             <div className="grid grid-cols-2 gap-3">
               <label htmlFor="movement-date" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDate')}<Input id="movement-date" required name="occurred_on" type="date" defaultValue={formTransaction?.occurredOn ?? new Date().toISOString().slice(0, 10)} className="h-10 bg-white" /></label>
               <label htmlFor="movement-type" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldType')}<select id="movement-type" required name="transaction_type" defaultValue={formTransaction?.transactionType ?? 'Expenses'} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"><option value="Expenses">{t('typeExpense')}</option><option value="Income">{t('typeIncome')}</option><option value="Transfers">{t('typeTransfer')}</option><option value="Investment">{t('typeInvestment')}</option><option value="Debt">{t('typeDebt')}</option></select></label>
@@ -2412,7 +2414,6 @@ function MoneyDashboardInner() {
                 {linkLedgerOpen && (
                   <div className="space-y-2">
                     <p className="text-[11px] text-[#52615d]">{t('linkToLedgerDesc')}</p>
-                    <datalist id="strumenti-esistenti">{nomiStrumenti.map((nome) => <option key={nome} value={nome} />)}</datalist>
                     {linkedLedgerRows.map((row, index) => (
                       <div key={index} className="space-y-2 rounded-md border border-black/8 bg-white p-2">
                         <div className="flex items-center justify-between gap-2">
@@ -2515,7 +2516,7 @@ function MoneyDashboardInner() {
                     <p className="text-[10px] leading-4 text-[#87918e]">{t('createLedgerOperationHint')}</p>
                     <div className="grid grid-cols-2 gap-2">
                       <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('instrument')}
-                        <Input value={nuovaOpNome} onChange={(e) => setNuovaOpNome(e.target.value)} className="h-8 bg-white text-xs" /></label>
+                        <Input list="strumenti-esistenti" autoComplete="off" value={nuovaOpNome} onChange={(e) => setNuovaOpNome(e.target.value)} className="h-8 bg-white text-xs" /></label>
                       <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('operation')}
                         <select value={nuovaOpTipo} onChange={(e) => setNuovaOpTipo(e.target.value as 'Buy' | 'Sell')} className="h-8 w-full rounded-md border border-input bg-white px-2 text-xs"><option value="Buy">{t('buy')}</option><option value="Sell">{t('sell')}</option></select></label>
                       <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldAmount')}
