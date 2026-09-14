@@ -19,6 +19,15 @@ class ImportiEstrattoConto(unittest.TestCase):
         self.assertEqual(parse_date('2026-09-05'), '2026-09-05')
         self.assertIsNone(parse_date('non una data'))
 
+    def test_date_con_il_mese_in_lettere(self):
+        # Alcune banche scrivono "01 lug 2026", altre il mese per esteso.
+        self.assertEqual(parse_date('01 lug 2026'), '2026-07-01')
+        self.assertEqual(parse_date('3 August 2026'), '2026-08-03')
+        self.assertEqual(parse_date('5 juin 2026'), '2026-06-05')
+        self.assertEqual(parse_date('5 juil. 2026'), '2026-07-05')
+        self.assertIsNone(parse_date('31 feb 2026'))
+        self.assertIsNone(parse_date('1 xyz 2026'))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -44,10 +44,30 @@ def parse_amount(amount_str: str) -> float:
     return -valore if negativo else valore
 
 
+# Mesi scritti per esteso o abbreviati ("01 lug 2026", "3 August 2026"), nelle
+# lingue dell'app. Si confronta l'inizio della parola: "juin" e "juil" vanno
+# tenuti distinti, per il resto bastano tre lettere.
+MESI = {
+    'gen': 1, 'jan': 1, 'ene': 1, 'feb': 2, 'fév': 2, 'fev': 2, 'mar': 3, 'mär': 3,
+    'apr': 4, 'avr': 4, 'abr': 4, 'mag': 5, 'may': 5, 'mai': 5, 'giu': 6, 'jun': 6, 'juin': 6,
+    'lug': 7, 'jul': 7, 'juil': 7, 'ago': 8, 'aug': 8, 'aoû': 8, 'aou': 8, 'set': 9, 'sep': 9,
+    'ott': 10, 'oct': 10, 'okt': 10, 'nov': 11, 'dic': 12, 'dec': 12, 'dez': 12, 'déc': 12,
+}
+
+
 def parse_date(date_str: str) -> str | None:
     """Data in ISO, o None se non e' riconoscibile. Non inventa la data di oggi."""
     if not date_str:
         return None
+    a_parole = re.fullmatch(r'\s*(\d{1,2})\.?\s+([^\W\d]+)\.?\s+(\d{4})\s*', str(date_str))
+    if a_parole:
+        giorno, nome, anno = a_parole.groups()
+        nome = nome.lower()
+        mese = next((MESI[k] for k in sorted(MESI, key=len, reverse=True) if nome.startswith(k)), None)
+        try:
+            return datetime(int(anno), mese, int(giorno)).strftime('%Y-%m-%d') if mese else None
+        except ValueError:
+            return None
     pulito = re.sub(r'[^\d\-/.]', '', str(date_str).strip())
     for formato in DATE_FORMATS:
         try:

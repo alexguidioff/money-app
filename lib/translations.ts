@@ -4410,7 +4410,7 @@ const es: TranslationTable = {
   helpAppunti: 'Notas libres, para recordar por qué decidiste algo o qué queda por hacer. «Nueva nota» pide sección, título, texto y un estado a tu elección (por ejemplo Pendiente, Hecho); la búsqueda mira títulos y texto. Son tuyas y no entran en ningún cálculo.',
   helpReport: 'Aquí los datos salen y entran.\n• «Exportar informe»: el resumen del periodo elegido arriba, en Excel o PDF.\n• «Exportar datos»: un archivo con todos tus datos, una hoja por tipo, para guardar una copia o trasladarlos.\n• «Importar datos»: vuelve a cargar un archivo exportado desde aquí, sustituyendo los datos actuales.\n• «Copias de seguridad»: crea una copia, restáurala o bórrala.',
   helpReportDep: 'Se crea una copia automática cada día, antes de cada importación y antes de eliminar una deuda. Las copias incluyen a todos los usuarios: solo las gestiona quien administra la instalación.',
-  helpImpostazioni: '• Cuenta: contraseña, compartir tus totales con otros usuarios y eliminar la cuenta, que antes descarga tus datos.\n• Preferencias: color de la app, divisas en las que ver el patrimonio y desplazamiento de ingresos tardíos (desde el día elegido un ingreso cuenta en el mes siguiente).\n• Jubilación e FIRE: perfil previsional, gastos en la jubilación por categoría, flujos de ingresos futuros (rentas y capitales) y notas fiscales por país.\n• El idioma se cambia desde el menú del perfil, arriba a la derecha.',
+  helpImpostazioni: '• Cuenta: contraseña, compartir tus totales con otros usuarios y eliminar la cuenta, que antes descarga tus datos.\n• Preferencias: color de la app, divisas en las que ver el patrimonio y desplazamiento de ingresos tardíos (desde el día elegido un ingreso cuenta en el mes siguiente).\n• Jubilación y FIRE: perfil previsional, gastos en la jubilación por categoría, flujos de ingresos futuros (rentas y capitales) y notas fiscales por país.\n• El idioma se cambia desde el menú del perfil, arriba a la derecha.',
   helpImpostazioniDep: 'La página FIRE se construye con estos datos: sin perfil muestra cómo rellenarlo. Cambiar el desplazamiento de ingresos recalcula el mes de imputación de todo el histórico. Copias y exportación están en Informes.',
 
   // La cancellazione di un account: l'unica azione che distrugge dati.
@@ -4478,7 +4478,7 @@ const es: TranslationTable = {
   goalCoverage: 'Cobertura de objetivos',
   goalCoverageDetail: '{{saved}} apartados, {{needed}} al mes que piden los objetivos',
 
-  fireSection: 'Jubilación e FIRE',
+  fireSection: 'Jubilación y FIRE',
   fireChartTitle: 'Capital y objetivo en el tiempo',
   fireChartDescription: 'Tu historia real detrás de la proyección: se ve si estás por encima o por debajo de tu propio plan.',
   fireChartRange: 'Rango de escenarios',
@@ -4516,7 +4516,7 @@ const es: TranslationTable = {
   fireErrorRates: 'Rentabilidad, tasa de retirada o impuestos fuera de los valores posibles.',
   shiftLateIncomeConfirm: 'Cambiar este ajuste recalcula el mes de imputación de todos los ingresos ya registrados, también los pasados. ¿Continuar?',
   fireSectionHelp: 'Cuánto capital necesitas para dejar de trabajar y cuándo llegas, con las pensiones dentro del cálculo.\n• El capital necesario no es «gastos × 25»: es el puente, lo que necesitas entre la jubilación y la primera pensión, más el complemento, lo que las pensiones no cubren.\n• «Hoy tu capital sostiene» dice cuánto podrías gastar al mes con tu patrimonio actual; la edad de independencia cuenta también el ahorro que estás haciendo.\n• El gráfico pone tu historia junto a la proyección, con una banda entre el escenario pesimista y el optimista.\n• Hitos: Coast (dejas de aportar y llegas igual), Solo puente, Lean (con gastos reducidos), FI (plan completo).\n• El apalancamiento del ahorro muestra cuántos años cambian con tu tasa de ahorro; el cursor mueve todas las pensiones hasta 5 años antes o después.',
-  fireSectionHelpDep: 'Se configura en Ajustes → Jubilación e FIRE: perfil (edad, país, rentabilidad, retirada, impuestos, inflación, gastos), gastos en la jubilación por categoría y flujos de ingresos futuros como la pensión pública o un plan de empresa. Las rentabilidades son reales, descontada la inflación. Es un escenario, no una previsión.',
+  fireSectionHelpDep: 'Se configura en Ajustes → Jubilación y FIRE: perfil (edad, país, rentabilidad, retirada, impuestos, inflación, gastos), gastos en la jubilación por categoría y flujos de ingresos futuros como la pensión pública o un plan de empresa. Las rentabilidades son reales, descontada la inflación. Es un escenario, no una previsión.',
 
   fireProfileTitle: 'Perfil previsional',
   fireProfileSubtitle: 'Los números que rigen el plan. Cada importe o tasa es en términos reales: lo declaras una vez, la inflación no lo cambia.',

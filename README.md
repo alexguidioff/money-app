@@ -1,14 +1,6 @@
 # Money
 
-*A self-hosted personal finance app: transactions, accounts, budgets, goals,
-debts, investments and a FIRE/retirement planner, for one or more people on the
-same installation. Your data stays in your own PostgreSQL database; the only
-outbound traffic is market quotes for the tickers you configure. The interface
-speaks Italian, English, German, Spanish and French. Quick start: install
-Docker, then `./setup.sh && docker compose up -d --build` and open
-<http://localhost:3010>. The rest of this README is in Italian.*
-
----
+**Italiano** · [English](README.en.md) · [Deutsch](README.de.md) · [Español](README.es.md) · [Français](README.fr.md)
 
 Un'app di finanza personale che gira **a casa tua**: i tuoi movimenti, i tuoi
 conti, i tuoi investimenti restano nel tuo database, su una macchina che
@@ -22,7 +14,9 @@ con quelli dichiarati per accorgersi subito quando qualcosa non quadra.
 ## Cosa fa
 
 - **Movimenti** — entrate, uscite, trasferimenti fra conti, ricorrenze.
-  Import da PDF o CSV dell'estratto conto, con anteprima prima di salvare.
+  Import da PDF o CSV dell'estratto conto, con anteprima prima di salvare: il
+  PDF si legge anche quando la banca non disegna una tabella ma allinea solo
+  il testo in colonne.
 - **Conti** — stile stato patrimoniale, divisi fra banche, attività, passività
   e investimenti, con il saldo calcolato messo accanto a quello atteso.
 - **Budget** — pianificazione per categoria e mese, confronto con lo speso,
@@ -35,7 +29,7 @@ con quelli dichiarati per accorgersi subito quando qualcosa non quadra.
 - **Investimenti** — portafoglio valorizzato ai prezzi di mercato scaricati dai
   ticker, ripartizione per settore e per titolo sottostante, andamento del
   singolo strumento con sopra i propri acquisti e le proprie vendite.
-- **Pensione e FIRE** — quanto capitale serve, in che anno ci arrivi e cosa lo
+- **Pensionamento e FIRE** — quanto capitale serve, in che anno ci arrivi e cosa lo
   sposta: tasso di risparmio, rendite e pensioni future, spese che in pensione
   cambiano, con le note fiscali di dieci paesi europei.
 - **Appunti** — note libere per ricordare perché hai deciso qualcosa.
@@ -47,12 +41,14 @@ con quelli dichiarati per accorgersi subito quando qualcosa non quadra.
 In cima a ogni pagina c'è un **"?"** che spiega a cosa serve quella pagina e da
 cosa dipende per riempirsi di numeri.
 
+L'interfaccia è in italiano, inglese, tedesco, spagnolo e francese.
+
 ## Come si avvia
 
 Serve solo Docker.
 
 ```bash
-git clone <questo repository> money
+git clone https://github.com/alexguidioff/money-app.git money
 cd money
 ./setup.sh                    # crea il .env con due password casuali
 docker compose up -d --build
@@ -152,9 +148,10 @@ pnpm test:e2e                                        # end-to-end con Playwright
 scripts/gate.sh                                      # tutto in fila, poi pubblica solo se è tutto verde
 ```
 
-I test coprono il motore di calcolo, il giro export-import e gli aggregati che
-in passato si sono rotti in silenzio: un modello di ricorrenza contato come
-spesa reale, il capitale investito calcolato dimenticando le posizioni vendute.
+I test coprono il motore di calcolo, la lettura degli estratti conto, il giro
+export-import e gli aggregati che in passato si sono rotti in silenzio: un
+modello di ricorrenza contato come spesa reale, il capitale investito calcolato
+dimenticando le posizioni vendute.
 I **contratti** confrontano le risposte vere dell'API con i tipi che
 l'interfaccia legge, e i corpi che l'interfaccia manda con quelli che l'API
 accetta: un campo rinominato da una parte sola ferma il gate.
