@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Split, Undo2 } from 'lucide-react';
+import { Split, Undo2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -11,6 +11,9 @@ export type PDFTransaction = {
   description: string;
   category: string;
   categoryAutomatic?: boolean;
+  // Il testo della regola che ha deciso la categoria. C'e' solo quando la
+  // decisione e' sua: una categoria portata dal file non e' una proposta.
+  categoryRule?: string | null;
   date: string | null;
   amount: number;
   type: 'income' | 'expense' | 'saving' | 'transfer';
@@ -129,10 +132,18 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, onC
             <td className="min-w-44 p-2">{row.description}{row.duplicate && <p className="text-xs text-amber-700">{t('statementDuplicate')}{row.duplicateOf && <> · #{row.duplicateOf.id} · {formatDate(row.duplicateOf.date)} · {formatEuro(row.duplicateOf.amount)} · {row.duplicateOf.description}</>}</p>}
               {row.errorCode && <p className="text-xs text-red-700">{t(Object.hasOwn(translations.it, row.errorCode) ? row.errorCode as TranslationKey : 'statementRowInvalid')}</p>}</td>
             <td className="p-2"><select aria-label={t('category')} value={spostamento || row.categoryAutomatic ? '' : row.category} disabled={isSaving || spostamento} className="w-40 rounded border p-2 disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]"
-              onChange={e => updateRow(index, { category: e.target.value, categoryAutomatic: !e.target.value })}>
+              onChange={e => updateRow(index, { category: e.target.value, categoryAutomatic: !e.target.value, categoryRule: null })}>
               <option value="">{spostamento ? t('categoryNotApplicable') : t('categoryAutomatic')}</option>
               {!spostamento && scelte.map(categoria => <option key={categoria} value={categoria}>{categoria}</option>)}
-            </select></td>
+            </select>
+            {/* Da dove viene la categoria: senza, una casella gia' piena sembra
+                una lettura del file. La × la riporta a "Da categorizzare". */}
+            {row.categoryRule && !spostamento && <p className="mt-1 flex items-center gap-1 text-xs text-[#7b8784]">
+              <span>{t('categoryFromRule', { rule: row.categoryRule })}</span>
+              <button type="button" disabled={isSaving} aria-label={t('categoryRuleClear')}
+                onClick={() => updateRow(index, { categoryRule: null, category: '', categoryAutomatic: true })}
+                className="text-[#7b8784] hover:text-[#28312f]"><X className="size-3" /></button>
+            </p>}</td>
             {/* La lettura del PDF puo' sbagliare una cifra: l'importo si corregge qui.
                 Resta sempre positivo, il verso lo dice il tipo. */}
             <td className={`whitespace-nowrap p-2 tabular-nums ${spostamento ? 'text-[#28312f]' : outgoing ? 'text-[#c75f44]' : 'text-[#2d7b65]'}`}>

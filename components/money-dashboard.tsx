@@ -3,7 +3,8 @@
 import { campiMancanti, downloadFile, responseError } from '@/lib/download';
 import { previewEffectiveDate } from '@/lib/effective-date';
 import { nettoOperazioni } from '@/lib/ledger-preview';
-import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
+import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationRulePayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
+import { messaggioErroreRegola } from '@/lib/rule-errors';
 import { SyntheticEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Flame,
   AlertCircle,
@@ -19,6 +20,7 @@ import { Flame,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Link2,
   CircleDollarSign,
   CreditCard,
@@ -590,7 +592,7 @@ function useRitardato<T>(valore: T, millisecondi = 300): T {
 }
 
 // Gli ambiti di ricarica: una modifica dichiara cosa ha toccato.
-type LoadScope = 'settings' | 'budget' | 'trends' | 'networth' | 'overview' | 'analysis' | 'ledger' | 'investments' | 'notes' | 'goals' | 'rules';
+type LoadScope = 'settings' | 'budget' | 'trends' | 'networth' | 'overview' | 'analysis' | 'ledger' | 'investments' | 'notes' | 'goals' | 'rules' | 'categoryRules';
 
 // Cosa non dipende da nessun selettore: si carica una volta e resta.
 const SCOPE_FISSI: LoadScope[] = ['settings', 'ledger', 'notes', 'goals', 'rules'];
@@ -778,6 +780,7 @@ function MoneyDashboardInner() {
   const [trendsLoadFailed, setTrendsLoadFailed] = useState(false);
   const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlertData | null>(null);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransactionData[]>([]);
+  const [categorizationRules, setCategorizationRules] = useState<CategorizationRuleData[]>([]);
   const [goalsData, setGoalsData] = useState<GoalsData>({ items: [], active: 0, completed: 0, targetTotal: 0, currentTotal: 0, monthlyNeededTotal: 0, plannedSavings: 0, hasPlannedSavings: false, monthlyGap: 0 });
   const [netWorthData, setNetWorthData] = useState<NetWorthData>({ requestedPeriod: '', dataPeriod: null, totals: { bank: 0, asset: 0, liability: 0, financial: 0, liquid: 0, netWorth: 0 }, currencies: [] });
   const [investmentDashboardData, setInvestmentDashboardData] = useState<InvestmentDashboardData>({ snapshot: { period: null, marketValue: 0, investedCapital: 0, gain: 0, returnRate: 0 }, ledger: { marketValue: 0, costBasis: 0, gain: 0, quotedPositions: 0, activePositions: 0 }, positions: [], history: [], contributions: [] });
@@ -999,6 +1002,15 @@ function MoneyDashboardInner() {
     } catch {
       // Ignora: l'app funziona anche senza i pannelli ricorrenze/regole.
     }
+    // Regole di categorizzazione: stesso trattamento delle ricorrenze. Lo
+    // scope e' a parte da 'rules', che sono le ricorrenze: si caricano quando
+    // serve l'uno o l'altro, e aprire Movimenti non deve pesare per entrambi.
+    if (serve('categoryRules')) try {
+      const rulesResponse = await fetch(`${apiUrl}/api/categorization-rules`, { signal });
+      if (rulesResponse.ok) setCategorizationRules((await rulesResponse.json() as CategorizationRulesData).items ?? []);
+    } catch {
+      // Ignora: le regole non servono al resto della pagina.
+    }
     } finally {
       setInCorso((quanti) => Math.max(0, quanti - 1));
     }
@@ -1095,6 +1107,11 @@ function MoneyDashboardInner() {
   useEffect(() => activeSection === 'Patrimonio' ? caricaAmbito(['networth', 'ledger']) : undefined,
     [activeSection, caricaAmbito, selectedYear, selectedMonth]);
   useEffect(() => activeSection === 'Investimenti' ? caricaAmbito(['investments']) : undefined,
+    [activeSection, caricaAmbito]);
+  // Le regole vivono in fondo alla pagina Movimenti, quindi si caricano
+  // aprendo Movimenti. Non entrano in SCOPE_FISSI: chi non le guarda non le
+  // scarica.
+  useEffect(() => activeSection === 'Movimenti' ? caricaAmbito(['categoryRules']) : undefined,
     [activeSection, caricaAmbito]);
   // La Panoramica ha il suo, e anche il confronto con il periodo precedente.
   useEffect(() => activeSection === 'Panoramica' && overviewView === 'panoramica' ? caricaAmbito(['overview']) : undefined,
@@ -1838,9 +1855,14 @@ function MoneyDashboardInner() {
         body.append('file', file);
         const response = await fetch(`${apiUrl}/api/import/${kind}`, { method: 'POST', body });
         if (!response.ok) throw new Error(await responseError(response, t));
-        const result = await response.json() as { transactions: PDFTransaction[] };
+        const result = await response.json() as { transactions: PDFTransaction[]; rulesDiscarded?: string[] };
         if (!result.transactions.length) throw new Error(t('statementEmpty'));
         setPdfPreviewTransactions(result.transactions);
+        // Regole scartate perche' non compilabili: senza dirle resterebbero
+        // regole che non fanno niente, in silenzio.
+        setImportFeedback(result.rulesDiscarded?.length
+          ? { ok: false, message: t('statementRulesDiscarded', { rules: result.rulesDiscarded.join(', ') }) }
+          : null);
         setShowPdfPreview(true);
       } catch (error) {
         setImportFeedback({ ok: false, message: error instanceof Error ? error.message : t('statementParseFailed') });
@@ -1966,6 +1988,12 @@ function MoneyDashboardInner() {
   const prelievoDaBroker = accounts.some((account) => account.isBroker && account.name === origineForm);
   const origineDaDebito = accounts.find((account) => account.name === origineForm)?.group === 'liability';
   const movementCategories = settingsData.categoriesByType[movementType] ?? [];
+  // Spese, entrate e risparmi: gli stessi gruppi fra cui il server accetta una
+  // categoria di regola. I trasferimenti restano fuori perche' una regola non
+  // li tocca mai, quindi proporli sarebbe una scelta senza effetto.
+  const categorieRegola = useMemo(() => Array.from(new Set(
+    ['Expenses', 'Income', 'Savings'].flatMap((gruppo) => settingsData.categoriesByType[gruppo] ?? []))).sort(),
+    [settingsData.categoriesByType]);
   const transferSourceIsDebt = accounts.some((account) => account.name === transferSource && account.group === 'liability');
   const transferDestinationIsDebt = accounts.some((account) => account.name === transferDestination && account.group === 'liability');
   const debtTransferMode = transferSourceIsDebt ? 'drawdown' : transferDestinationIsDebt ? 'repayment' : null;
@@ -2317,6 +2345,9 @@ function MoneyDashboardInner() {
               onCreateRecurring={handleCreateRecurring}
               onDeleteRecurring={handleDeleteRecurring}
               onGenerateRecurring={handleGenerateRecurring}
+              categorizationRules={categorizationRules}
+              categorieRegola={categorieRegola}
+              onCategoryRulesChanged={() => caricaAmbito(['categoryRules'])}
               onDownloadReport={downloadReport}
               onDownloadData={downloadData}
               apiUrl={apiUrl}
@@ -2856,6 +2887,9 @@ function SectionView({
   onCreateRecurring,
   onDeleteRecurring,
   onGenerateRecurring,
+  categorizationRules,
+  categorieRegola,
+  onCategoryRulesChanged,
   onDownloadReport,
   onDownloadData,
   apiUrl,
@@ -2944,6 +2978,11 @@ function SectionView({
   onCreateRecurring: (payload: Record<string, string | number | boolean | null>) => Promise<void>;
   onDeleteRecurring: (id: number) => Promise<void>;
   onGenerateRecurring: (upTo: string) => Promise<number>;
+  categorizationRules: CategorizationRuleData[];
+  categorieRegola: string[];
+  // Ricarica solo le regole: un salvataggio riuscito non deve riportare a
+  // casa movimenti e conti, e la pagina non deve lampeggiare.
+  onCategoryRulesChanged: () => void;
   onDownloadReport: (kind: 'excel' | 'pdf') => void;
   onDownloadData: () => void;
   apiUrl: string;
@@ -3156,6 +3195,10 @@ function SectionView({
           <Button disabled={bulkBusy || !bulkValue} onClick={() => void applyBulk()}>{t('applySelected')}</Button>
           <Button variant="outline" onClick={() => { setSelection(new Set()); setSelezioneTroncata(0); }}>{t('cancel')}</Button>
         </div>}
+        {/* In fondo alla pagina, senza voce di menu: le regole si scrivono
+            guardando i movimenti, e da qui si vede subito cosa cambieranno. */}
+        <CategoryRulesCard rules={categorizationRules} categories={categorieRegola} apiUrl={apiUrl}
+          onChanged={onCategoryRulesChanged} />
         </>}
       </div>}
 
@@ -6055,6 +6098,128 @@ const TransactionRow = memo(function TransactionRow({ transaction, onEdit, onDup
       : transaction.linkedLedger?.map((item) => `${item.name} (${item.transactionType})`).join(', ');
   return <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3.5 sm:flex-nowrap"><span className={`grid size-9 shrink-0 place-items-center rounded-xl ${style.className}`}><Icon className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{transaction.description}</p><div className="flex gap-2 text-[11px]">{transaction.incomplete && <span className="text-[#a05f4e]">{t('incompleteMovements')}</span>}{transaction.countsInBudget === false && !['Transfers', 'Investment', 'Debt'].includes(transaction.transactionType) && <span className="text-[#87918e]">{t('excludeBudget')}</span>}{transaction.refundedById && <button type="button" className="text-[#2d7b65] underline" onClick={() => onRefund?.(transaction)}>{t('refunded')}</button>}{transaction.liabilitySplit && <span className={transaction.liabilitySplit.classified ? 'text-[#8a5a46]' : 'text-[#a05f4e]'}>{transaction.liabilitySplit.classified ? t('debtSplitSummary', { principal: formatEuro(transaction.liabilitySplit.principal), interest: formatEuro(transaction.liabilitySplit.interest) }) : t('debtUnclassified')}</span>}</div><p className="mt-0.5 truncate text-xs text-[#87918e]">{transaction.category}{transaction.accountName ? ` · ${transaction.accountName}` : ''}{transaction.destinationName ? ` → ${transaction.destinationName}` : ''}</p></div><div className="hidden text-right text-xs text-[#87918e] sm:block"><p>{formatDate(`${transaction.effectiveOn}T12:00:00`, { day: 'numeric', month: 'short' })}</p>{transaction.effectiveOn !== transaction.occurredOn && <p className="mt-0.5 text-[11px] text-[#a0a8a5]">{t('occurredOnNote', { date: formatDate(`${transaction.occurredOn}T12:00:00`, { day: 'numeric', month: 'short' }) })}</p>}</div><p className={`w-24 text-right text-sm font-semibold tabular-nums ${!spostamento && transaction.amount > 0 ? 'text-[#2d7b65]' : 'text-[#28312f]'}`}>{spostamento ? '' : transaction.amount > 0 ? '+' : '−'}{formatEuro(Math.abs(transaction.amount))}</p>{linkedCount > 0 && <span title={linkedTooltip} aria-label={linkedCount === 1 ? t('ledgerLinkedCount_one') : t('ledgerLinkedCount_other', { count: linkedCount })} className="grid size-7 shrink-0 place-items-center rounded-full bg-[#e5f3ed] text-[#2d7b65]"><LineChartIcon className="size-3.5" /></span>}{onEdit && onDuplicate && onDelete && <div className="flex shrink-0 basis-full justify-end sm:basis-auto"><Button type="button" size="icon" variant="ghost" title={t('edit')} aria-label={`${t('edit')} ${transaction.description}`} onClick={() => onEdit(transaction)}><Pencil className="size-4" /></Button><Button type="button" size="icon" variant="ghost" title={t('duplicate')} aria-label={`${t('duplicate')} ${transaction.description}`} onClick={() => onDuplicate(transaction)}><Copy className="size-4" /></Button>{onSplit && divisibile(transaction) && <Button type="button" size="icon" variant="ghost" title={t('splitRow')} aria-label={`${t('splitRow')} ${transaction.description}`} onClick={() => onSplit(transaction)}><Split className="size-4" /></Button>}<Button type="button" size="icon" variant="ghost" title={t('delete')} aria-label={`${t('delete')} ${transaction.description}`} onClick={() => onDelete(transaction)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button></div>}</div>;
 })
+function CategoryRulesCard({ rules, categories, apiUrl, onChanged }: {
+  rules: CategorizationRuleData[]; categories: string[]; apiUrl: string; onChanged: () => void;
+}) {
+  const { t, formatEuro } = useI18n();
+  const vuoto = { pattern: '', category: '', type: '' as '' | 'Expenses' | 'Income', isRegex: false, minAmount: '', maxAmount: '' };
+  const [form, setForm] = useState(vuoto);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [errore, setErrore] = useState('');
+
+  const chiama = async (percorso: string, metodo: string, corpo?: unknown): Promise<boolean> => {
+    const risposta = await fetch(`${apiUrl}/api/categorization-rules${percorso}`, {
+      method: metodo, headers: { 'Content-Type': 'application/json' },
+      ...(corpo === undefined ? {} : { body: JSON.stringify(corpo) }),
+    });
+    if (risposta.ok) return true;
+    setErrore(await messaggioErroreRegola(risposta, t));
+    return false;
+  };
+
+  // Un'azione per volta: due salvataggi in volo scriverebbero l'ordine due
+  // volte, e vincerebbe l'ultima risposta arrivata, non l'ultima scelta.
+  const esegui = async (azione: () => Promise<boolean>) => {
+    setBusy(true); setErrore('');
+    try {
+      if (await azione()) await onChanged();
+    } catch {
+      setErrore(t('ruleSaveError'));
+    } finally { setBusy(false); }
+  };
+
+  const salva = (event: SyntheticEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void esegui(async () => {
+      const esito = await chiama(editId ? `/${editId}` : '', editId ? 'PUT' : 'POST',
+        categorizationRulePayload({ ...form, transactionType: form.type || null }));
+      if (esito) { setForm(vuoto); setEditId(null); }
+      return esito;
+    });
+  };
+
+  // L'ordine e' la priorita': si riscrive tutto, cosi' il server non deve
+  // indovinare cosa volesse dire uno scambio di due righe.
+  const sposta = (indice: number, verso: -1 | 1) => void esegui(() => {
+    const ids = rules.map((riga) => riga.id);
+    [ids[indice], ids[indice + verso]] = [ids[indice + verso], ids[indice]];
+    return chiama('/order', 'PUT', { ids });
+  });
+
+  const modifica = (riga: CategorizationRuleData) => {
+    setEditId(riga.id); setErrore('');
+    setForm({ pattern: riga.pattern, category: riga.category, type: riga.transactionType ?? '',
+      isRegex: riga.isRegex, minAmount: riga.minAmount === null ? '' : String(riga.minAmount),
+      maxAmount: riga.maxAmount === null ? '' : String(riga.maxAmount) });
+  };
+
+  const intervallo = (riga: CategorizationRuleData) => riga.minAmount === null && riga.maxAmount === null ? '—'
+    : `${riga.minAmount === null ? '' : formatEuro(riga.minAmount)} – ${riga.maxAmount === null ? '' : formatEuro(riga.maxAmount)}`;
+
+  return <Card className="border-black/6 bg-white shadow-sm">
+    <CardHeader>
+      <CardTitle className="text-[17px]">{t('categoryRules')}</CardTitle>
+      <p className="mt-1 text-xs text-[#7b8784]">{t('categoryRulesHint')}</p>
+    </CardHeader>
+    <CardContent className="space-y-4">
+      {rules.length === 0
+        ? <p className="text-sm text-[#71807c]">{t('ruleEmpty')}</p>
+        : <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+          <thead className="text-xs text-[#71807c]"><tr>
+            <th className="py-2 pr-2 font-medium">{t('rulePattern')}</th>
+            <th className="py-2 pr-2 font-medium">{t('category')}</th>
+            <th className="py-2 pr-2 font-medium">{t('type')}</th>
+            <th className="py-2 pr-2 font-medium">{t('amount')}</th>
+            <th className="py-2 pr-2 font-medium">{t('active')}</th>
+            <th className="py-2 font-medium"><span className="sr-only">{t('edit')}</span></th>
+          </tr></thead>
+          <tbody className="divide-y divide-black/5">{rules.map((riga, indice) => <tr key={riga.id}>
+            <td className="py-2 pr-2">{riga.isRegex ? <code className="rounded bg-[#f0f2ee] px-1.5 py-0.5 text-[13px]">{riga.pattern}</code> : riga.pattern}</td>
+            <td className="py-2 pr-2">{riga.category}</td>
+            <td className="py-2 pr-2">{riga.transactionType ? t(riga.transactionType === 'Expenses' ? 'typeExpense' : 'typeIncome') : t('none')}</td>
+            <td className="py-2 pr-2 tabular-nums">{intervallo(riga)}</td>
+            <td className="py-2 pr-2">{t(riga.active ? 'active' : 'toggleInactive')}</td>
+            <td className="py-2"><div className="flex justify-end">
+              <Button type="button" size="icon" variant="ghost" disabled={busy || indice === 0} title={t('ruleMoveUp')} aria-label={t('ruleMoveUp')} onClick={() => sposta(indice, -1)}><ChevronUp className="size-4" /></Button>
+              <Button type="button" size="icon" variant="ghost" disabled={busy || indice === rules.length - 1} title={t('ruleMoveDown')} aria-label={t('ruleMoveDown')} onClick={() => sposta(indice, 1)}><ChevronDown className="size-4" /></Button>
+              <Button type="button" size="icon" variant="ghost" title={t('edit')} aria-label={`${t('edit')} ${riga.pattern}`} onClick={() => modifica(riga)}><Pencil className="size-4" /></Button>
+              <Button type="button" size="icon" variant="ghost" title={t('delete')} aria-label={`${t('delete')} ${riga.pattern}`} className="text-[#bd5e46]" disabled={busy} onClick={() => void esegui(() => chiama(`/${riga.id}`, 'DELETE'))}><Trash2 className="size-4" /></Button>
+            </div></td>
+          </tr>)}</tbody>
+        </table></div>}
+
+      <form className="grid gap-3 border-t border-black/5 pt-4 sm:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto]" onSubmit={salva}>
+        <label className="text-xs text-[#52615d]">{t('rulePattern')}
+          <Input required value={form.pattern} onChange={(e) => setForm((c) => ({ ...c, pattern: e.target.value }))} className="mt-1 h-10 bg-white" /></label>
+        <label className="text-xs text-[#52615d]">{t('category')}
+          <select required value={form.category} onChange={(e) => setForm((c) => ({ ...c, category: e.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-input bg-white px-2 text-sm">
+            <option value="">{t('categoryPlaceholder')}</option>
+            {categories.map((categoria) => <option key={categoria} value={categoria}>{categoria}</option>)}
+          </select></label>
+        <label className="text-xs text-[#52615d]">{t('type')}
+          <select value={form.type} onChange={(e) => setForm((c) => ({ ...c, type: e.target.value as typeof c.type }))} className="mt-1 h-10 w-full rounded-lg border border-input bg-white px-2 text-sm">
+            <option value="">{t('none')}</option>
+            <option value="Expenses">{t('typeExpense')}</option>
+            <option value="Income">{t('typeIncome')}</option>
+          </select></label>
+        <label className="text-xs text-[#52615d]">{t('ruleAmountFrom')}
+          <Input type="number" min="0" step="0.01" value={form.minAmount} onChange={(e) => setForm((c) => ({ ...c, minAmount: e.target.value }))} className="mt-1 h-10 bg-white" /></label>
+        <label className="text-xs text-[#52615d]">{t('ruleAmountTo')}
+          <Input type="number" min="0" step="0.01" value={form.maxAmount} onChange={(e) => setForm((c) => ({ ...c, maxAmount: e.target.value }))} className="mt-1 h-10 bg-white" /></label>
+        <div className="flex items-end gap-2">
+          <label className="inline-flex items-center gap-2 pb-2.5 text-xs text-[#52615d]">
+            <input type="checkbox" checked={form.isRegex} onChange={(e) => setForm((c) => ({ ...c, isRegex: e.target.checked }))} className="size-4 shrink-0 cursor-pointer accent-[var(--money-primary)]" />
+            {t('ruleIsRegex')}</label>
+          <Button type="submit" disabled={busy} className="h-10 bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : editId ? t('save') : t('add')}</Button>
+          {editId !== null && <Button type="button" variant="outline" className="h-10" disabled={busy} onClick={() => { setEditId(null); setForm(vuoto); setErrore(''); }}>{t('cancel')}</Button>}
+        </div>
+      </form>
+      {errore && <p role="alert" className="text-xs text-[#bd5e46]">{errore}</p>}
+    </CardContent>
+  </Card>;
+}
+
 function RecurringTransactionsView({ accounts, data, categoriesByType, onCreate, onDelete, onGenerate }: { accounts: Account[]; data: RecurringTransactionData[]; categoriesByType: Record<string, string[]>; onCreate: (payload: Record<string, string | number | null>) => Promise<void>; onDelete: (id: number) => Promise<void>; onGenerate: (until: string) => Promise<number> }) {
   const { t, locale } = useI18n();
   const [form, setForm] = useState({ description: '', amount: '', category: '', recurrence: 'FREQ=MONTHLY;BYMONTHDAY=1', startDate: new Date().toISOString().slice(0, 10), endDate: '', type: 'Expenses' });

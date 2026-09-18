@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { responseError } from '@/lib/download';
 import { messaggioErroreFire } from '@/lib/fire-errors';
+import { messaggioErroreRegola } from '@/lib/rule-errors';
 import { translations, type TranslationKey } from '@/lib/translations';
 
 // Una `t` che restituisce il testo italiano: il test controlla quale chiave si
@@ -47,5 +48,24 @@ describe('messaggi d\'errore FIRE', () => {
     // FastAPI manda un elenco per i campi non validi: non e' un codice nostro.
     expect(await messaggioErroreFire(risposta(422, { detail: [{ msg: 'field required' }] }), t, 'fireProfileSaveError'))
       .toBe(t('fireProfileSaveError'));
+  });
+});
+
+describe('messaggi d\'errore delle regole di categorizzazione', () => {
+  it('ogni rifiuto del server ha la sua frase, non un "non riuscito"', async () => {
+    // Le sei risposte che le due rotte delle regole possono dare: se una non
+    // fosse mappata, chi scrive una regola leggerebbe solo che non ha
+    // funzionato, senza sapere cosa correggere.
+    const codici = ['rulePatternRequired', 'ruleRegexInvalid', 'ruleCategoryUnknown',
+      'ruleAmountRange', 'ruleLimitReached', 'ruleDuplicate'] as const;
+    for (const codice of codici) {
+      expect(await messaggioErroreRegola(risposta(422, { detail: codice }), t)).toBe(t(codice));
+    }
+  });
+
+  it('un corpo che non e\' un codice nostro ripiega sul messaggio del modulo', async () => {
+    expect(await messaggioErroreRegola(new Response('<html>', { status: 502 }), t)).toBe(t('ruleSaveError'));
+    expect(await messaggioErroreRegola(risposta(422, { detail: [{ msg: 'field required' }] }), t))
+      .toBe(t('ruleSaveError'));
   });
 });
