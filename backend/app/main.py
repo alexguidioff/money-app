@@ -2663,20 +2663,28 @@ def _rifiuta_savings(budget_type: str) -> None:
         raise HTTPException(status_code=422, detail="savings_derived")
 
 
-def _resolve_category(category: str | None, transaction_type: str) -> str:
+def _resolve_category(category: str | None, transaction_type: str, regola: str | None = None) -> str:
     """La categoria da scrivere su un movimento appena creato.
 
-    Senza piu' regole di auto-categorizzazione, la regola e' semplice: se
-    l'utente ha scelto una categoria vera, si usa quella; altrimenti il
-    movimento finisce nella pila "Da categorizzare", dove andra' sistemato a
-    mano. I trasferimenti non hanno categoria: il segnaposto "_" lo segnala.
+    La regola e' semplice: se c'e' una categoria vera - scelta dall'utente, o
+    letta dall'estratto conto - si usa quella; se manca, si guarda cosa ha
+    deciso il motore delle regole (``regola``), che arriva solo dall'anteprima
+    dell'import; se non ha deciso niente, il movimento finisce nella pila "Da
+    categorizzare", dove andra' sistemato a mano.
+
+    La categoria della riga vince sulla regola: quando il file ne porta una
+    e' piu' specifica di un pattern, e comunque la regola si applica solo
+    nell'anteprima, dove la si vede e la si puo' correggere.
+
+    I trasferimenti non hanno categoria: il segnaposto "_" lo segnala, e
+    nessuna regola li tocca.
     """
     if transaction_type in SPOSTAMENTI:
         return "_"
     pulita = (category or "").strip()
     if pulita and pulita.casefold() != PENDING_CATEGORY.casefold():
         return pulita
-    return PENDING_CATEGORY
+    return regola or PENDING_CATEGORY
 
 
 def _check_budget_type(budget_type: str) -> str:
