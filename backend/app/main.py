@@ -26,8 +26,8 @@ from sqlalchemy.orm import Session
 from .calculation_engine import (account_balances_series, calculate_account_balance, debito_pianificato_al, effective_date, piano_ammortamento,
                                  normalized_name, stato_debito_registrato)
 from .categorization import PENDING_CATEGORY, applica, carica_regole, scartate
-from .core_routes import (CATEGORY_GROUPS, GOAL_KINDS, MAX_SELEZIONE_MASSA, display_currencies, fx_symbols,
-                          movimenti_per_saldi, num, sync_savings_plan)
+from .core_routes import (CATEGORY_GROUPS, GOAL_KINDS, MAX_SELEZIONE_MASSA, benchmark_symbol, display_currencies,
+                          fx_symbols, movimenti_per_saldi, num, sync_savings_plan)
 from .database import Base, admin_engine, engine, get_session, set_default_user, current_user_id
 from .migrations import accendi_isolamento, aggiungi_colonna_utente, tracked_changes
 from .transaction_rules import (REAL_MOVEMENT, BUDGET_MOVEMENT, SPOSTAMENTI, TIPI_MOVIMENTO,
@@ -3150,6 +3150,25 @@ def _store_history(session: Session, symbol: str, points) -> int:
     return added
 
 
+def _store_benchmark_history(session: Session, years: int = 10) -> dict | None:
+    """Scarica lo storico dell'indice di riferimento, se ce n'e' uno.
+
+    Stessa strada di tutti gli altri simboli - chiusure di fine mese in cache -
+    perche' la seconda linea del grafico si legge dai prezzi, non da una serie
+    calcolata altrove. Sta anche qui, e non solo nel backfill, perche' il
+    backfill non si preme da nessuna pagina: senza questo, chi sceglie l'indice
+    non vedrebbe comparire niente e penserebbe che non funzioni.
+    """
+    symbol = benchmark_symbol(session)
+    if not symbol:
+        return None
+    try:
+        points = fetch_price_history(symbol, years=years)
+    except MarketDataError as exc:
+        return {"symbol": symbol, "error": str(exc), "code": getattr(exc, "code", "unexpected")}
+    return {"symbol": symbol, "points": _store_history(session, symbol, points)}
+
+
 @app.post("/api/investments/backfill-history")
 def backfill_price_history(years: int = 10, session: Session = Depends(get_session)):
     """Scarica lo storico mensile dei prezzi per i ticker configurati.
@@ -3181,6 +3200,15 @@ def backfill_price_history(years: int = 10, session: Session = Depends(get_sessi
         if currency and currency.upper() != "EUR":
             currencies.add(currency.upper())
         stored.append({"symbol": symbol, "points": _store_history(session, symbol, points)})
+
+    # L'indice di riferimento e' un simbolo come gli altri: se l'utente ne ha
+    # scelto uno, la sua storia si scarica insieme a quella degli strumenti.
+    benchmark = _store_benchmark_history(session, years)
+    if benchmark:
+        if "error" in benchmark:
+            errors.append({"symbol": f"indice {benchmark['symbol']}", "code": benchmark["code"]})
+        else:
+            stored.append(benchmark)
 
     # Oltre alle valute delle quotazioni servono quelle in cui si legge il
     # patrimonio: senza il loro storico la conversione mese per mese non si fa.
@@ -3301,8 +3329,16 @@ def refresh_instrument_quotes(force: bool = False, session: Session = Depends(ge
             errors.append({"instrument": f"cambio {currency}", "symbol": last_error[0],
                            "code": last_error[1], "detail": last_error[2]})
 
+    # L'indice di riferimento, quando c'e', viaggia con le sue quotazioni: le
+    # chiusure di fine mese servono a disegnare il confronto, e un simbolo senza
+    # storico in cache sarebbe una seconda linea che non compare.
+    benchmark = _store_benchmark_history(session)
+    if benchmark and "error" in benchmark:
+        errors.append({"instrument": "indice di riferimento", "symbol": benchmark["symbol"],
+                       "code": benchmark["code"], "detail": benchmark["error"]})
+
     session.commit()
-    return {"success": not errors, "updated": updated, "errors": errors}
+    return {"success": not errors, "updated": updated, "errors": errors, "benchmark": benchmark}
 
 
 @app.get("/api/market-data/cache")

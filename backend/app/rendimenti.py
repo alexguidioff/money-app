@@ -24,6 +24,10 @@ from typing import Iterable, Sequence
 
 ZERO = Decimal("0")
 UNO = Decimal("1")
+CENTO = Decimal("100")
+# Le curve del confronto si leggono a occhio: due decimali bastano, e tenerne
+# di piu' darebbe l'idea di una precisione che il metodo non ha.
+CENTESIMI = Decimal("0.01")
 
 # I rendimenti si mostrano con quattro decimali, come il `returnRate` delle
 # posizioni: e' l'ordine di grandezza di un rendimento, non di un saldo, e la
@@ -93,6 +97,44 @@ def _quantizza(valore: Decimal) -> Decimal:
     return valore.quantize(QUATTRO_DECIMALI)
 
 
+def catena(valutazioni: Sequence[Valutazione], flussi: Iterable[Flusso] = ()) -> list[Decimal] | None:
+    """Il valore cumulato di un euro investito all'inizio, a ogni valutazione.
+
+    Il primo vale 1 per definizione, l'ultimo meno uno e' il TWR. La catena
+    intera serve al confronto con un indice: due curve che partono dallo stesso
+    100 nello stesso mese si leggono una sopra l'altra, mentre un guadagno in
+    euro e una quotazione in punti indice non si leggono affatto.
+
+    ``None`` quando non e' calcolabile, per le stesse due ragioni di ``twr``:
+    meno di due valutazioni non sono un periodo, e un valore mancante non si
+    riempie con quello del mese prima - quel mese risulterebbe piatto e la
+    differenza finirebbe tutta nel mese dopo.
+    """
+    punti = sorted(valutazioni, key=lambda punto: punto.giorno)
+    if len(punti) < 2 or any(punto.valore is None for punto in punti):
+        return None
+    ordinati = sorted(flussi, key=lambda flusso: flusso.giorno)
+    fattori = [UNO]
+    for inizio, fine in zip(punti, punti[1:]):
+        giorni = Decimal((fine.giorno - inizio.giorno).days)
+        if giorni <= ZERO:
+            fattori.append(fattori[-1])
+            continue
+        dentro = [flusso for flusso in ordinati if inizio.giorno < flusso.giorno <= fine.giorno]
+        totale = sum((flusso.importo for flusso in dentro), ZERO)
+        pesato = sum((flusso.importo * Decimal((fine.giorno - flusso.giorno).days) / giorni
+                      for flusso in dentro), ZERO)
+        denominatore = inizio.valore + pesato
+        # Denominatore zero vuol dire portafoglio vuoto e nessun flusso: non c'e'
+        # niente da misurare, e non e' un rendimento a zero. Il fattore resta
+        # quello di prima, come per un periodo di durata nulla.
+        if denominatore <= ZERO:
+            fattori.append(fattori[-1])
+            continue
+        fattori.append(fattori[-1] * (UNO + (fine.valore - inizio.valore - totale) / denominatore))
+    return fattori
+
+
 def twr(valutazioni: Sequence[Valutazione], flussi: Iterable[Flusso] = ()) -> Rendimento:
     """Il rendimento del portafoglio, concatenando i periodi.
 
@@ -104,30 +146,23 @@ def twr(valutazioni: Sequence[Valutazione], flussi: Iterable[Flusso] = ()) -> Re
     rendere. Senza una convenzione dichiarata due implementazioni dello stesso
     numero divergono, e nessuna delle due ha torto.
     """
-    punti = sorted(valutazioni, key=lambda punto: punto.giorno)
-    if len(punti) < 2:
-        return Rendimento(None, STORIA_TROPPO_CORTA)
-    if any(punto.valore is None for punto in punti):
-        # Un buco non si riempie con il valore del mese prima: quel mese
-        # risulterebbe piatto, e la differenza finirebbe tutta nel mese dopo.
-        return Rendimento(None, PREZZO_MANCANTE)
-    ordinati = sorted(flussi, key=lambda flusso: flusso.giorno)
-    catena = UNO
-    for inizio, fine in zip(punti, punti[1:]):
-        giorni = Decimal((fine.giorno - inizio.giorno).days)
-        if giorni <= ZERO:
-            continue
-        dentro = [flusso for flusso in ordinati if inizio.giorno < flusso.giorno <= fine.giorno]
-        totale = sum((flusso.importo for flusso in dentro), ZERO)
-        pesato = sum((flusso.importo * Decimal((fine.giorno - flusso.giorno).days) / giorni
-                      for flusso in dentro), ZERO)
-        denominatore = inizio.valore + pesato
-        # Denominatore zero vuol dire portafoglio vuoto e nessun flusso: non c'e'
-        # niente da misurare, e non e' un rendimento a zero.
-        if denominatore <= ZERO:
-            continue
-        catena *= UNO + (fine.valore - inizio.valore - totale) / denominatore
-    return Rendimento(_quantizza(catena - UNO), None)
+    fattori = catena(valutazioni, flussi)
+    if fattori is None:
+        punti = sorted(valutazioni, key=lambda punto: punto.giorno)
+        return Rendimento(None, STORIA_TROPPO_CORTA if len(punti) < 2 else PREZZO_MANCANTE)
+    return Rendimento(_quantizza(fattori[-1] - UNO), None)
+
+
+def da_cento(valori: Sequence[Decimal]) -> list[Decimal]:
+    """La serie riportata a 100 al primo valore.
+
+    E' quello che rende confrontabili due curve: cento euro investiti all'inizio
+    e cento punti di indice, letti insieme, dicono chi ha reso di piu'. Vuota
+    resta vuota, e una serie che parte da zero non si riporta a niente.
+    """
+    if not valori or valori[0] <= ZERO:
+        return []
+    return [(CENTO * valore / valori[0]).quantize(CENTESIMI) for valore in valori]
 
 
 def xirr(flussi: Sequence[Flusso], finale: Valutazione) -> Rendimento:

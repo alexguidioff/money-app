@@ -28,7 +28,7 @@ from .models import (Account, AppSetting, BudgetPlan, CategorizationRule,
                      InstrumentProfile as InstrumentProfileModel,
                      AccountValuation, LiabilityTransactionDetail,
                      LookupOption, MarketPrice, Note, Transaction, TransactionLedgerLink)
-from .rendimenti import Flusso, Rendimento, Valutazione, twr, xirr
+from .rendimenti import Flusso, Rendimento, Valutazione, catena, da_cento, twr, xirr
 from .ribilanciamento import PosizionePeso, riequilibrio
 
 router = APIRouter()
@@ -2265,8 +2265,8 @@ def _month_end_of(period: str) -> date:
             else date(inizio.year, inizio.month + 1, 1)) - timedelta(days=1)
 
 
-def _portfolio_returns(session: Session, timeline: list[dict[str, Any]]) -> dict[str, Any]:
-    """Il rendimento del portafoglio: TWR concatenato e XIRR sui flussi.
+def _valutazioni(timeline: list[dict[str, Any]]) -> list[Valutazione]:
+    """Le chiusure di fine mese della serie, come le vuole il calcolo.
 
     Le date sono quelle vere di fine mese, non il primo del mese che il punto
     della serie porta come etichetta: un periodo e' il tempo fra due chiusure, e
@@ -2278,16 +2278,19 @@ def _portfolio_returns(session: Session, timeline: list[dict[str, Any]]) -> dict
     misurato.
     """
     oggi = date.today()
-    valutazioni = [
-        Valutazione(min(_month_end_of(punto["period"]), oggi),
-                    Decimal(str(punto["marketValue"])) if punto.get("quoted", True) else None)
-        for punto in timeline
-    ]
+    return [Valutazione(min(_month_end_of(punto["period"]), oggi),
+                        Decimal(str(punto["marketValue"])) if punto.get("quoted", True) else None)
+            for punto in timeline]
+
+
+def _portfolio_returns(session: Session, timeline: list[dict[str, Any]]) -> dict[str, Any]:
+    """Il rendimento del portafoglio: TWR concatenato e XIRR sui flussi."""
+    valutazioni = _valutazioni(timeline)
     flussi = _portfolio_flows(session)
     # Senza nemmeno un mese di storia il rendimento non esiste, ma XIRR ha
     # bisogno di una data finale: gli si passa una valutazione non calcolabile,
     # cosi' risponde "prezzo mancante" invece di rompersi.
-    ultima = valutazioni[-1] if valutazioni else Valutazione(oggi, None)
+    ultima = valutazioni[-1] if valutazioni else Valutazione(date.today(), None)
     return {
         "twr": _rendimento_dict(twr(valutazioni, flussi)),
         "xirr": _rendimento_dict(xirr(flussi, ultima)),
@@ -2295,6 +2298,68 @@ def _portfolio_returns(session: Session, timeline: list[dict[str, Any]]) -> dict
         "since": valutazioni[0].giorno.isoformat() if valutazioni else None,
         "asOf": ultima.giorno.isoformat() if valutazioni else None,
     }
+
+
+BENCHMARK_KEY = "benchmark_symbol"
+
+
+def benchmark_symbol(session: Session) -> str:
+    """Il simbolo del metro di paragone, se l'utente ne ha scelto uno.
+
+    Sta in `app_settings`, dove la tabella esiste apposta: una colonna nuova per
+    un valore che si cambia dalla pagina sarebbe una migrazione per niente.
+    """
+    valore = session.scalar(select(AppSetting.value).where(AppSetting.key == BENCHMARK_KEY))
+    return (valore or "").strip().upper()
+
+
+def _benchmark_curves(session: Session, timeline: list[dict[str, Any]]) -> dict[str, Any]:
+    """Le due curve riportate a 100, mese per mese: portafoglio contro indice.
+
+    Il portafoglio riceve versamenti e l'indice no, quindi i guadagni in euro
+    non si possono confrontare: si confrontano i rendimenti concatenati, e la
+    curva del portafoglio e' quella del TWR. Le due partono dallo stesso 100 nel
+    primo mese in comune - un indice scelto l'anno scorso ha meno mesi del
+    portafoglio - e quando i mesi in comune sono meno di due non c'e' confronto:
+    una curva di un punto non e' una curva, e riempire i buchi inventerebbe un
+    rendimento che non c'e' stato.
+
+    ponytail: il confronto resta nella valuta dell'indice. Per un indice quotato
+    in dollari include quindi anche il cambio, che e' la cosa che si vuole
+    guardare il giorno in cui due curve divergono senza spiegazione; convertirlo
+    mese per mese sarebbe un altro percorso verso la rete per una differenza che
+    si dichiara meglio a parole.
+    """
+    simbolo = benchmark_symbol(session)
+    vuoto: dict[str, Any] = {"symbol": simbolo or None, "from": None, "months": 0,
+                             "portfolio": {}, "index": {}}
+    if not simbolo:
+        return vuoto
+    prezzi = _price_series(session).get(simbolo, [])
+    # La catena segue la serie in ordine di mese: la timeline nasce cosi', e le
+    # due liste restano allineate indice per indice.
+    fattori = catena(_valutazioni(timeline), _portfolio_flows(session))
+    if not prezzi or not fattori:
+        return vuoto
+    # Solo le chiusure del mese che si sta confrontando: un indice che finisce a
+    # giugno non dice niente su luglio, e ripetere l'ultima quotazione
+    # disegnerebbe una riga piatta per mesi in cui non e' stato misurato niente.
+    chiusure: dict[tuple[int, int], Decimal] = {}
+    for osservato, prezzo, _ in prezzi:
+        chiusure[(osservato.year, osservato.month)] = prezzo
+    comuni = []
+    for punto, fattore in zip(timeline, fattori):
+        inizio = date.fromisoformat(punto["period"])
+        prezzo = chiusure.get((inizio.year, inizio.month))
+        if prezzo is not None:
+            comuni.append((punto["period"], fattore, prezzo))
+    if len(comuni) < 2:
+        return vuoto
+    portafoglio = da_cento([fattore for _, fattore, _ in comuni])
+    indice = da_cento([prezzo for _, _, prezzo in comuni])
+    return {"symbol": simbolo, "from": comuni[0][0], "months": len(comuni),
+            "portfolio": {periodo: float(valore) for (periodo, _, _), valore in zip(comuni, portafoglio)},
+            "index": {periodo: float(valore) for (periodo, _, _), valore in zip(comuni, indice)}}
 
 
 @router.get("/api/investments/instrument-history")
@@ -2377,9 +2442,16 @@ def investments_dashboard(session: Session = Depends(get_session)) -> dict[str, 
                       obiettivo=None if voce["targetWeight"] is None else Decimal(str(voce["targetWeight"])),
                       aperta=voce["isOpen"])
         for voce in position_items])
+    rendimento = _portfolio_returns(session, history)
+    confronto = _benchmark_curves(session, history)
     return {"snapshot": {"period": latest["period"] if latest else None, "marketValue": market, "investedCapital": invested, "gain": gain, "returnRate": round(gain/invested*100, 2) if invested else 0}, "ledger": {"marketValue": market, "costBasis": invested, "gain": gain, "quotedPositions": quoted, "activePositions": len(positions)}, "positions": position_items, "history": [{"period": row["period"], "label": f"{MONTHS[date.fromisoformat(row['period']).month-1]} {date.fromisoformat(row['period']).year}", "marketValue": row["marketValue"], "investedCapital": row["investedCapital"], "gain": round(row["marketValue"] - row["investedCapital"], 2),
         # Rendimento in percentuale: distingue "sta rendendo" da "ho versato di piu'".
-        "returnRate": round((row["marketValue"] / row["investedCapital"] - 1) * 100, 2) if row["investedCapital"] else None}
+        "returnRate": round((row["marketValue"] / row["investedCapital"] - 1) * 100, 2) if row["investedCapital"] else None,
+        # Le due curve del confronto, a 100 nel primo mese in comune. Nulle
+        # fuori da li' e nulle del tutto quando un indice non e' configurato:
+        # il grafico non deve disegnare una linea che non esiste.
+        "twrCurve": confronto["portfolio"].get(row["period"]),
+        "benchmarkCurve": confronto["index"].get(row["period"])}
         for row in history], "contributions": contributions,
         # Gli importi sono firmati: positivo vuol dire sopra il peso obiettivo,
         # cioe' da vendere. La pagina decide il colore, non riceve una decisione.
@@ -2395,7 +2467,12 @@ def investments_dashboard(session: Session = Depends(get_session)) -> dict[str, 
         # euro sopra e questo numero raccontano due cose diverse, e su un
         # portafoglio che riceve versamenti il primo si muove anche quando il
         # mercato sta fermo.
-        "returns": _portfolio_returns(session, history)}
+        "returns": rendimento,
+        # Contro cosa si sta confrontando: il simbolo, e da quando. La serie
+        # mese per mese sta nei punti dello storico, cosi' il grafico legge una
+        # lista sola.
+        "benchmark": {"symbol": confronto["symbol"], "from": confronto["from"],
+                      "months": confronto["months"]}}
 
 
 @router.get("/api/investments/ledger")

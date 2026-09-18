@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.core_routes import investments_dashboard
 from app.database import Base
-from app.models import InvestmentInstrument, InvestmentTransaction, MarketPrice
+from app.models import AppSetting, InvestmentInstrument, InvestmentTransaction, MarketPrice
 from app.rendimenti import (
     FLUSSI_SENZA_CAMBIO_DI_SEGNO,
     NESSUN_FLUSSO,
@@ -30,6 +30,8 @@ from app.rendimenti import (
     Flusso,
     Rendimento,
     Valutazione,
+    catena,
+    da_cento,
     twr,
     xirr,
 )
@@ -109,6 +111,36 @@ class TwrTests(unittest.TestCase):
                          twr([v(GEN, "100"), v(FEB, "97")], [Flusso(FEB, Decimal("-3"))]).valore)
 
 
+class CatenaTests(unittest.TestCase):
+    def test_il_cumulato_si_legge_a_ogni_passo(self) -> None:
+        # Due periodi del dieci per cento: 1,1 e poi 1,21. E' la catena che il
+        # TWR riduce a un numero solo, e il confronto con l'indice ha bisogno
+        # intera.
+        self.assertEqual([Decimal("1"), Decimal("1.1"), Decimal("1.21")],
+                         catena([v(GEN, "100"), v(FEB, "110"), v(MAR, "121")]))
+        self.assertEqual(Decimal("0.2100"),
+                         twr([v(GEN, "100"), v(FEB, "110"), v(MAR, "121")]).valore)
+
+    def test_un_mese_senza_prezzo_non_ha_catena(self) -> None:
+        self.assertIsNone(catena([v(GEN, "100"), v(FEB, None), v(MAR, "120")]))
+
+    def test_una_valutazione_sola_non_ha_catena(self) -> None:
+        self.assertIsNone(catena([v(GEN, "100")]))
+
+
+class DaCentoTests(unittest.TestCase):
+    def test_la_serie_parte_da_cento(self) -> None:
+        self.assertEqual([Decimal("100.00"), Decimal("110.00"), Decimal("121.00")],
+                         da_cento([Decimal("100"), Decimal("110"), Decimal("121")]))
+
+    def test_una_serie_che_parte_da_zero_non_si_riporta_a_cento(self) -> None:
+        # Dividere per zero non e' un confronto: meglio nessuna curva.
+        self.assertEqual([], da_cento([Decimal("0"), Decimal("10")]))
+
+    def test_una_serie_vuota_resta_vuota(self) -> None:
+        self.assertEqual([], da_cento([]))
+
+
 class XirrTests(unittest.TestCase):
     def test_mille_versati_che_diventano_milleduecento_in_un_anno(self) -> None:
         # Un anno tondo: dal primo gennaio al trentuno dicembre del 2024 ci sono
@@ -151,7 +183,8 @@ class XirrTests(unittest.TestCase):
         self.assertEqual(PREZZO_MANCANTE, esito.motivo)
 
 
-TABELLE = [InvestmentInstrument.__table__, InvestmentTransaction.__table__, MarketPrice.__table__]
+TABELLE = [AppSetting.__table__, InvestmentInstrument.__table__, InvestmentTransaction.__table__,
+           MarketPrice.__table__]
 
 
 class RendimentoDelCruscotto(unittest.TestCase):
@@ -163,15 +196,21 @@ class RendimentoDelCruscotto(unittest.TestCase):
     diversa da quella che il test racconta.
     """
 
-    def _rendimenti(self, *operazioni: tuple[str, date, str, str, str],
-                    prezzi: tuple[tuple[date, str], ...] = ((date(2024, 1, 31), "10.00"),
-                                                            (date(2024, 2, 29), "11.00"))) -> dict:
+    def _cruscotto(self, *operazioni: tuple[str, date, str, str, str],
+                   prezzi: tuple[tuple[date, str], ...] = ((date(2024, 1, 31), "10.00"),
+                                                           (date(2024, 2, 29), "11.00")),
+                   indice: str = "", prezzi_indice: tuple[tuple[date, str], ...] = ()) -> dict:
         engine = create_engine("sqlite://")
         Base.metadata.create_all(engine, tables=TABELLE)
         session = Session(engine)
         session.add(InvestmentInstrument(name="Titolo", provider_symbol="TIT.MI", currency="EUR"))
+        if indice:
+            session.add(AppSetting(key="benchmark_symbol", label="Indice di riferimento", value=indice))
         for giorno, valore in prezzi:
             session.add(MarketPrice(symbol="TIT.MI", observed_on=giorno, price=Decimal(valore),
+                                    currency="EUR", provider="yahoo"))
+        for giorno, valore in prezzi_indice:
+            session.add(MarketPrice(symbol=indice, observed_on=giorno, price=Decimal(valore),
                                     currency="EUR", provider="yahoo"))
         for tipo, giorno, quote, importo, prezzo in operazioni:
             session.add(InvestmentTransaction(name="Titolo", transaction_type=tipo, occurred_on=giorno,
@@ -179,9 +218,14 @@ class RendimentoDelCruscotto(unittest.TestCase):
                                               price=Decimal(prezzo)))
         session.commit()
         try:
-            return investments_dashboard(session)["returns"]
+            return investments_dashboard(session)
         finally:
             session.close()
+
+    def _rendimenti(self, *operazioni: tuple[str, date, str, str, str],
+                    prezzi: tuple[tuple[date, str], ...] = ((date(2024, 1, 31), "10.00"),
+                                                            (date(2024, 2, 29), "11.00"))) -> dict:
+        return self._cruscotto(*operazioni, prezzi=prezzi)["returns"]
 
     def test_il_rendimento_e_il_guadagno_del_tempo_non_del_saldo(self) -> None:
         # Un acquisto da 100 a gennaio e una quotazione a 110 da febbraio: da li'
@@ -224,6 +268,36 @@ class RendimentoDelCruscotto(unittest.TestCase):
         self.assertEqual(PREZZO_MANCANTE, rendimenti["twr"]["reason"])
         self.assertIsNone(rendimenti["xirr"]["value"])
         self.assertEqual(PREZZO_MANCANTE, rendimenti["xirr"]["reason"])
+
+    def test_senza_indice_non_c_e_una_seconda_serie(self) -> None:
+        # Non aver configurato niente non e' un guasto: nessuna curva, nessun
+        # errore, e i numeri di prima restano quelli di prima.
+        cruscotto = self._cruscotto(("Buy", date(2024, 1, 15), "10", "100.00", "10.00"))
+        self.assertEqual({"symbol": None, "from": None, "months": 0}, cruscotto["benchmark"])
+        self.assertTrue(all(punto["twrCurve"] is None for punto in cruscotto["history"]))
+        self.assertTrue(all(punto["benchmarkCurve"] is None for punto in cruscotto["history"]))
+        self.assertEqual(0.10, cruscotto["returns"]["twr"]["value"])
+
+    def test_un_indice_piu_corto_accorcia_il_confronto(self) -> None:
+        # L'indice esiste solo da luglio: il confronto parte da li', invece di
+        # riempire i mesi prima con l'ultima quotazione disponibile - che
+        # disegnerebbe una riga piatta per mesi mai misurati.
+        cruscotto = self._cruscotto(
+            ("Buy", date(2024, 1, 15), "10", "100.00", "10.00"),
+            indice="IDX",
+            prezzi_indice=((date(2024, 7, 31), "200.00"), (date(2024, 8, 30), "210.00")))
+        self.assertEqual("IDX", cruscotto["benchmark"]["symbol"])
+        self.assertEqual("2024-07-01", cruscotto["benchmark"]["from"])
+        self.assertEqual(2, cruscotto["benchmark"]["months"])
+        punti = {punto["period"]: punto for punto in cruscotto["history"]}
+        self.assertIsNone(punti["2024-06-01"]["twrCurve"])
+        self.assertIsNone(punti["2024-06-01"]["benchmarkCurve"])
+        # Da luglio entrambe ripartono da 100: il portafoglio vale 110 come a
+        # febbraio e non si muove, l'indice sale da 200 a 210.
+        self.assertEqual(100.0, punti["2024-07-01"]["twrCurve"])
+        self.assertEqual(100.0, punti["2024-07-01"]["benchmarkCurve"])
+        self.assertEqual(100.0, punti["2024-08-01"]["twrCurve"])
+        self.assertEqual(105.0, punti["2024-08-01"]["benchmarkCurve"])
 
 
 if __name__ == "__main__":

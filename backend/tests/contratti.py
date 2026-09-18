@@ -57,6 +57,10 @@ from app.models import (Account, AccountValuation, AppSetting, BudgetPlan, Categ
                         LiabilityProfile, LookupOption, MarketPrice, Note, RetirementProfile, Transaction, TransactionLedgerLink)
 from app.notifications import elenco as notifiche
 
+# Un simbolo inventato per l'indice di riferimento: i contratti non devono
+# somigliare a un portafoglio vero, devono solo avere i campi pieni.
+INDICE_PROVA = "IDX.TEST"
+
 
 def _sessione() -> Session:
     engine = create_engine("sqlite://")
@@ -82,7 +86,11 @@ def _semina(session: Session) -> None:
         Account(source_group="liability", name="Prestito", starting_balance=Decimal("0"), current_balance=Decimal("0")),
     ])
     for chiave, valore in {"header_color": "Blue", "late_income_shift": "Inactive", "late_income_day": "20",
-                           "savings_default_category": "Savings", "net_worth_currencies": "CHF"}.items():
+                           "savings_default_category": "Savings", "net_worth_currencies": "CHF",
+                           # Un indice configurato: senza, la seconda curva del
+                           # confronto non comparirebbe nel file delle risposte
+                           # e il contratto non controllerebbe niente.
+                           "benchmark_symbol": INDICE_PROVA}.items():
         session.add(AppSetting(key=chiave, label=chiave, value=valore))
     # Il vocabolario di partenza e' quello di un account vero (`OPZIONI_INIZIALI`):
     # senza, il database dei contratti non conosce le categorie che l'app offre a
@@ -181,6 +189,10 @@ def _semina(session: Session) -> None:
     for mese in range(1, 13):
         session.add(MarketPrice(symbol="SWDA.MI", provider="yahoo", observed_on=date(anno_scorso, mese, 28),
                                 fetched_at=datetime(anno_scorso, 12, 31), price=Decimal(str(90 + mese)), currency="EUR"))
+        # L'indice di prova ha la sua serie, con mesi in comune e mesi no: e' da
+        # li' che si vede se il confronto si accorcia dove serve.
+        session.add(MarketPrice(symbol=INDICE_PROVA, provider="yahoo", observed_on=date(anno_scorso, mese, 28),
+                                fetched_at=datetime(anno_scorso, 12, 31), price=Decimal(str(100 + mese * 2)), currency="EUR"))
     session.commit()
     movimento(occurred_on=f"{anno_scorso}-07-01", transaction_type="Transfers", amount=100, account_name="Banca",
               destination_name="Casa", goal="Fondo emergenza", details="Accantonamento")
