@@ -28,6 +28,7 @@ from .models import (Account, AppSetting, BudgetPlan, CategorizationRule,
                      InstrumentProfile as InstrumentProfileModel,
                      AccountValuation, LiabilityTransactionDetail,
                      LookupOption, MarketPrice, Note, Transaction, TransactionLedgerLink)
+from .rendimenti import Flusso, Rendimento, Valutazione, twr, xirr
 from .ribilanciamento import PosizionePeso, riequilibrio
 
 router = APIRouter()
@@ -2104,7 +2105,16 @@ def portfolio_timeline(session: Session, solo: set[int] | None = None) -> list[d
                 continue
             key = (row.name or "").strip().lower()
             holding = holdings.setdefault(key, {"units": Decimal("0"), "invested": Decimal("0"), "last_price": Decimal("0")})
-            if (row.transaction_type or "").strip().lower() in {"buy", "acquisto"}:
+            azione = (row.transaction_type or "").strip().lower()
+            if azione in {"split", "frazionamento"}:
+                # Un frazionamento non muove niente: moltiplica le quote e
+                # divide il prezzo. Trattarlo come una vendita toglierebbe dalla
+                # posizione il rapporto (un 2:1 toglierebbe due quote) e il
+                # valore crollerebbe per un'operazione che non ha spostato un
+                # euro.
+                holding["units"] *= units
+                continue
+            if azione in {"buy", "acquisto"}:
                 holding["units"] += units
                 holding["invested"] += amount
             else:
@@ -2116,6 +2126,11 @@ def portfolio_timeline(session: Session, solo: set[int] | None = None) -> list[d
                 holding["last_price"] = Decimal(str(row.price))
 
         market_value = Decimal("0")
+        # Se almeno uno strumento posseduto ripiega sull'ultimo prezzo di
+        # operazione, questo mese e' una stima. Il valore resta - la serie non
+        # deve avere buchi - ma il rendimento che ci si costruisce sopra no:
+        # vedi `_portfolio_returns`.
+        quoted = True
         # Il capitale investito e' il versato netto complessivo: comprende anche
         # gli strumenti gia' venduti, perche' l'incasso di una vendita riduce
         # quanto hai immobilizzato. Contare solo le posizioni aperte gonfierebbe
@@ -2127,6 +2142,7 @@ def portfolio_timeline(session: Session, solo: set[int] | None = None) -> list[d
             symbol = tickers.get(key)
             quote = _price_on(series.get(symbol, []), month_end) if symbol else None
             if quote is None:
+                quoted = False
                 market_value += holding["units"] * holding["last_price"]
                 continue
             price, currency = quote
@@ -2135,6 +2151,7 @@ def portfolio_timeline(session: Session, solo: set[int] | None = None) -> list[d
                 if fx and fx[0] > 0:
                     price = price / fx[0]
                 else:
+                    quoted = False
                     market_value += holding["units"] * holding["last_price"]
                     continue
             market_value += holding["units"] * price
@@ -2143,6 +2160,7 @@ def portfolio_timeline(session: Session, solo: set[int] | None = None) -> list[d
             "period": cursor.isoformat(),
             "marketValue": num(market_value),
             "investedCapital": num(invested),
+            "quoted": quoted,
         })
         cursor = date(cursor.year + 1, 1, 1) if cursor.month == 12 else date(cursor.year, cursor.month + 1, 1)
 
@@ -2198,6 +2216,85 @@ def _contributions_by_month(session: Session) -> list[dict[str, Any]]:
         monthly[key] += num(row.amount) if row.transaction_type == "Buy" else -num(row.amount)
     return [{"period": key, "label": f"{MONTHS[int(key[5:]) - 1]} {key[2:4]}", "amount": round(value, 2)}
             for key, value in sorted(monthly.items())]
+
+
+def _portfolio_flows(session: Session) -> list[Flusso]:
+    """Denaro che entra ed esce dal portafoglio, datato.
+
+    Acquisti in entrata, vendite in uscita, tutto il resto fuori. La tabella
+    delle operazioni dice il contrario - li' versamenti e prelievi verso il
+    broker sono i flussi e gli acquisti no - e non e' una svista: quella regola
+    presuppone che la liquidita' ferma sul conto sia valorizzata, mentre qui la
+    serie valorizza solo gli strumenti. Con quella regola un primo mese che
+    compra e basta avrebbe valore iniziale zero e rendimento assurdo, e ogni
+    vendita sembrerebbe una perdita. Il confine giusto, per come e' misurata la
+    serie, e' fra dentro e fuori il portafoglio: comprare porta denaro dentro,
+    vendere lo porta fuori, e il denaro nuovo versato sul conto entra comprando.
+
+    ponytail: un dividendo incassato e lasciato sul conto non si vede, in
+    entrata ne' in uscita, e finche' la serie non comprendera' anche la
+    liquidita' nemmeno si vedra' nel rendimento. Le commissioni stanno dalla
+    stessa parte: abbassano il valore e basta, che e' gia' il loro effetto.
+    """
+    flussi: list[Flusso] = []
+    for row in session.scalars(select(InvestmentTransaction)).all():
+        if not row.occurred_on or not row.amount:
+            continue
+        azione = (row.transaction_type or "").strip().lower()
+        if azione in {"buy", "acquisto"}:
+            flussi.append(Flusso(row.occurred_on, abs(Decimal(str(row.amount)))))
+        elif azione in {"sell", "vendita"}:
+            flussi.append(Flusso(row.occurred_on, -abs(Decimal(str(row.amount)))))
+    return flussi
+
+
+def _rendimento_dict(esito: Rendimento) -> dict[str, Any]:
+    """Un rendimento come lo legge l'interfaccia: il valore, o il motivo.
+
+    `num` non si usa qui: arrotonda ai centesimi, e un rendimento del 7,34% e'
+    0,0734. Il motivo viaggia come codice, la frase la sceglie chi traduce.
+    """
+    return {"value": float(esito.valore) if esito.valore is not None else None,
+            "reason": esito.motivo}
+
+
+def _month_end_of(period: str) -> date:
+    """L'ultimo giorno del mese a cui appartiene un inizio periodo della serie."""
+    inizio = date.fromisoformat(period)
+    return (date(inizio.year + 1, 1, 1) if inizio.month == 12
+            else date(inizio.year, inizio.month + 1, 1)) - timedelta(days=1)
+
+
+def _portfolio_returns(session: Session, timeline: list[dict[str, Any]]) -> dict[str, Any]:
+    """Il rendimento del portafoglio: TWR concatenato e XIRR sui flussi.
+
+    Le date sono quelle vere di fine mese, non il primo del mese che il punto
+    della serie porta come etichetta: un periodo e' il tempo fra due chiusure, e
+    usare il primo del mese sposterebbe ogni flusso di qualche giorno, quel
+    tanto che basta perche' nessuno se ne accorga.
+
+    Un mese senza quotazioni vere vale `None` e non zero: il rendimento esce
+    come motivo, invece di descrivere come guadagno un mese che non e' stato
+    misurato.
+    """
+    oggi = date.today()
+    valutazioni = [
+        Valutazione(min(_month_end_of(punto["period"]), oggi),
+                    Decimal(str(punto["marketValue"])) if punto.get("quoted", True) else None)
+        for punto in timeline
+    ]
+    flussi = _portfolio_flows(session)
+    # Senza nemmeno un mese di storia il rendimento non esiste, ma XIRR ha
+    # bisogno di una data finale: gli si passa una valutazione non calcolabile,
+    # cosi' risponde "prezzo mancante" invece di rompersi.
+    ultima = valutazioni[-1] if valutazioni else Valutazione(oggi, None)
+    return {
+        "twr": _rendimento_dict(twr(valutazioni, flussi)),
+        "xirr": _rendimento_dict(xirr(flussi, ultima)),
+        "months": max(len(valutazioni) - 1, 0),
+        "since": valutazioni[0].giorno.isoformat() if valutazioni else None,
+        "asOf": ultima.giorno.isoformat() if valutazioni else None,
+    }
 
 
 @router.get("/api/investments/instrument-history")
@@ -2293,7 +2390,12 @@ def investments_dashboard(session: Session = Depends(get_session)) -> dict[str, 
             "rows": [{"name": r.nome, "currentWeight": float(r.peso_attuale),
                       "targetWeight": float(r.obiettivo), "drift": float(r.deriva),
                       "amount": float(r.importo)} for r in riordino.righe],
-        }}
+        },
+        # Quanto ha reso il portafoglio, non quanto e' cresciuto: il guadagno in
+        # euro sopra e questo numero raccontano due cose diverse, e su un
+        # portafoglio che riceve versamenti il primo si muove anche quando il
+        # mercato sta fermo.
+        "returns": _portfolio_returns(session, history)}
 
 
 @router.get("/api/investments/ledger")

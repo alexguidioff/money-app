@@ -16,6 +16,12 @@ import unittest
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+from app.core_routes import investments_dashboard
+from app.database import Base
+from app.models import InvestmentInstrument, InvestmentTransaction, MarketPrice
 from app.rendimenti import (
     FLUSSI_SENZA_CAMBIO_DI_SEGNO,
     NESSUN_FLUSSO,
@@ -143,6 +149,81 @@ class XirrTests(unittest.TestCase):
         esito = xirr([Flusso(date(2024, 1, 1), Decimal("1000"))], Valutazione(date(2024, 12, 31), None))
         self.assertIsNone(esito.valore)
         self.assertEqual(PREZZO_MANCANTE, esito.motivo)
+
+
+TABELLE = [InvestmentInstrument.__table__, InvestmentTransaction.__table__, MarketPrice.__table__]
+
+
+class RendimentoDelCruscotto(unittest.TestCase):
+    """Il blocco `returns` del cruscotto, costruito su una serie inventata.
+
+    Ogni chiamata si apre la sua banca dati: la serie piatta che segue l'ultima
+    operazione vale comunque due anni, e riusare la stessa sessione
+    significherebbe sommare due volte le stesse operazioni e misurare una cosa
+    diversa da quella che il test racconta.
+    """
+
+    def _rendimenti(self, *operazioni: tuple[str, date, str, str, str],
+                    prezzi: tuple[tuple[date, str], ...] = ((date(2024, 1, 31), "10.00"),
+                                                            (date(2024, 2, 29), "11.00"))) -> dict:
+        engine = create_engine("sqlite://")
+        Base.metadata.create_all(engine, tables=TABELLE)
+        session = Session(engine)
+        session.add(InvestmentInstrument(name="Titolo", provider_symbol="TIT.MI", currency="EUR"))
+        for giorno, valore in prezzi:
+            session.add(MarketPrice(symbol="TIT.MI", observed_on=giorno, price=Decimal(valore),
+                                    currency="EUR", provider="yahoo"))
+        for tipo, giorno, quote, importo, prezzo in operazioni:
+            session.add(InvestmentTransaction(name="Titolo", transaction_type=tipo, occurred_on=giorno,
+                                              units=Decimal(quote), amount=Decimal(importo),
+                                              price=Decimal(prezzo)))
+        session.commit()
+        try:
+            return investments_dashboard(session)["returns"]
+        finally:
+            session.close()
+
+    def test_il_rendimento_e_il_guadagno_del_tempo_non_del_saldo(self) -> None:
+        # Un acquisto da 100 a gennaio e una quotazione a 110 da febbraio: da li'
+        # in poi il portafoglio non si muove, e il dieci per cento e' tutto li'.
+        rendimenti = self._rendimenti(("Buy", date(2024, 1, 15), "10", "100.00", "10.00"))
+        self.assertEqual(0.10, rendimenti["twr"]["value"])
+        self.assertIsNone(rendimenti["twr"]["reason"])
+        # Un versamento solo, piu' di due anni fa, su un guadagno del dieci per
+        # cento: il tasso annuo e' positivo e piu' piccolo del guadagno totale.
+        self.assertIsNotNone(rendimenti["xirr"]["value"])
+        self.assertGreater(rendimenti["xirr"]["value"], 0.0)
+        self.assertLess(rendimenti["xirr"]["value"], 0.10)
+        self.assertEqual("2024-01-31", rendimenti["since"])
+        self.assertGreater(rendimenti["months"], 30)
+
+    def test_uno_split_non_cambia_niente(self) -> None:
+        # Moltiplicare le quote e dimezzare il prezzo lascia il valore dov'e':
+        # dopo il frazionamento 2:1 le dieci quote da 11 valgono come venti da
+        # 5,50. Trattato come una vendita, lo split avrebbe tolto due quote
+        # dalla posizione e il rendimento sarebbe crollato per un'operazione che
+        # non ha spostato un euro.
+        senza = self._rendimenti(("Buy", date(2024, 1, 15), "10", "100.00", "10.00"))
+        con = self._rendimenti(
+            ("Buy", date(2024, 1, 15), "10", "100.00", "10.00"),
+            # Un frazionamento porta il rapporto nelle quote e lascia a zero
+            # importo e prezzo: e' quello che il ledger ci scrive dentro.
+            ("Split", date(2024, 3, 1), "2", "0", "0"),
+            prezzi=((date(2024, 1, 31), "10.00"), (date(2024, 2, 29), "11.00"),
+                    (date(2024, 3, 31), "5.50")),
+        )
+        self.assertEqual(senza, con)
+        self.assertEqual(0.10, con["twr"]["value"])
+
+    def test_un_prezzo_che_manca_e_un_motivo_non_uno_zero(self) -> None:
+        # Strumento posseduto, simbolo impostato, nessuna quotazione in cache: il
+        # valore ripiega sul prezzo dell'operazione e il rendimento non e'
+        # calcolabile. Meglio dirlo che mostrare un numero costruito.
+        rendimenti = self._rendimenti(("Buy", date(2024, 1, 15), "10", "100.00", "10.00"), prezzi=())
+        self.assertIsNone(rendimenti["twr"]["value"])
+        self.assertEqual(PREZZO_MANCANTE, rendimenti["twr"]["reason"])
+        self.assertIsNone(rendimenti["xirr"]["value"])
+        self.assertEqual(PREZZO_MANCANTE, rendimenti["xirr"]["reason"])
 
 
 if __name__ == "__main__":
