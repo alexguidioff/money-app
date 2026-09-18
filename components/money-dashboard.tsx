@@ -429,7 +429,19 @@ export type SettingsData = {
   budgetYearsByType: Record<'Expenses' | 'Income' | 'Savings', string[]>;
 };
 
-export type InvestmentTransaction = { id: number; occurredOn: string; name: string; transactionType: 'Buy' | 'Sell'; amount: number; signedAmount: number; units: number; price: number; currency: string; fee: number; notes: string | null; runningUnits: number;
+// I tipi che il ledger conosce: acquisto, vendita, i movimenti di solo
+// contante (dividendi e interessi, commissioni, versamenti) e lo split, che
+// non muove denaro ma moltiplica le quote.
+export type LedgerOperationType = 'Buy' | 'Sell' | 'Dividend' | 'Fee' | 'Deposit' | 'Withdrawal' | 'Split';
+
+// Il tipo di una riga si legge per esteso: chiamare "Vendi" un dividendo e' il
+// modo piu' veloce per correggere la riga sbagliata.
+const LEDGER_TYPE_LABEL: Record<LedgerOperationType, TranslationKey> = {
+  Buy: 'buy', Sell: 'sell', Dividend: 'ledgerDividend', Fee: 'ledgerFee',
+  Deposit: 'ledgerDeposit', Withdrawal: 'ledgerWithdrawal', Split: 'ledgerSplit',
+};
+
+export type InvestmentTransaction = { id: number; occurredOn: string; name: string; transactionType: LedgerOperationType; amount: number; signedAmount: number; units: number; price: number; currency: string; fee: number; notes: string | null; runningUnits: number;
   // Agganciata a un movimento dei conti: e' il collegamento che dice a quale
   // conto attribuire il guadagno di questa operazione.
   linked: boolean };
@@ -1566,6 +1578,12 @@ function MoneyDashboardInner() {
       const result = await response.json().catch(() => null) as { detail?: string | { code?: string; duplicate?: { occurredOn?: string } } } | null;
       if (response.status === 409 && typeof result?.detail === 'object' && result.detail.code === 'ledgerDuplicate') {
         throw new Error(t('ledgerDuplicateFound', { date: result.detail.duplicate?.occurredOn ?? '—' }));
+      }
+      // Un codice del server che ha il suo testo si mostra com'e': un rapporto
+      // di split fuori scala deve dire cosa non andava, non "salvataggio non
+      // riuscito".
+      if (typeof result?.detail === 'object' && result.detail?.code && Object.hasOwn(translations.it, result.detail.code)) {
+        throw new Error(t(result.detail.code as TranslationKey));
       }
       throw new Error('investment-save');
     }
@@ -4301,14 +4319,21 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
   const [editing, setEditing] = useState<InvestmentTransaction | null | undefined>(undefined);
   const [amountInput, setAmountInput] = useState('');
   const [unitsInput, setUnitsInput] = useState('');
+  const [ledgerTypeInput, setLedgerTypeInput] = useState<LedgerOperationType>('Buy');
   const [linkTransactionOpen, setLinkTransactionOpen] = useState(false);
   useEffect(() => {
     setInstrumentQuery(editing?.name ?? '');
     setSuggestionsOpen(false);
     setAmountInput(editing ? String(editing.amount) : '');
     setUnitsInput(editing ? String(editing.units) : '');
+    setLedgerTypeInput(editing?.transactionType ?? 'Buy');
     setLinkTransactionOpen(false);
   }, [editing]);
+  // Lo split non si paga - l'importo e' zero - e quello che si digita e' il
+  // rapporto, che sta nelle quote. Gli altri movimenti di solo contante non
+  // hanno quote: chiedergliele vorrebbe dire far inventare un numero.
+  const tipoSplit = ledgerTypeInput === 'Split';
+  const tipoContante = tipoSplit || ['Dividend', 'Fee', 'Deposit', 'Withdrawal'].includes(ledgerTypeInput);
   // Il prezzo non si digita: e' importo diviso quantita', cosi' le tre cifre
   // non possono contraddirsi.
   const derivedPrice = (() => {
@@ -4365,7 +4390,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
     const needle = ledgerSearchQuery.trim().toLocaleLowerCase(lang);
     return ledger.filter((row) => {
       const matchesSearch = !needle || `${row.name} ${row.notes ?? ''}`.toLocaleLowerCase(lang).includes(needle);
-      const matchesType = ledgerTypeFilter === 'all' || row.transactionType === (ledgerTypeFilter as 'Buy' | 'Sell');
+      const matchesType = ledgerTypeFilter === 'all' || row.transactionType === (ledgerTypeFilter as LedgerOperationType);
       const matchesInstrument = ledgerInstrumentFilter === 'all' || row.name === ledgerInstrumentFilter;
       const matchesPeriod = (ledgerYearFilter === 'all' || row.occurredOn.slice(0, 4) === ledgerYearFilter)
         && (ledgerMonthFilter === 'all' || row.occurredOn.slice(5, 7) === ledgerMonthFilter);
@@ -4403,7 +4428,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
             ...ledgerPayload,
             linked_transaction: {
               occurred_on: String(form.get('tx_occurred_on') || form.get('occurred_on')),
-              transaction_type: ledgerPayload.transaction_type === 'Sell' ? 'Income' : 'Expenses',
+              transaction_type: ledgerPayload.transaction_type === 'Sell' || ledgerPayload.transaction_type === 'Dividend' ? 'Income' : 'Expenses',
               category: String(form.get('tx_category') || 'Investimenti'),
               amount: ledgerPayload.transaction_type === 'Sell' ? Math.abs(ledgerPayload.amount) : -Math.abs(ledgerPayload.amount),
               account_name: String(form.get('tx_account_name') || '') || null,
@@ -4423,7 +4448,9 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
                 ? errBody.detail.map((item) => item.msg).join('; ')
                 : errBody.detail?.code === 'ledgerDuplicate'
                   ? t('ledgerDuplicateFound', { date: errBody.detail.duplicate?.occurredOn ?? '—' })
-                  : '';
+                  : errBody.detail?.code && Object.hasOwn(translations.it, errBody.detail.code)
+                    ? t(errBody.detail.code as TranslationKey)
+                    : '';
           } catch { /* ignore */ }
           if (detail) setError(detail);
           throw new Error('save');
@@ -4593,7 +4620,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
                 <Input aria-label={t('searchInLedger')} value={ledgerSearchQuery} onChange={(event) => setLedgerSearchQuery(event.target.value)} className="h-10 bg-[#fafaf8] pl-9" placeholder={t('searchInLedgerPlaceholder')} />
                 {ledgerSearchQuery && <button aria-label={t('clearSearch')} onClick={() => setLedgerSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-black/40 hover:text-black"><X className="size-4" /></button>}
               </div>
-              <FilterSelect label={t('filterByType')} value={ledgerTypeFilter} onChange={setLedgerTypeFilter} options={[['all', t('allTypes')], ['Buy', t('buy')], ['Sell', t('sell')]]} />
+              <FilterSelect label={t('filterByType')} value={ledgerTypeFilter} onChange={setLedgerTypeFilter} options={[['all', t('allTypes')], ...(Object.keys(LEDGER_TYPE_LABEL) as LedgerOperationType[]).map((tipo) => [tipo, t(LEDGER_TYPE_LABEL[tipo])] as [string, string])]} />
               <FilterSelect label={t('filterByInstrument')} value={ledgerInstrumentFilter} onChange={setLedgerInstrumentFilter} options={[['all', t('allInstruments')], ...ledgerInstruments.map((name) => [name, name] as [string, string])]} />
               <FilterSelect label={t('year')} value={ledgerYearFilter} onChange={setLedgerYearFilter} options={[['all', t('allYears')], ...ledgerYears.map((year) => [year, year] as [string, string])]} />
               <FilterSelect label={t('filterByPeriod')} value={ledgerMonthFilter} onChange={setLedgerMonthFilter} options={[['all', t('allMonths')], ...monthNames.map((name, index) => [String(index + 1).padStart(2, '0'), name] as [string, string])]} />
@@ -4626,7 +4653,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
                           <td className="px-3 py-3 font-medium"><span className="flex items-center gap-1.5"><span title={row.linked ? t('ledgerLinkedHint') : t('ledgerUnlinkedHint')} aria-label={row.linked ? t('ledgerLinked') : t('ledgerUnlinked')} className="flex shrink-0">{row.linked
                             ? <Link2 className="size-3.5 text-[#2d7b65]" />
                             : <Unlink className="size-3.5 text-[#c3ccc8]" />}</span>{row.name}</span>{row.notes && <p className="mt-0.5 text-xs font-normal text-[#87918e]">{row.notes}</p>}</td>
-                          <td className={`px-3 py-3 text-xs font-semibold ${row.transactionType === 'Buy' ? 'text-[#2d7b65]' : 'text-[#bd5e46]'}`}>{row.transactionType === 'Buy' ? t('buy') : t('sell')}</td>
+                          <td className={`px-3 py-3 text-xs font-semibold ${row.transactionType === 'Buy' ? 'text-[#2d7b65]' : row.transactionType === 'Sell' ? 'text-[#bd5e46]' : 'text-[#52615d]'}`}>{t(LEDGER_TYPE_LABEL[row.transactionType])}</td>
                           <td className="px-3 py-3 text-right tabular-nums">{formatEuro(row.amount)}</td>
                           <td className="px-3 py-3 text-right tabular-nums">{row.units.toLocaleString(locale, { maximumFractionDigits: 5 })}</td>
                           <td className="px-3 py-3 text-right tabular-nums font-semibold">{row.runningUnits.toLocaleString(locale, { maximumFractionDigits: 5 })}</td>
@@ -4730,7 +4757,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
       </DialogContent>
     </Dialog>
 
-    <Dialog open={editing !== undefined} onOpenChange={(open) => { if (!open) setEditing(undefined); }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{editing ? t('editOperation') : t('newInvestmentOperation')}</DialogTitle><DialogDescription>{t('investmentDialogDesc')}</DialogDescription></DialogHeader><form key={editing?.id ?? 'new-investment'} onSubmit={saveLedger} className="space-y-4"><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('date')}<Input required name="occurred_on" type="date" defaultValue={editing?.occurredOn ?? new Date().toISOString().slice(0, 10)} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('operation')}<select required name="transaction_type" defaultValue={editing?.transactionType ?? 'Buy'} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm"><option value="Buy">{t('buy')}</option><option value="Sell">{t('sell')}</option></select></label></div><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('instrument')}<div className="relative">
+    <Dialog open={editing !== undefined} onOpenChange={(open) => { if (!open) setEditing(undefined); }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{editing ? t('editOperation') : t('newInvestmentOperation')}</DialogTitle><DialogDescription>{t('investmentDialogDesc')}</DialogDescription></DialogHeader><form key={editing?.id ?? 'new-investment'} onSubmit={saveLedger} className="space-y-4"><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('date')}<Input required name="occurred_on" type="date" defaultValue={editing?.occurredOn ?? new Date().toISOString().slice(0, 10)} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('operation')}<select required name="transaction_type" value={ledgerTypeInput} onChange={(event) => setLedgerTypeInput(event.target.value as LedgerOperationType)} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm">{(Object.keys(LEDGER_TYPE_LABEL) as LedgerOperationType[]).map((tipo) => <option key={tipo} value={tipo}>{t(LEDGER_TYPE_LABEL[tipo])}</option>)}</select></label></div><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('instrument')}<div className="relative">
       <Input required name="name" autoComplete="off" value={instrumentQuery}
         onChange={(event) => { setInstrumentQuery(event.target.value); setSuggestionsOpen(true); }}
         onFocus={() => setSuggestionsOpen(true)}
@@ -4746,7 +4773,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
       </div>}
       {instruments.length === 0 && <p className="mt-1 font-normal text-[#a05f4e]">{t('noInstrumentsHint')}</p>}
       {instruments.length > 0 && suggestionsOpen && instrumentSuggestions.length === 0 && <p className="mt-1 font-normal text-[#87918e]">{t('noInstrumentMatch')}</p>}
-    </div></label><div className="grid grid-cols-3 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('amount')}<Input required name="amount" min="0.01" step="0.01" type="number" value={amountInput} onChange={(event) => setAmountInput(event.target.value)} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('units')}<Input required name="units" min="0.00000001" step="0.00000001" type="number" value={unitsInput} onChange={(event) => setUnitsInput(event.target.value)} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('priceComputed')}<Input readOnly required name="price" type="number" value={derivedPrice} tabIndex={-1} className="bg-[#f4f5f1] text-[#52615d]" /></label></div><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('currency')}<select name="currency" defaultValue={editing?.currency ?? 'EUR'} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm"><option>EUR</option><option>USD</option></select></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fee')}<Input name="fee" min="0" step="0.01" type="number" defaultValue={editing?.fee ?? 0} /></label></div><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('note')}<Input name="notes" defaultValue={editing?.notes ?? ''} placeholder={t('optional')} /></label>{!editing && <><div className="space-y-2 rounded-lg border border-[#5c8f82]/20 bg-[#f6f9f7] p-3"><label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-[#3b6a5b]"><input type="checkbox" checked={linkTransactionOpen} onChange={(event) => setLinkTransactionOpen(event.target.checked)} className="size-4 accent-[var(--money-primary)]" />{t('linkToTransaction')}</label>{linkTransactionOpen && <div className="grid grid-cols-2 gap-2 pt-1"><label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldDate')}<Input name="tx_occurred_on" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className="h-8 bg-white text-xs" /></label><label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldAccount')}<select required name="tx_account_name" defaultValue="" className="h-8 w-full rounded-md border border-input bg-white px-2 text-xs"><option value="">{t('noAccount')}</option>{accounts.filter(a => a.isActive !== false).map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}</select></label><label className="space-y-1 text-[10px] font-medium text-[#52615d] col-span-2">{t('fieldCategory')}<Input name="tx_category" defaultValue="Investimenti" className="h-8 bg-white text-xs" /></label><label className="space-y-1 text-[10px] font-medium text-[#52615d] col-span-2">{t('fieldDescription')}<Input name="tx_details" defaultValue="" placeholder={t('optionalNote')} className="h-8 bg-white text-xs" /></label></div>}</div><label className="flex items-center gap-2 text-xs text-[#71807c]"><input type="checkbox" name="force_duplicate" className="size-4 accent-[var(--money-primary)]" />{t('allowLedgerDuplicate')}</label></>}{error && <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => setEditing(undefined)}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('save')}</Button></DialogFooter></form></DialogContent></Dialog>
+    </div></label><div className="grid grid-cols-3 gap-3">{tipoSplit ? <input type="hidden" name="amount" value="0" /> : <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('amount')}<Input required name="amount" min="0.01" step="0.01" type="number" value={amountInput} onChange={(event) => setAmountInput(event.target.value)} /></label>}{tipoContante ? null : <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('units')}<Input required name="units" min="0.00000001" step="0.00000001" type="number" value={unitsInput} onChange={(event) => setUnitsInput(event.target.value)} /></label>}{tipoSplit ? <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('ledgerSplitRatio')}<Input required name="units" min="0.00000001" step="0.00000001" type="number" value={unitsInput} onChange={(event) => setUnitsInput(event.target.value)} /></label> : null}{tipoContante ? null : <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('priceComputed')}<Input readOnly required name="price" type="number" value={derivedPrice} tabIndex={-1} className="bg-[#f4f5f1] text-[#52615d]" /></label>}</div>{tipoSplit && <p className="text-[11px] leading-4 text-[#87918e]">{t('ledgerSplitHint')}</p>}<div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('currency')}<select name="currency" defaultValue={editing?.currency ?? 'EUR'} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm"><option>EUR</option><option>USD</option></select></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fee')}<Input name="fee" min="0" step="0.01" type="number" defaultValue={editing?.fee ?? 0} /></label></div><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('note')}<Input name="notes" defaultValue={editing?.notes ?? ''} placeholder={t('optional')} /></label>{!editing && !tipoSplit && <><div className="space-y-2 rounded-lg border border-[#5c8f82]/20 bg-[#f6f9f7] p-3"><label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-[#3b6a5b]"><input type="checkbox" checked={linkTransactionOpen} onChange={(event) => setLinkTransactionOpen(event.target.checked)} className="size-4 accent-[var(--money-primary)]" />{t('linkToTransaction')}</label>{linkTransactionOpen && <div className="grid grid-cols-2 gap-2 pt-1"><label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldDate')}<Input name="tx_occurred_on" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className="h-8 bg-white text-xs" /></label><label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldAccount')}<select required name="tx_account_name" defaultValue="" className="h-8 w-full rounded-md border border-input bg-white px-2 text-xs"><option value="">{t('noAccount')}</option>{accounts.filter(a => a.isActive !== false).map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}</select></label><label className="space-y-1 text-[10px] font-medium text-[#52615d] col-span-2">{t('fieldCategory')}<Input name="tx_category" defaultValue="Investimenti" className="h-8 bg-white text-xs" /></label><label className="space-y-1 text-[10px] font-medium text-[#52615d] col-span-2">{t('fieldDescription')}<Input name="tx_details" defaultValue="" placeholder={t('optionalNote')} className="h-8 bg-white text-xs" /></label></div>}</div><label className="flex items-center gap-2 text-xs text-[#71807c]"><input type="checkbox" name="force_duplicate" className="size-4 accent-[var(--money-primary)]" />{t('allowLedgerDuplicate')}</label></>}{error && <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => setEditing(undefined)}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('save')}</Button></DialogFooter></form></DialogContent></Dialog>
     <Dialog open={Boolean(configuring)} onOpenChange={(open) => { if (!open) setConfiguring(null); }}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>{t('configureQuoteAndClassification')}</DialogTitle><DialogDescription>{t('configureQuoteAndClassificationDesc')}</DialogDescription></DialogHeader>{configuring && <form key={configuring.instrumentId} onSubmit={saveInstrument} className="space-y-4"><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('sourceSymbol')}<Input name="provider_symbol" defaultValue={configuring.providerSymbol ?? ''} placeholder="es. VUSA.AS" /></label><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('assetClassLabel')}<Input name="asset_class" defaultValue={configuring.assetClass} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('area')}<Input name="area" defaultValue={configuring.area} /></label></div><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('sector')}<Input name="sector" defaultValue={configuring.sector} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('currency')}<Input name="currency" defaultValue={configuring.currency} /></label></div>{error && <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => setConfiguring(null)}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{t('saveConfiguration')}</Button></DialogFooter></form>}</DialogContent></Dialog>
   </div>;
 }

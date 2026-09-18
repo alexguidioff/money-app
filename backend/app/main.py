@@ -2044,9 +2044,9 @@ def _valida_split(session: Session, payload: InvestmentTxPayload) -> None:
     """
     rapporto = _to_decimal(payload.units, "units") if payload.units is not None else None
     if rapporto is None or rapporto <= 0 or rapporto >= RAPPORTO_SPLIT_MASSIMO:
-        raise HTTPException(status_code=422, detail={"code": "splitRatioNonValido"})
+        raise HTTPException(status_code=422, detail={"code": "ledgerSplitRatioNonValido"})
     if _to_decimal(payload.amount, "amount") != 0:
-        raise HTTPException(status_code=422, detail={"code": "splitAmountNonZero"})
+        raise HTTPException(status_code=422, detail={"code": "ledgerSplitAmountNonZero"})
     # Uno split su uno strumento mai comprato non aggiusta niente: il motore lo
     # scarterebbe, e chi l'ha registrato crederebbe di averlo fatto.
     filtro = (InvestmentTransaction.ticker == payload.ticker if payload.ticker
@@ -2054,7 +2054,7 @@ def _valida_split(session: Session, payload: InvestmentTxPayload) -> None:
     esistente = session.scalar(select(InvestmentTransaction.id).where(
         InvestmentTransaction.transaction_type.in_(("Buy", "Sell")), filtro).limit(1))
     if esistente is None:
-        raise HTTPException(status_code=422, detail={"code": "splitStrumentoInesistente"})
+        raise HTTPException(status_code=422, detail={"code": "ledgerSplitStrumentoInesistente"})
 
 
 def _apply_investment_tx(tx: InvestmentTransaction, payload: InvestmentTxPayload, session: Session) -> None:
