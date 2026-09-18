@@ -315,6 +315,12 @@ def investment_positions(
     nome nel ledger puo' cambiare nel tempo (uno strumento rinominato a meta'
     storia verrebbe altrimenti spezzato in due, lasciando quote fantasma da una
     parte e una vendita senza copertura dall'altra).
+
+    Oltre ad acquisti e vendite il ledger conosce i movimenti di solo contante
+    (dividendi, commissioni, versamenti) e gli split. Il contante non tocca
+    quote ne' costo: si somma a ``income_received`` o a ``fees_paid``, oppure
+    muove ``net_contributed``, che e' il denaro versato e non il valore
+    dell'investimento.
     """
     fee_map = fees_by_transaction or {}
     ticker_map = {normalized_name(key): value.strip().upper() for key, value in (tickers_by_name or {}).items() if value and value.strip()}
@@ -336,27 +342,45 @@ def investment_positions(
         if not ticker:
             ticker = ticker_map.get(normalized_name(name))
         key = ticker.lower() if ticker else normalized_name(name)
-        position = positions.setdefault(key, {
-            "name": name,
-            "ticker": ticker,
-            "units": ZERO,
-            "cost_basis": ZERO,
-            "net_contributed": ZERO,
-            "realized_gain": ZERO,
-            "last_trade_price": ZERO,
-            "currency": _value(row, "currency") or "EUR",
-        })
         units = abs(Decimal(str(_value(row, "units") or 0)))
         amount = abs(money(_value(row, "amount")))
         fee = money(fee_map.get(_value(row, "id")))
         action = normalized_name(_value(row, "transaction_type"))
-        if units == ZERO:
-            continue
+        position = positions.get(key)
+        if position is None:
+            # Una riga di conto - gli interessi del broker, una commissione, un
+            # versamento - tiene la sua posizione anche se con quel nome non e'
+            # mai stato comprato niente: sono soldi, non quote, e la riga e' il
+            # posto dove si vedono. Ma se un ticker c'e' la riga parla di uno
+            # strumento, e uno strumento mai comprato non entra in tabella
+            # (una posizione fantasma da zero quote non si chiude ne' si
+            # cancella); uno split, che di strumenti parla sempre, nemmeno.
+            if action not in {"buy", "acquisto", "sell", "vendita"} and (ticker or action in {"split", "frazionamento"}):
+                continue
+            position = positions[key] = {
+                "name": name,
+                "ticker": ticker,
+                "units": ZERO,
+                "cost_basis": ZERO,
+                "net_contributed": ZERO,
+                "realized_gain": ZERO,
+                "income_received": ZERO,
+                "fees_paid": ZERO,
+                "last_trade_price": ZERO,
+                "currency": _value(row, "currency") or "EUR",
+            }
         if action in {"buy", "acquisto"}:
+            # Il controllo sulle quote sta qui dentro e non prima: un movimento
+            # di solo contante ha zero quote, e scartarlo in cima lo renderebbe
+            # invisibile.
+            if units == ZERO:
+                continue
             position["units"] += units
             position["cost_basis"] += amount + fee
             position["net_contributed"] += amount + fee
         elif action in {"sell", "vendita"}:
+            if units == ZERO:
+                continue
             sold_units = min(units, position["units"])
             average_cost = position["cost_basis"] / position["units"] if position["units"] else ZERO
             disposed_cost = average_cost * sold_units
@@ -365,12 +389,36 @@ def investment_positions(
             position["cost_basis"] -= disposed_cost
             position["net_contributed"] -= proceeds
             position["realized_gain"] += proceeds - disposed_cost
+        elif action in {"dividend", "dividendo"}:
+            # Un dividendo e' denaro incassato: non e' un acquisto, e il costo
+            # dell'investimento resta quello che era.
+            position["income_received"] += amount
+        elif action in {"fee", "commissione"}:
+            # Una commissione staccata dalla borsa: denaro uscito dal
+            # portafoglio, stessa logica della commissione su una vendita.
+            position["fees_paid"] += amount
+            position["net_contributed"] -= amount
+        elif action in {"deposit", "deposito", "versamento"}:
+            position["net_contributed"] += amount
+        elif action in {"withdrawal", "prelievo"}:
+            position["net_contributed"] -= amount
+        elif action in {"split", "frazionamento"}:
+            # Il rapporto sta nelle quote: 2 = due nuove per una vecchia, 0,5 =
+            # un raggruppamento. Il costo non cambia, quindi il prezzo medio
+            # (costo diviso quote) si aggiusta da solo.
+            if units <= ZERO:
+                continue
+            position["units"] *= units
         else:
             continue
         position["name"] = name
-        row_price = _value(row, "price")
-        if row_price is not None:
-            position["last_trade_price"] = money(row_price)
+        # Solo un acquisto o una vendita dicono un prezzo: un dividendo non ha
+        # un prezzo di scambio, e scriverlo qui falserebbe la valorizzazione
+        # dell'ultima riga di ledger disponibile.
+        if action in {"buy", "acquisto", "sell", "vendita"}:
+            row_price = _value(row, "price")
+            if row_price is not None:
+                position["last_trade_price"] = money(row_price)
 
     result = []
     for key, position in positions.items():
@@ -386,6 +434,11 @@ def investment_positions(
             "cost_basis": position["cost_basis"].quantize(Decimal("0.01")),
             "net_contributed": position["net_contributed"].quantize(Decimal("0.01")),
             "realized_gain": position["realized_gain"].quantize(Decimal("0.01")),
+            # I proventi si guardano separati dal guadagno di capitale: un
+            # dividendo incassato non e' una vendita, e sommarlo al risultato
+            # nasconderebbe quanto ha reso il portafoglio e quanto ha pagato.
+            "income_received": position["income_received"].quantize(Decimal("0.01")),
+            "fees_paid": position["fees_paid"].quantize(Decimal("0.01")),
             "price": price.quantize(Decimal("0.01")),
             "has_quote": quoted_price is not None,
             "market_value": market_value,
