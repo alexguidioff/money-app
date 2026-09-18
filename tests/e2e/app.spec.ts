@@ -151,6 +151,47 @@ test('Impostazioni: una preferenza resta dopo aver ricaricato', async ({ page })
   expect(errori).toEqual([]);
 });
 
+test('Regole di categorizzazione: la regola scritta in Movimenti decide la categoria di un import', async ({ page }) => {
+  // E' l'unico giro completo della funzione, e sta qui perche' e' l'unico posto
+  // in cui regole e import si toccano: la regola si scrive dove si categorizza,
+  // e si vede all'opera nell'anteprima subito dopo.
+  const errori = raccogliErrori(page);
+  await avvia(page);
+  await apri(page, 'Movimenti');
+  const card = page.locator('[data-slot="card"]', { has: page.getByText('Regole di categorizzazione') });
+  await card.getByLabel('Testo da cercare').fill('supermercato e2e regola');
+  // Il nome accessibile di una tendina si porta dietro le sue opzioni, quindi
+  // qui si sceglie per posizione: nel modulo la categoria e' la prima.
+  await card.locator('form select').first().selectOption('Groceries');
+  await card.getByRole('button', { name: 'Aggiungi', exact: true }).click();
+  await expect(card.getByRole('cell', { name: 'supermercato e2e regola', exact: true })).toBeVisible();
+
+  const scelta = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Importa da CSV' }).click();
+  // Una data lontana da quelle delle altre scene: un movimento uguale per
+  // importo e giorno farebbe scattare il controllo dei doppioni nell'import che
+  // viene dopo, e quella riga arriverebbe li' gia' deselezionata.
+  await (await scelta).setFiles({
+    name: 'estratto.csv', mimeType: 'text/csv',
+    buffer: Buffer.from('data,descrizione,importo\n15/04/2026,Supermercato e2e regola,-45.20\n'),
+  });
+  const anteprima = page.getByRole('dialog');
+  await anteprima.getByLabel('Conto per tutte le righe').selectOption('Banca');
+  // La regola ha gia' deciso, e lo dice: la categoria si vede scritta, e sotto
+  // c'e' il pattern da cui viene. Le maiuscole non contano.
+  await expect(anteprima.getByLabel('Categoria', { exact: true }).first()).toHaveValue('Groceries');
+  await expect(anteprima.getByText('da: supermercato e2e regola')).toBeVisible();
+  await anteprima.getByRole('button', { name: /^Conferma e aggiungi/ }).click();
+  await expect(anteprima).toBeHidden();
+
+  // Ed e' la categoria che si salva: se il salvataggio la buttasse via perche'
+  // nessuno l'ha scelta a mano, la regola non avrebbe deciso niente.
+  const risposta = await page.request.get('/api/transactions?limit=500');
+  const righe = ((await risposta.json()) as { items: Array<{ details: string | null; category: string }> }).items;
+  expect(righe.find((riga) => riga.details === 'Supermercato e2e regola')?.category).toBe('Groceries');
+  expect(errori).toEqual([]);
+});
+
 test('Budget: la card del risparmio del mese guarda solo il mese', async ({ page }) => {
   // Mostrava entrate e spese dell'anno fino a quel mese sotto il titolo "il mese".
   const errori = raccogliErrori(page);

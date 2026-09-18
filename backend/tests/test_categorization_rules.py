@@ -7,6 +7,7 @@ logica pura, l'innesto e' il punto in cui le regole toccano un import vero.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import unittest
 from datetime import date
@@ -22,8 +23,8 @@ from app.core_routes import (RuleBulkPayload, RuleOrderPayload, RulePayload, cat
                              create_categorization_rule, create_categorization_rules,
                              delete_categorization_rule, reorder_categorization_rules, update_categorization_rule)
 from app.database import Base, reset_current_user, set_current_user
-from app.main import PENDING_CATEGORY, _resolve_category, statement_preview
-from app.models import CategorizationRule, LookupOption, Transaction
+from app.main import PENDING_CATEGORY, _resolve_category, save_pdf_transactions, statement_preview
+from app.models import Account, CategorizationRule, LookupOption, Transaction
 
 
 class MotoreTests(unittest.TestCase):
@@ -116,6 +117,8 @@ class RotteTests(unittest.TestCase):
         Base.metadata.create_all(self.engine)
         self.session = Session(self.engine)
         self.session.add(LookupOption(option_group="categories_expenses", position=0, value="Groceries"))
+        self.session.add(Account(source_group="bank", name="Banca", starting_balance=Decimal("0"),
+                                 current_balance=Decimal("0"), is_active=True))
         self.session.commit()
 
     def tearDown(self) -> None:
@@ -192,6 +195,17 @@ class RotteTests(unittest.TestCase):
         self.assertEqual("Groceries", riga["category"])
         self.assertEqual("spesa lidl", riga["categoryRule"])
         self.assertTrue(riga["categoryAutomatic"])
+
+    def test_la_categoria_proposta_dalla_regola_e_quella_che_si_salva(self) -> None:
+        # Il salvataggio riceve le righe dell'anteprima cosi' come sono - e'
+        # quello che manda l'interfaccia. Se buttasse via la categoria perche'
+        # "automatica", l'anteprima l'avrebbe mostrata per niente.
+        self._crea()
+        anteprima = statement_preview([{"details": "spesa lidl", "rawAmount": 20, "transactionType": "Expenses",
+                                        "occurredOn": "2026-08-05", "accountName": "Banca"}], self.session)
+        esito = asyncio.run(save_pdf_transactions(anteprima["transactions"], self.session))
+        self.assertEqual([], esito["errors"])
+        self.assertEqual("Groceries", self.session.scalar(select(Transaction.category)))
 
     def test_una_regola_non_si_applica_ai_movimenti_gia_registrati(self) -> None:
         # Il percorso di scrittura non passa dalle regole: e' la proprieta' di

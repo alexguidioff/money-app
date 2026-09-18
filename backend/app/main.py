@@ -411,9 +411,12 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
                 occurred_on=occurred,
                 effective_on=compute_effective_on(session, occurred, transaction_type),
                 transaction_type=transaction_type,
-                category=_resolve_category(
-                    None if tx_data.get('categoryAutomatic') is True else tx_data.get('category'),
-                    transaction_type),
+                # La categoria che l'anteprima ha mostrato e' quella che si
+                # scrive: se l'ha decisa una regola, buttarla via qui vorrebbe
+                # dire che l'anteprima l'ha mostrata per niente. Una riga senza
+                # categoria resta senza: il segnaposto lo scioglie
+                # `_resolve_category`.
+                category=_resolve_category(tx_data.get('category'), transaction_type),
                 amount=amount, account_name=account.name, account_type=account.source_group.title(),
                 destination_name=destination.name if transaction_type in SPOSTAMENTI else None,
                 destination_type=destination.source_group.title() if transaction_type in SPOSTAMENTI else None,

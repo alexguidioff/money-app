@@ -117,9 +117,13 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, onC
           const outgoing = row.transactionType !== 'Income';
           const spostamento = SPOSTAMENTI.includes(row.transactionType);
           const categorie = categoriesByType[row.transactionType] ?? [];
+          // Una categoria decisa da una regola e' automatica - non l'ha scelta
+          // nessuno - ma non e' vuota: si vede, e la riga sotto dice da dove
+          // viene. Solo chi non ne ha proprio una resta "Da categorizzare".
+          const senzaCategoria = row.categoryAutomatic && !row.categoryRule;
           // La categoria letta dal file resta fra le scelte anche se non e' nel
           // vocabolario; "Da categorizzare" e' la voce vuota.
-          const scelte = Array.from(new Set([row.categoryAutomatic ? '' : row.category, ...categorie].filter(Boolean)));
+          const scelte = Array.from(new Set([senzaCategoria ? '' : row.category, ...categorie].filter(Boolean)));
           const primaDelGruppo = row.divisa && rows.findIndex(altra => altra.divisa?.gruppo === row.divisa!.gruppo) === index;
           return <tr key={row.chiave} className={`border-b ${row.divisa ? 'bg-[#f7f9f6]' : ''}`}>
             <td className="p-2"><input type="checkbox" aria-label={t('statementSelectRow', { row: index + 1 })} checked={row.selected} disabled={isSaving}
@@ -131,7 +135,7 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, onC
               onChange={e => updateRow(index, { date: e.target.value })} className="w-36" /></td>
             <td className="min-w-44 p-2">{row.description}{row.duplicate && <p className="text-xs text-amber-700">{t('statementDuplicate')}{row.duplicateOf && <> · #{row.duplicateOf.id} · {formatDate(row.duplicateOf.date)} · {formatEuro(row.duplicateOf.amount)} · {row.duplicateOf.description}</>}</p>}
               {row.errorCode && <p className="text-xs text-red-700">{t(Object.hasOwn(translations.it, row.errorCode) ? row.errorCode as TranslationKey : 'statementRowInvalid')}</p>}</td>
-            <td className="p-2"><select aria-label={t('category')} value={spostamento || row.categoryAutomatic ? '' : row.category} disabled={isSaving || spostamento} className="w-40 rounded border p-2 disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]"
+            <td className="p-2"><select aria-label={t('category')} value={spostamento || senzaCategoria ? '' : row.category} disabled={isSaving || spostamento} className="w-40 rounded border p-2 disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]"
               onChange={e => updateRow(index, { category: e.target.value, categoryAutomatic: !e.target.value, categoryRule: null })}>
               <option value="">{spostamento ? t('categoryNotApplicable') : t('categoryAutomatic')}</option>
               {!spostamento && scelte.map(categoria => <option key={categoria} value={categoria}>{categoria}</option>)}
@@ -158,8 +162,11 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, onC
                 const tipo = e.target.value as TipoMovimento;
                 // Una categoria di spesa non vale per un'entrata: cambiando tipo si
                 // tiene solo se esiste anche fra quelle del tipo nuovo.
-                const tiene = !row.categoryAutomatic && (categoriesByType[tipo] ?? []).includes(row.category);
-                updateRow(index, { transactionType: tipo, ...(tiene ? {} : { categoryAutomatic: true }) });
+                const tiene = !senzaCategoria && (categoriesByType[tipo] ?? []).includes(row.category);
+                // Cambiando tipo la categoria puo' non valere piu': cade anche la
+                // regola, altrimenti resterebbe scritto da dove veniva una
+                // categoria che non c'e' piu'.
+                updateRow(index, { transactionType: tipo, ...(tiene ? {} : { categoryAutomatic: true, category: '', categoryRule: null }) });
               }}>
               {TIPI.map(([tipo, etichetta]) => <option key={tipo} value={tipo}>{t(etichetta)}</option>)}
             </select></td>
