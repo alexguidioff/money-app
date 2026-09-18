@@ -4247,7 +4247,81 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
 // dove hai detto di voler stare. Il verso lo decide il segno dell'importo, che
 // arriva dal server; qui si sceglie solo il colore. Verde sotto peso (da
 // comprare), ambra sopra (da vendere).
-function RebalanceCard({ riordino }: { riordino: InvestmentDashboardData['rebalance'] }) {
+/** I pesi obiettivo di tutti gli strumenti, modificabili insieme.
+ *
+ * Uno alla volta dentro il dialogo dello strumento non si capiva a che somma
+ * si stesse arrivando: il totale di una ripartizione e' l'unica cosa che conta
+ * guardare mentre la si scrive, e si vede solo mettendo le righe una sotto
+ * l'altra. Si scrive in percentuale e si salva in frazione, come nel dialogo.
+ */
+function TargetWeightsEditor({ posizioni, onInstrumentSave }: {
+  posizioni: InvestmentPosition[];
+  onInstrumentSave: (instrumentId: number, payload: Record<string, string | number | null>) => Promise<void>;
+}) {
+  const { t, formatNumber } = useI18n();
+  const modificabili = posizioni.filter((p) => p.instrumentId !== null && p.isOpen);
+  const pesoIniziale = (p: InvestmentPosition) => p.targetWeight === null ? '' : String(Math.round(p.targetWeight * 1000) / 10);
+  const [bozza, setBozza] = useState<Record<number, string>>({});
+  const [salvando, setSalvando] = useState(false);
+  const [errore, setErrore] = useState('');
+  const valore = (p: InvestmentPosition) => bozza[p.instrumentId!] ?? pesoIniziale(p);
+  const numero = (testo: string) => { const n = Number(testo.replace(',', '.')); return testo.trim() === '' || !Number.isFinite(n) ? 0 : n; };
+  const totale = modificabili.reduce((somma, p) => somma + numero(valore(p)), 0);
+  const cambiate = modificabili.filter((p) => valore(p) !== pesoIniziale(p));
+  // Cento esatto e' irraggiungibile scrivendo a mano con un decimale: 99,9 e
+  // 100,1 sono configurazioni sane, e bloccare il salvataggio sarebbe una
+  // pedanteria. Si segnala il verde solo quando ci si sta davvero dentro.
+  const inLinea = Math.abs(totale - 100) < 0.05;
+
+  async function salva() {
+    setSalvando(true); setErrore('');
+    try {
+      for (const p of cambiate) {
+        const scritto = valore(p).replace(',', '.').trim();
+        await onInstrumentSave(p.instrumentId!, { target_weight: scritto === '' ? null : Number(scritto) / 100 });
+      }
+      setBozza({});
+    } catch { setErrore(t('allocWeightsSaveFailed')); }
+    finally { setSalvando(false); }
+  }
+
+  if (!modificabili.length) return null;
+  return <details className="border-t border-black/6">
+    <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-[#52615d]">{t('allocWeightsEditor')}</summary>
+    <div className="overflow-x-auto"><table className="w-full text-sm">
+      <thead className="bg-[#f4f5f1] text-xs text-[#52615d]"><tr>
+        <th className="px-5 py-2 text-left">{t('instrument')}</th>
+        <th className="px-3 py-2 text-right">{t('allocTargetWeight')}</th>
+      </tr></thead>
+      <tbody className="divide-y divide-black/5">{modificabili.map((p) => <tr key={p.instrumentId}>
+        <td className="px-5 py-2">{p.name}</td>
+        <td className="px-3 py-2 text-right">
+          <Input type="number" step="0.1" min={0} max={100} value={valore(p)} placeholder="—"
+            onChange={(event) => setBozza((corrente) => ({ ...corrente, [p.instrumentId!]: event.target.value }))}
+            className="ml-auto h-8 w-24 text-right" />
+        </td>
+      </tr>)}</tbody>
+      <tfoot><tr className="border-t border-black/10">
+        <td className="px-5 py-3 text-xs font-medium text-[#52615d]">{t('allocWeightsTotal')}</td>
+        <td className={`px-3 py-3 text-right font-semibold tabular-nums ${inLinea ? 'text-[#2d7b65]' : 'text-[#bd5e46]'}`}>
+          {formatNumber(totale / 100, { style: 'percent', maximumFractionDigits: 1 })}
+        </td>
+      </tr></tfoot>
+    </table></div>
+    {errore && <p className="mx-5 mb-3 rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{errore}</p>}
+    <div className="flex items-center justify-end gap-3 px-5 pb-4">
+      {cambiate.length > 0 && <span className="text-xs text-[#7b8784]">{t('allocWeightsChanged', { count: cambiate.length })}</span>}
+      <Button size="sm" disabled={salvando || cambiate.length === 0} onClick={salva}
+        className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{t('save')}</Button>
+    </div>
+  </details>;
+}
+
+function RebalanceCard({ riordino, posizioni, onInstrumentSave }: {
+  riordino: InvestmentDashboardData['rebalance'];
+  posizioni: InvestmentPosition[];
+  onInstrumentSave: (instrumentId: number, payload: Record<string, string | number | null>) => Promise<void>;
+}) {
   const { t, formatEuro, formatNumber } = useI18n();
   const percentuale = (valore: number) => formatNumber(valore, { style: 'percent', maximumFractionDigits: 1 });
   const deriva = (valore: number) => formatNumber(valore, { style: 'percent', maximumFractionDigits: 1, signDisplay: 'always' });
@@ -4276,6 +4350,7 @@ function RebalanceCard({ riordino }: { riordino: InvestmentDashboardData['rebala
               </tr>;
             })}</tbody>
           </table></div>}
+      <TargetWeightsEditor posizioni={posizioni} onInstrumentSave={onInstrumentSave} />
     </CardContent>
   </Card>;
 }
@@ -4601,7 +4676,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
         </CardContent>
       </Card>
       <Card className="border-black/6 bg-white shadow-sm"><CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0"><div><CardTitle className="text-[17px]">{t('positions')}</CardTitle><p className="text-xs text-[#7b8784]">{showClosedPositions ? t('positionsSubtitleAll') : t('positionsSubtitle')}</p></div><label className="flex items-center gap-2 text-xs font-medium text-[#52615d]"><input type="checkbox" checked={showClosedPositions} onChange={(event) => setShowClosedPositions(event.target.checked)} className="size-4 accent-[var(--money-primary)]" />{t('showClosedPositions', { count: dashboard.positions.filter((p) => !viva(p)).length })}</label></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1060px] w-full text-sm"><thead className="bg-[#f4f5f1] text-xs text-[#52615d]"><tr><th className="px-5 py-3 text-left">{t('instrument')}</th><th className="px-3 py-3 text-right">{t('quantity')}</th><th className="px-3 py-3 text-right">{t('cost')}</th><th className="px-3 py-3 text-right">{t('value')}</th><th className="px-3 py-3 text-right">{t('profitLoss')}</th><th className="px-3 py-3 text-right">{t('ledgerIncome')}</th><th className="px-3 py-3 text-right">{t('source')}</th><th className="px-5 py-3 text-right">{t('settings')}</th></tr></thead><tbody className="divide-y divide-black/5">{dashboard.positions.filter((position) => showClosedPositions || viva(position)).map((position) => <tr key={position.name} className={viva(position) ? undefined : 'bg-[#fafaf8] text-[#71807c]'}><td className="px-5 py-3"><p className="font-medium">{position.name}{!viva(position) && <span className="ml-2 rounded-full bg-black/6 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[#71807c]">{t('closed')}</span>}</p><p className="mt-0.5 text-xs text-[#87918e]">{position.assetClass} · {position.area}</p></td><td className="px-3 py-3 text-right tabular-nums">{position.units.toLocaleString(locale, { maximumFractionDigits: 4 })}</td><td className="px-3 py-3 text-right tabular-nums">{formatEuro(position.costBasis)}</td><td className="px-3 py-3 text-right font-semibold tabular-nums">{formatEuro(position.marketValue)}</td><td className={`px-3 py-3 text-right font-semibold tabular-nums ${position.totalGain >= 0 ? 'text-[#2d7b65]' : 'text-[#bd5e46]'}`}>{formatEuro(position.totalGain)}{position.returnRate !== null && <span className="ml-1 text-xs">({(position.returnRate * 100).toLocaleString(locale, { maximumFractionDigits: 1 })}%)</span>}</td><td className="px-3 py-3 text-right tabular-nums text-[#2d7b65]">{position.incomeReceived !== 0 ? formatEuro(position.incomeReceived) : '—'}</td><td className="px-3 py-3 text-right text-xs">{position.isOpen ? (position.hasQuote ? t('cachedQuote') : t('lastLedgerPrice')) : t('realizedResult')}</td><td className="px-5 py-3 text-right">{position.instrumentId ? <Button size="sm" variant="ghost" onClick={() => { setConfiguring(position); setError(''); }}><Pencil className="size-4" />{t('configure')}</Button> : '—'}</td></tr>)}</tbody></table></div>{/* I proventi si leggono in fondo, tutti insieme: sono la parte che il guadagno non mostra, perche' un dividendo non e' una plusvalenza. */}<div className="flex items-center justify-between border-t border-black/6 px-5 py-3"><span className="text-xs text-[#52615d]">{t('ledgerIncomeTotal')}</span><span className="font-semibold tabular-nums">{formatEuro(dashboard.positions.reduce((somma, position) => somma + position.incomeReceived, 0))}</span></div></CardContent></Card>
-      <RebalanceCard riordino={dashboard.rebalance} />
+      <RebalanceCard riordino={dashboard.rebalance} posizioni={dashboard.positions} onInstrumentSave={onInstrumentSave} />
     </div>}
 
     {tab === 'ledger' && (
