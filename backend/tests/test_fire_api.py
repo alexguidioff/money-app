@@ -29,8 +29,10 @@ from sqlalchemy.orm import Session
 from app.database import Base
 from unittest.mock import patch
 
-from app.fire_routes import (ETA_FINE_GRAFICO, _anni_di_riferimento, _frazione, _spese_di_riferimento, _spese_in_pensione,
-                             _storico_patrimonio, _versamenti, elenco_flussi, leggi_regole, salva_regole,
+from app.fire_engine import ETA_FINE_PROIEZIONE
+from app.fire_routes import (ETA_FINE_GRAFICO, _anni_di_riferimento, _contesto, _frazione, _montecarlo, _piano,
+                             _spese_di_riferimento, _spese_in_pensione, _storico_patrimonio, _versamenti,
+                             elenco_flussi, leggi_regole, salva_regole,
                              spostamento_pensioni, crea_flusso, modifica_flusso, RegolaPayload, RegolePayload,
                              flusso_da_riga, fire, leggi_profilo, salva_profilo,
                              FlussoPayload, ProfiloPayload)
@@ -503,6 +505,16 @@ class MonteCarloTests(unittest.TestCase):
         # aveva gia' un profilo non deve ritrovarsi un campo vuoto ne' un errore.
         self.assertEqual(15.0, leggi_profilo(self.session)["returnVolatility"])
         self.assertEqual(0.15, fire(self.session)["plan"]["monteCarlo"]["volatility"])
+
+    def test_la_simulazione_copre_l_orizzonte_del_motore(self) -> None:
+        # Non quello del grafico: chi preleva oltre i 90 anni deve poter
+        # fallire, altrimenti "regge sempre" e' solo la finestra che si chiude.
+        # A volatilita' zero e' anche cio' che rende la simulazione uguale al
+        # piano deterministico invece che uguale fino a 90 e muta dopo.
+        c = _contesto(self.session, self.session.scalar(select(RetirementProfile)))
+        esito = _montecarlo(c, _piano(c))
+        self.assertEqual(ETA_FINE_PROIEZIONE, esito.percentili[50][-1].eta)
+        self.assertGreater(ETA_FINE_PROIEZIONE, ETA_FINE_GRAFICO)
 
     def test_una_volatilita_impossibile_non_si_salva(self) -> None:
         # Il modello la rifiuta e FastAPI ne fa un 422: qui si presidia il

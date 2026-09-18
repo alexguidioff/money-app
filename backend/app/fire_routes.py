@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 
 from .core_routes import _net_worth_breakdown, _summary_core, budget_actual_year, net_worth_series, nomi_categorie
 from .database import get_session
-from .fire_engine import Flusso, piano_fire
+from .fire_engine import ETA_FINE_PROIEZIONE, Flusso, piano_fire
 from .fire_montecarlo import EsitoMonteCarlo, simula
 from .models import IncomeStream, RetirementProfile
 
@@ -304,9 +304,11 @@ def _montecarlo(c: _Contesto, piano) -> EsitoMonteCarlo:
     rendimenti del capitale, non le pensioni, e una seconda implementazione dei
     flussi prima o poi divergerebbe dalla prima.
 
-    Si simula almeno fino al ritiro. Fermarsi a 90 anni con un ritiro a 95
-    direbbe "regge sempre" per il solo motivo che la finestra si chiude prima
-    di cominciare a prelevare; oltre i 90 la curva non si disegna comunque.
+    L'orizzonte e' quello del motore, non quello del grafico. Fermarsi a 90
+    direbbe "regge sempre" a chi preleva piu' a lungo, e a volatilita' zero
+    questa simulazione deve dare la stessa serie di `piano_fire`: due orizzonti
+    diversi la farebbero divergere sulla coda, che e' dove si decide se il
+    capitale basta.
     """
     ritiro = max(c.profilo.target_retirement_age, c.eta)
     return simula(
@@ -316,7 +318,8 @@ def _montecarlo(c: _Contesto, piano) -> EsitoMonteCarlo:
         versamenti_annui=float(c.versamenti),
         entrate_per_eta={p.eta: float(p.rendite) for p in piano.serie},
         eta_oggi=c.eta, eta_ritiro=ritiro,
-        eta_fine=max(ETA_FINE_GRAFICO, ritiro),
+        # Un ritiro a 100 anni lascerebbe zero anni di prelievo: almeno uno.
+        eta_fine=max(ETA_FINE_PROIEZIONE, ritiro + 1),
         rendimento_medio=float(_frazione(c.profilo.real_return, "4")),
         volatilita=float(c.profilo.return_volatility) / 100,
         aliquota_prelievo=float(_frazione(c.profilo.withdrawal_tax_rate)),

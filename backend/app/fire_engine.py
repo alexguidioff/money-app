@@ -34,6 +34,10 @@ D = Decimal
 ZERO = D(0)
 ONE = D(1)
 CENT = D('0.01')
+# Fin dove proietta il motore, in eta'. Non e' la fine del grafico (piu' corta):
+# e' l'orizzonte che la simulazione deve copiare per risultare uguale al motore
+# quando la volatilita' e' zero.
+ETA_FINE_PROIEZIONE = 100
 
 
 @dataclass(frozen=True)
@@ -141,7 +145,7 @@ def piano_fire(capitale: Decimal, spese_annue: Decimal,
                spese_annue_ritiro: Decimal | None = None,
                inflazione: Decimal | None = None,
                anno_oggi: int | None = None,
-               eta_fine_proiezione: int = 100,
+               eta_fine_proiezione: int = ETA_FINE_PROIEZIONE,
                spese_lean_annue: Decimal | None = None) -> PianoFire:
     for nome, valore in (('capitale', capitale), ('spese_annue', spese_annue),
                           ('versamenti_annui', versamenti_annui), ('swr', swr),
