@@ -8,6 +8,7 @@ when the user has configured a provider symbol for an instrument.
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -190,3 +191,57 @@ def fetch_yahoo_quote(symbol: str) -> MarketQuote:
                 observed_on=datetime.fromtimestamp(timestamp, tz=timezone.utc).date(),
             )
     raise MarketDataError("no valid close returned", code="no_data")
+
+
+# Il fornitore di riserva si chiama solo quando il primario non risponde. La
+# chiave sta in ambiente: se manca, il fornitore semplicemente non esiste e
+# l'app si comporta come prima che questo codice fosse scritto. Non aver
+# configurato una riserva non e' un guasto da mostrare a schermo.
+RESERVE_PROVIDER = "twelve_data"
+RESERVE_KEY_ENV = "TWELVE_DATA_API_KEY"
+
+
+def reserve_provider_configured() -> bool:
+    """Se la riserva esiste. Senza chiave non si tenta nemmeno."""
+    return bool((os.environ.get(RESERVE_KEY_ENV) or "").strip())
+
+
+def fetch_reserve_quote(symbol: str) -> MarketQuote:
+    """Quotazione dal fornitore di riserva: stessa firma e stesso ritorno.
+
+    Il simbolo viaggia come l'utente l'ha scelto cercandolo (formato Yahoo,
+    ``SWDA.MI``): qui non si traduce in un'altra convenzione. Un simbolo che
+    questo fornitore non conosce e' un motivo in piu' per cui la quotazione
+    manca, non un prezzo da indovinare.
+    """
+    chiave = (os.environ.get(RESERVE_KEY_ENV) or "").strip()
+    if not chiave:
+        raise MarketDataError("reserve provider not configured", code="no_provider")
+    clean_symbol = symbol.strip().upper()
+    if not SYMBOL_PATTERN.fullmatch(clean_symbol):
+        raise MarketDataError("invalid symbol", code="invalid_symbol")
+    request = Request(
+        f"https://api.twelvedata.com/quote?symbol={quote(clean_symbol)}&apikey={quote(chiave)}",
+        headers={"User-Agent": "Money-local/1.0"},
+    )
+    try:
+        with urlopen(request, timeout=12) as response:
+            payload = json.load(response)
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise MarketDataError("reserve quote source unreachable", code="unreachable") from error
+    # Questo fornitore risponde 200 anche quando rifiuta: la chiave sbagliata e
+    # il simbolo sconosciuto si riconoscono dal corpo, non dallo stato HTTP.
+    if str(payload.get("status") or "").lower() == "error" or payload.get("code"):
+        raise MarketDataError(str(payload.get("message") or "reserve refused the quote"), code="no_data")
+    try:
+        prezzo = float(payload["close"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise MarketDataError("no close returned", code="no_data") from error
+    try:
+        observed_on = date.fromisoformat(str(payload.get("datetime") or "")[:10])
+    except ValueError as error:
+        # Senza una data il prezzo non si sa a quando appartiene, e datarlo a
+        # oggi lo farebbe entrare in cache come se fosse di oggi.
+        raise MarketDataError("reserve quote without a date", code="no_data") from error
+    return MarketQuote(symbol=clean_symbol, price=prezzo, currency=payload.get("currency"),
+                       observed_on=observed_on, provider=RESERVE_PROVIDER)
