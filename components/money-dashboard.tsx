@@ -471,7 +471,12 @@ type InvestmentPosition = { name: string; isOpen: boolean; units: number; costBa
 // di un motivo: uno zero si legge "non ho guadagnato niente", che e'
 // un'affermazione, e spesso falsa.
 export type InvestmentReturns = { twr: { value: number | null; reason: string | null }; xirr: { value: number | null; reason: string | null }; months: number; since: string | null; asOf: string | null };
-export type InvestmentDashboardData = { snapshot: { period: string | null; marketValue: number; investedCapital: number; gain: number; returnRate: number }; ledger: { marketValue: number; costBasis: number; gain: number; quotedPositions: number; activePositions: number }; positions: InvestmentPosition[]; history: Array<{ period: string; label: string; marketValue: number; investedCapital: number; gain: number; returnRate: number | null }>; contributions: Array<{ period: string; label: string; amount: number }>; rebalance: { total: number; declaredWeight: number; warnings: string[]; rows: Array<{ name: string; currentWeight: number; targetWeight: number; drift: number; amount: number }> }; returns: InvestmentReturns };
+// Il confronto: il simbolo scelto e il primo mese in cui le due storie si
+// sovrappongono. `from` nullo vuol dire che non c'e' niente da confrontare -
+// nessun indice configurato, o troppo poca storia in comune - e non e' un
+// guasto: e' una funzione che non e' stata accesa.
+type InvestmentBenchmark = { symbol: string | null; from: string | null; months: number };
+export type InvestmentDashboardData = { snapshot: { period: string | null; marketValue: number; investedCapital: number; gain: number; returnRate: number }; ledger: { marketValue: number; costBasis: number; gain: number; quotedPositions: number; activePositions: number }; positions: InvestmentPosition[]; history: Array<{ period: string; label: string; marketValue: number; investedCapital: number; gain: number; returnRate: number | null; twrCurve: number | null; benchmarkCurve: number | null }>; contributions: Array<{ period: string; label: string; amount: number }>; rebalance: { total: number; declaredWeight: number; warnings: string[]; rows: Array<{ name: string; currentWeight: number; targetWeight: number; drift: number; amount: number }> }; returns: InvestmentReturns; benchmark: InvestmentBenchmark };
 export type InvestmentAllocationData = {
   total: number;
   allocations: Record<'instrument' | 'sector' | 'assetType' | 'holdings' | 'currency', Array<{ label: string; value: number; weight: number }>>;
@@ -842,7 +847,7 @@ function MoneyDashboardInner() {
   const [categorizationRules, setCategorizationRules] = useState<CategorizationRuleData[]>([]);
   const [goalsData, setGoalsData] = useState<GoalsData>({ items: [], active: 0, completed: 0, targetTotal: 0, currentTotal: 0, monthlyNeededTotal: 0, plannedSavings: 0, hasPlannedSavings: false, monthlyGap: 0 });
   const [netWorthData, setNetWorthData] = useState<NetWorthData>({ requestedPeriod: '', dataPeriod: null, totals: { bank: 0, asset: 0, liability: 0, financial: 0, liquid: 0, netWorth: 0 }, currencies: [] });
-  const [investmentDashboardData, setInvestmentDashboardData] = useState<InvestmentDashboardData>({ snapshot: { period: null, marketValue: 0, investedCapital: 0, gain: 0, returnRate: 0 }, ledger: { marketValue: 0, costBasis: 0, gain: 0, quotedPositions: 0, activePositions: 0 }, positions: [], history: [], contributions: [], rebalance: { total: 0, declaredWeight: 0, warnings: [], rows: [] }, returns: { twr: { value: null, reason: null }, xirr: { value: null, reason: null }, months: 0, since: null, asOf: null } });
+  const [investmentDashboardData, setInvestmentDashboardData] = useState<InvestmentDashboardData>({ snapshot: { period: null, marketValue: 0, investedCapital: 0, gain: 0, returnRate: 0 }, ledger: { marketValue: 0, costBasis: 0, gain: 0, quotedPositions: 0, activePositions: 0 }, positions: [], history: [], contributions: [], rebalance: { total: 0, declaredWeight: 0, warnings: [], rows: [] }, returns: { twr: { value: null, reason: null }, xirr: { value: null, reason: null }, months: 0, since: null, asOf: null }, benchmark: { symbol: null, from: null, months: 0 } });
   const [investmentLedger, setInvestmentLedger] = useState<InvestmentTransaction[]>([]);
     const [investmentAllocationData, setInvestmentAllocationData] = useState<InvestmentAllocationData>({ total: 0, allocations: { instrument: [], sector: [], assetType: [], holdings: [], currency: [] }, coverage: { covered: 0, uncovered: 0, coveredPercent: 0, missing: [], lastFetch: null, sourceErrors: [] } });
   const [notesData, setNotesData] = useState<NoteData[]>([]);
@@ -2018,6 +2023,14 @@ function MoneyDashboardInner() {
       if (ricalcola) {
         await loadData(undefined, ['ledger', 'overview', 'budget', 'goals', 'trends', 'analysis']);
         setMovimentiVersione((versione) => versione + 1);
+      }
+      // Il simbolo di confronto da solo non disegna niente: la sua storia di
+      // fine mese arriva con le quotazioni, come quella di ogni strumento, e il
+      // grafico legge i dati, non l'impostazione. Senza questo aggiornamento il
+      // confronto comparirebbe solo al prossimo refresh a mano, cioe' mai.
+      if (key === 'benchmark_symbol') {
+        const aggiornato = await handleMarketRefresh().catch(() => null);
+        if (!aggiornato) await loadData(undefined, ['investments']);
       }
     } catch {
       // L'app e' connessa: il salvataggio di questa singola preferenza non
@@ -3347,6 +3360,7 @@ function SectionView({
             <SettingCurrencies label={t('netWorthCurrenciesSetting')} value={settingsData.settings.net_worth_currencies ?? 'USD,CHF,BTC'} saving={settingSaving === 'net_worth_currencies'} onChange={(value) => void onSettingChange('net_worth_currencies', value)} />
             <SettingSelect label={t('shiftLateIncome')} value={settingsData.settings.late_income_shift} options={uniqueOptions(settingsData.settings.late_income_shift, ['Active', 'Inactive'])} saving={settingSaving === 'late_income_shift'} hint={t('shiftLateIncomeHint')} labels={{ Active: t('toggleActive'), Inactive: t('toggleInactive') }} onChange={(value) => void onSettingChange('late_income_shift', value)} />
             <SettingSelect label={t('fromDay')} value={settingsData.settings.late_income_day} options={Array.from({ length: 28 }, (_, index) => String(index + 1))} saving={settingSaving === 'late_income_day'} disabled={settingsData.settings.late_income_shift !== 'Active'} hint={settingsData.settings.late_income_shift === 'Active' ? t('fromDayHintActive') : t('fromDayHintInactive')} onChange={(value) => void onSettingChange('late_income_day', value)} />
+            <SettingText label={t('benchmarkSymbol')} value={settingsData.settings.benchmark_symbol ?? ''} saving={settingSaving === 'benchmark_symbol'} placeholder="es. ^GSPC" hint={t('benchmarkSymbolHint')} onChange={(value) => void onSettingChange('benchmark_symbol', value)} />
           </CardContent></Card>
           </div>
         </div>
@@ -4573,6 +4587,20 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
   // Il grafico in euro sale anche quando versi e il portafoglio non rende: la
   // lettura in percentuale separa le due cose.
   const returnConfig = useMemo(() => ({ returnRate: { label: t('returnRate'), color: '#9479d1' } }) satisfies ChartConfig, [t]);
+  // Col confronto acceso la lettura in percentuale cambia numero, non solo
+  // linea: `returnRate` e' il guadagno sul versato punto per punto, e accanto a
+  // due curve che partono da 100 sarebbe un'altra unita' di misura. Le due
+  // curve cumulate dicono la stessa cosa - chi ha reso di piu' - e si leggono
+  // una sopra l'altra.
+  const indice = dashboard.benchmark.from && dashboard.benchmark.symbol ? dashboard.benchmark.symbol : null;
+  const confrontoConfig = useMemo(() => ({ twrCurve: { label: t('investTabPortfolio'), color: '#9479d1' }, benchmarkCurve: { label: indice ?? '', color: '#6d8ff4' } }) satisfies ChartConfig, [t, indice]);
+  // Il confronto parte dal primo mese in comune: i mesi prima non sono
+  // "piatti", sono mesi che l'indice non ha, e disegnarli a zero sarebbe una
+  // bugia. Si mostrano solo quelli che il confronto lo hanno davvero.
+  const puntiConfronto = useMemo(() => {
+    const da = dashboard.benchmark.from;
+    return indice && da ? dashboard.history.filter((punto) => punto.period >= da) : [];
+  }, [dashboard.history, dashboard.benchmark.from, indice]);
   const [historyMode, setHistoryMode] = useState<'amount' | 'return'>('amount');
   const dimensionLabels: Record<'class' | 'area' | 'sector' | 'currency', string> = { class: t('dimClass'), area: t('dimArea'), sector: t('dimSector'), currency: t('dimCurrency') };
 
@@ -4744,9 +4772,22 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
         </div>
         {historyMode === 'amount' ? (
           <ChartContainer config={historyConfig} className="h-[310px] w-full"><LineChart accessibilityLayer data={dashboard.history}><CartesianGrid vertical={false} strokeDasharray="3 5" /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} minTickGap={26} /><YAxis tickLine={false} axisLine={false} width={78} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} />} /><ChartLegend content={<ChartLegendContent />} /><Line type="monotone" dataKey="marketValue" stroke="var(--color-marketValue)" strokeWidth={2.5} dot={false} /><Line type="monotone" dataKey="investedCapital" stroke="var(--color-investedCapital)" strokeWidth={2.25} dot={false} /></LineChart></ChartContainer>
+        ) : indice ? (
+          /* Con un indice configurato: le due curve cumulate, entrambe da 100
+             nel primo mese in comune, e in legenda chi e' chi. I numeri sull'asse
+             sono punti, non percentuali: 105 vuol dire cinque in piu' del punto
+             di partenza, non il 105%. */
+          <ChartContainer config={confrontoConfig} className="h-[310px] w-full"><LineChart accessibilityLayer data={puntiConfronto}><CartesianGrid vertical={false} strokeDasharray="3 5" /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} minTickGap={26} /><YAxis tickLine={false} axisLine={false} width={56} tickFormatter={(value) => Number(value).toFixed(0)} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} formatter={(value) => Number(value).toFixed(2)} />} /><ChartLegend content={<ChartLegendContent />} /><Line type="monotone" dataKey="twrCurve" stroke="var(--color-twrCurve)" strokeWidth={2.5} dot={false} /><Line type="monotone" dataKey="benchmarkCurve" stroke="var(--color-benchmarkCurve)" strokeWidth={2.25} dot={false} /></LineChart></ChartContainer>
         ) : (
           <ChartContainer config={returnConfig} className="h-[310px] w-full"><LineChart accessibilityLayer data={dashboard.history}><CartesianGrid vertical={false} strokeDasharray="3 5" /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} minTickGap={26} /><YAxis tickLine={false} axisLine={false} width={56} tickFormatter={(value) => `${Number(value).toFixed(0)}%`} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} formatter={(value) => `${Number(value).toFixed(2)}%`} />} /><Line type="monotone" dataKey="returnRate" stroke="var(--color-returnRate)" strokeWidth={2.5} dot={false} /></LineChart></ChartContainer>
         )}
+        {/* Il confronto parte dove le due storie si sovrappongono, e lo dice:
+            altrimenti sembra che il grafico abbia perso dei mesi. */}
+        {historyMode === 'return' && indice && dashboard.benchmark.from && <p className="mt-3 text-xs text-[#7b8784]">{t('benchmarkSince', { symbol: indice, from: formatDate(`${dashboard.benchmark.from}T12:00:00`, { month: 'long', year: 'numeric' }) })}</p>}
+        {/* Configurato ma senza niente da confrontare non e' la stessa cosa di
+            non configurato, e tacerlo lascerebbe credere che il campo non
+            serva a niente. */}
+        {historyMode === 'return' && dashboard.benchmark.symbol && !indice && <p className="mt-3 text-xs text-[#7b8784]">{t('benchmarkNoComparison', { symbol: dashboard.benchmark.symbol })}</p>}
         {error && <p className="mt-3 rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{error}</p>}
       </CardContent>
       </Card>
@@ -5526,6 +5567,24 @@ function SettingCurrencies({ label, value, saving, onChange }: {
 function SettingSelect({ label, value, options, saving, onChange, disabled, hint, labels }: { label: string; value: string; options: string[]; saving: boolean; onChange: (value: string) => void; disabled?: boolean; hint?: string; labels?: Record<string, string> }) {
   const { t } = useI18n();
   return <label className="block space-y-1.5 text-xs font-medium text-[#52615d]"><span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[#71807c]">{t('savingEllipsis')}</span>}</span><select value={value} onChange={(event) => onChange(event.target.value)} disabled={saving || disabled} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm text-[#17211f] outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-[#f4f5f1] disabled:opacity-60">{uniqueOptions(value, options).map((option) => <option key={option} value={option}>{labels?.[option] ?? option}</option>)}</select>{hint && <p className="font-normal leading-4 text-[#87918e]">{hint}</p>}</label>;
+}
+
+// Un'impostazione che si scrive invece di sceglierla: il simbolo di un indice
+// non e' un elenco chiuso. Salva uscendo dal campo o premendo Invio, non a ogni
+// lettera: il simbolo si digita una volta, e ogni tasto sarebbe un salvataggio.
+function SettingText({ label, value, saving, onChange, hint, placeholder }: { label: string; value: string; saving: boolean; onChange: (value: string) => void; hint?: string; placeholder?: string }) {
+  const { t } = useI18n();
+  const [bozza, setBozza] = useState(value);
+  // Il valore vero e' quello del server: quando arriva (o cambia altrove), la
+  // bozza si allinea invece di restare quella digitata.
+  useEffect(() => setBozza(value), [value]);
+  const salva = () => { const pulito = bozza.trim(); if (pulito !== value) onChange(pulito); };
+  return <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
+    <span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[#71807c]">{t('savingEllipsis')}</span>}</span>
+    <Input value={bozza} placeholder={placeholder} onChange={(event) => setBozza(event.target.value)} onBlur={salva}
+      onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); salva(); } }} />
+    {hint && <p className="font-normal leading-4 text-[#87918e]">{hint}</p>}
+  </label>;
 }
 
 function formatCheckValue(key: string, value: number, locale: string) {
