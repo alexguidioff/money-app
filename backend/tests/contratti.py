@@ -175,7 +175,7 @@ def _semina(session: Session) -> None:
              start_date=date(anno_scorso - 1, 1, 1), target_date=date(anno_scorso, 1, 1),
              completed_at=date(anno_scorso, 2, 1), kind="contributions"),
         InvestmentInstrument(name="ETF Mondo", provider_symbol="SWDA.MI", asset_class="Equity", area="World",
-                             sector="Diversified", currency="EUR", target_weight=Decimal("80")),
+                             sector="Diversified", currency="EUR", target_weight=Decimal("0.8")),
         Note(section="Appunti", title="Perche' un ETF", body="Costi bassi", status="Fatto"),
     ])
     for mese in range(1, 13):

@@ -514,6 +514,26 @@ def _to_decimal(value: Any, field: str, *, allow_negative: bool = True) -> Decim
     return amount.quantize(Decimal("0.01"))
 
 
+def _peso_obiettivo(value: Any) -> Decimal:
+    """Il peso obiettivo di uno strumento, come frazione fra 0 e 1.
+
+    Non passa da `_to_decimal`: quello arrotonda ai centesimi, e un peso come
+    0,175 ci diventerebbe 0,18. La colonna tiene sei decimali, e qui si
+    rispettano.
+
+    Sopra 1 si rifiuta apposta. Scrivere 80 invece di 0,80 e' l'errore facile
+    - il fixture dei contratti lo faceva - e senza questo controllo non da'
+    errore: diventa una pagina che annuncia serenamente "8000%".
+    """
+    try:
+        peso = Decimal(str(value))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(422, detail={"code": "targetWeightInvalid"}) from exc
+    if not peso.is_finite() or peso < 0 or peso > 1:
+        raise HTTPException(422, detail={"code": "targetWeightRange"})
+    return peso.quantize(Decimal("0.000001"))
+
+
 VALID_TRANSACTION_TYPES = set(TIPI_MOVIMENTO)
 
 
@@ -2602,7 +2622,7 @@ def _apply_instrument(inst: InvestmentInstrument, payload: InstrumentPayload) ->
     inst.sector = (payload.sector or "Altro").strip()
     inst.currency = (payload.currency or "EUR").strip()
     if payload.target_weight is not None:
-        inst.target_weight = _to_decimal(payload.target_weight, "target_weight", allow_negative=False)
+        inst.target_weight = _peso_obiettivo(payload.target_weight)
     else:
         inst.target_weight = None
 
@@ -2980,8 +3000,11 @@ def update_instrument_classification(inst_id: int, payload: InstrumentClassifica
         inst.sector = payload.sector.strip()
     if payload.currency is not None:
         inst.currency = payload.currency.strip()
-    if payload.target_weight is not None:
-        inst.target_weight = _to_decimal(payload.target_weight, "target_weight", allow_negative=False)
+    # Assente vuol dire "non toccare", nullo vuol dire "togli l'obiettivo": con
+    # il solo controllo su None il peso si poteva mettere e non piu' levare.
+    if "target_weight" in payload.model_fields_set:
+        inst.target_weight = (None if payload.target_weight is None
+                              else _peso_obiettivo(payload.target_weight))
     # La valuta la dice la fonte prezzi, non l'utente: quando si assegna un
     # ticker nuovo la si legge dalla quotazione, cosi' la conversione in euro
     # usa sempre la valuta reale dello strumento.
