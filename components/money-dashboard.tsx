@@ -3144,7 +3144,7 @@ function SectionView({
       .finally(() => setCaricandoMovimenti(false));
     return () => controller.abort();
   }, [apiUrl, ricerca, transactionTypeFilter, accountFilter, goalFilter, yearFilter, monthFilter, incompleteOnly, pagina, movimentiVersione]);
-  const [movementsView, setMovementsView] = useState<'list' | 'recurring'>('list');
+  const [movementsView, setMovementsView] = useState<'list' | 'recurring' | 'rules'>('list');
   // Il periodo scelto e' il mese corrente? Solo li' le azioni sui conti hanno
   // senso: piu' indietro i saldi sono quelli di allora e non si modificano.
   const alPresente = selectedYear === OGGI.getFullYear() && selectedMonth === OGGI.getMonth() + 1;
@@ -3174,9 +3174,12 @@ function SectionView({
         {importFeedback && <p role="status" className="rounded-xl border border-black/6 bg-white px-4 py-2 text-sm text-[#3a4a46] shadow-sm shadow-black/[0.02]">{importFeedback.message}</p>}
         {refundError && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#bd5e46]">{refundError}</p>}
         <div className="flex flex-wrap gap-2 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-          {([['list', t('movementsTabList')], ['recurring', t('movementsTabRecurring')]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setMovementsView(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${movementsView === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
+          {([['list', t('movementsTabList')], ['recurring', t('movementsTabRecurring')], ['rules', t('movementsTabRules')]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setMovementsView(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${movementsView === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
         </div>
-        {movementsView === 'recurring' ? <RecurringTransactionsView accounts={accounts} data={recurringTransactions} categoriesByType={settingsData.categoriesByType} onCreate={onCreateRecurring} onDelete={onDeleteRecurring} onGenerate={onGenerateRecurring} /> : <>
+        {movementsView === 'rules'
+          ? <CategoryRulesCard rules={categorizationRules} categories={categorieRegola} apiUrl={apiUrl}
+            onChanged={onCategoryRulesChanged} />
+          : movementsView === 'recurring' ? <RecurringTransactionsView accounts={accounts} data={recurringTransactions} categoriesByType={settingsData.categoriesByType} onCreate={onCreateRecurring} onDelete={onDeleteRecurring} onGenerate={onGenerateRecurring} /> : <>
         <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
           <CardHeader className="gap-4">
             <div><CardTitle className="text-[17px]">{t('allMovements')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('resultsOfTotal', { count: movimenti.length, total: totaleMovimenti })}</p></div>
@@ -3218,10 +3221,6 @@ function SectionView({
           <Button disabled={bulkBusy || !bulkValue} onClick={() => void applyBulk()}>{t('applySelected')}</Button>
           <Button variant="outline" onClick={() => { setSelection(new Set()); setSelezioneTroncata(0); }}>{t('cancel')}</Button>
         </div>}
-        {/* In fondo alla pagina, senza voce di menu: le regole si scrivono
-            guardando i movimenti, e da qui si vede subito cosa cambieranno. */}
-        <CategoryRulesCard rules={categorizationRules} categories={categorieRegola} apiUrl={apiUrl}
-          onChanged={onCategoryRulesChanged} />
         </>}
       </div>}
 

@@ -158,6 +158,8 @@ test('Regole di categorizzazione: la regola scritta in Movimenti decide la categ
   const errori = raccogliErrori(page);
   await avvia(page);
   await apri(page, 'Movimenti');
+  // Le regole hanno una scheda loro, accanto a Movimenti e Ricorrenze.
+  await page.getByRole('button', { name: 'Regole', exact: true }).click();
   const card = page.locator('[data-slot="card"]', { has: page.getByText('Regole di categorizzazione') });
   await card.getByLabel('Testo da cercare').fill('supermercato e2e regola');
   // Il nome accessibile di una tendina si porta dietro le sue opzioni, quindi
