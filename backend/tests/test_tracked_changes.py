@@ -48,8 +48,10 @@ class TrackedChangesTests(unittest.TestCase):
                                     ("2026-09-11", "12.50"), ("2026-09-07", "12.51")]]
         result = main.statement_preview(rows, self.s)["transactions"]
         event.remove(self.engine, "before_cursor_execute", count)
-        # I duplicati vengono letti una volta sola, non per riga.
-        self.assertEqual(len(queries), 1)
+        # I duplicati vengono letti una volta sola, non per riga. Le regole di
+        # categorizzazione sono la seconda lettura dell'anteprima, anche loro
+        # una volta sola per import: il numero non deve crescere con le righe.
+        self.assertEqual(len(queries), 2)
         self.assertEqual(sum('FROM transactions' in query for query in queries), 1)
         # Il movimento esistente vale per una riga sola: la seconda da 12,50 e'
         # un'altra spesa, e l'importo diverso non e' un doppione.

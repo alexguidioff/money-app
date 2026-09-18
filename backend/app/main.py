@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from .calculation_engine import (account_balances_series, calculate_account_balance, debito_pianificato_al, effective_date, piano_ammortamento,
                                  normalized_name, stato_debito_registrato)
+from .categorization import applica, carica_regole, scartate
 from .core_routes import (CATEGORY_GROUPS, GOAL_KINDS, MAX_SELEZIONE_MASSA, display_currencies, fx_symbols,
                           movimenti_per_saldi, num, sync_savings_plan)
 from .database import Base, admin_engine, engine, get_session, set_default_user, current_user_id
@@ -315,6 +316,7 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
                                 .where(REAL_MOVEMENT)).all():
         per_importo[abs(item.amount)].append(item)
         per_giorno[item.occurred_on].append(item)
+    regole = carica_regole(session)
     usati: set[int] = set()
     rows = []
     for tx in raw_transactions:
@@ -337,13 +339,22 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
             usati.add(match.id)
         usati.update(item.id for item in coppia)
         match = match or (coppia[0] if coppia else None)
+        # Nessuno ha scelto a mano questa categoria: se una regola decide, la
+        # categoria resta automatica e il pattern dice da quale regola viene.
+        tipo = tx.get("transactionType", "Expenses")
+        automatica = not (tx.get("category") or "").strip() \
+                     or (tx.get("category") or "").strip().casefold() == PENDING_CATEGORY.casefold()
+        decisione = applica(regole, description, tipo, amount)
+        categoria = _resolve_category(tx.get("category"), tipo, decisione[0] if decisione else None)
         rows.append({
             "id": None, "date": occurred, "description": description,
             "details": description,
-            "category": _resolve_category(tx.get("category"), tx.get("transactionType", "Expenses")),
-            "categoryAutomatic": not (tx.get("category") or "").strip()
-                                 or (tx.get("category") or "").strip().casefold() == PENDING_CATEGORY.casefold(),
-            "amount": float(amount), "transactionType": tx.get("transactionType", "Expenses"),
+            "category": categoria,
+            "categoryAutomatic": automatica,
+            # La regola si nomina solo quando ha davvero deciso: se la riga
+            # portava gia' una categoria, quella vince e la regola non c'entra.
+            "categoryRule": decisione[1] if decisione and automatica and categoria == decisione[0] else None,
+            "amount": float(amount), "transactionType": tipo,
             "type": tx.get("type", "expense"), "accountName": tx.get("accountName"),
             "destinationName": tx.get("destinationName"), "goal": tx.get("goal"),
             "duplicate": match is not None,
@@ -352,7 +363,9 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
                             "description": " + ".join(filter(None, (item.details for item in coppia))) if coppia
                             else match.details} if match else None,
         })
-    return {"success": True, "transactions": rows, "count": len(rows)}
+    # Le regole che non si sono potute compilare: l'interfaccia le segnala,
+    # perche' altrimenti sarebbero regole che non fanno niente e non lo dicono.
+    return {"success": True, "transactions": rows, "count": len(rows), "rulesDiscarded": scartate(regole)}
 
 
 @app.post("/api/import/pdf")
