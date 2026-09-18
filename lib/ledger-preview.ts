@@ -5,7 +5,8 @@ export type RigaOperazione = { transactionType: LedgerRigaTipo; units: string; p
 // muovono e' il loro importo, non quote per prezzo. Tenerli qui dentro evita
 // che una riga di solo contante risulti da zero euro e faccia sembrare
 // l'operazione "non corrispondente" al movimento.
-const SOLO_CONTANTE: readonly LedgerRigaTipo[] = ['Dividend', 'Fee', 'Deposit', 'Withdrawal'];
+export const LEDGER_SENZA_QUOTE = ['Dividend', 'Fee', 'Deposit', 'Withdrawal'] as const;
+const SOLO_CONTANTE: readonly string[] = LEDGER_SENZA_QUOTE;
 const IN_ENTRATA: readonly LedgerRigaTipo[] = ['Sell', 'Dividend', 'Deposit'];
 
 /**

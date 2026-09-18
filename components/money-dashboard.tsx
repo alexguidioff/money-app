@@ -2,7 +2,7 @@
 
 import { campiMancanti, downloadFile, responseError } from '@/lib/download';
 import { previewEffectiveDate } from '@/lib/effective-date';
-import { nettoOperazioni } from '@/lib/ledger-preview';
+import { LEDGER_SENZA_QUOTE, nettoOperazioni } from '@/lib/ledger-preview';
 import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
 import { messaggioErroreRegola } from '@/lib/rule-errors';
 import { SyntheticEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -452,8 +452,10 @@ const LEDGER_TYPE_LABEL: Record<LedgerOperationType, TranslationKey> = {
 export const LEDGER_TYPES_DA_MOVIMENTO = (Object.keys(LEDGER_TYPE_LABEL) as LedgerOperationType[])
   .filter((tipo) => tipo !== 'Split');
 export type LedgerTypeDaMovimento = Exclude<LedgerOperationType, 'Split'>;
-// Senza quote: si digita l'importo, non quote e prezzo.
-export const SOLO_CONTANTE_DA_MOVIMENTO: readonly LedgerTypeDaMovimento[] = ['Dividend', 'Fee', 'Deposit', 'Withdrawal'];
+// Senza quote: si digita l'importo, non quote e prezzo. L'elenco sta in
+// `lib/ledger-preview`, insieme al calcolo che lo usa: scritto in due posti,
+// prima o poi uno dei due resta indietro.
+const SOLO_CONTANTE_DA_MOVIMENTO: readonly string[] = LEDGER_SENZA_QUOTE;
 
 export type InvestmentTransaction = { id: number; occurredOn: string; name: string; transactionType: LedgerOperationType; amount: number; signedAmount: number; units: number; price: number; currency: string; fee: number; notes: string | null; runningUnits: number;
   // Agganciata a un movimento dei conti: e' il collegamento che dice a quale
@@ -1388,6 +1390,10 @@ function MoneyDashboardInner() {
      Serve quando il bonifico e le operazioni non tornano: la differenza e' una
      compravendita che nel ledger non e' mai stata scritta, e si chiude qui
      invece che andandola a cercare in un'altra pagina. */
+  // Un dividendo, una commissione, un versamento non hanno quote: il campo
+  // sparisce dal modulo e non entra nel salvataggio.
+  const contanteNuovaOp = SOLO_CONTANTE_DA_MOVIMENTO.includes(nuovaOpTipo);
+
   async function creaEcollegaOperazione() {
     const id = await investimentoSalvato();
     if (!id) return;
@@ -1398,8 +1404,12 @@ function MoneyDashboardInner() {
         body: JSON.stringify({
           occurred_on: formTransaction?.occurredOn ?? new Date().toISOString().slice(0, 10),
           name: nuovaOpNome.trim(), transaction_type: nuovaOpTipo,
-          amount: Number(nuovaOpImporto), units: Number(nuovaOpQuote) || 0,
-          price: Number(nuovaOpQuote) ? Number(nuovaOpImporto) / Number(nuovaOpQuote) : 0,
+          amount: Number(nuovaOpImporto),
+          // Le quote scritte prima di cambiare tipo non si portano dietro: un
+          // dividendo con "10 quote" rimaste nel campo diventerebbe un acquisto
+          // travestito, con tanto di prezzo calcolato.
+          units: contanteNuovaOp ? 0 : Number(nuovaOpQuote) || 0,
+          price: !contanteNuovaOp && Number(nuovaOpQuote) ? Number(nuovaOpImporto) / Number(nuovaOpQuote) : 0,
         }),
       });
       if (!creata.ok) throw new Error('ledger');
@@ -2647,8 +2657,10 @@ function MoneyDashboardInner() {
                         <select value={nuovaOpTipo} onChange={(e) => setNuovaOpTipo(e.target.value as LedgerTypeDaMovimento)} className="h-8 w-full rounded-md border border-input bg-white px-2 text-xs">{LEDGER_TYPES_DA_MOVIMENTO.map((tipo) => <option key={tipo} value={tipo}>{t(LEDGER_TYPE_LABEL[tipo])}</option>)}</select></label>
                       <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldAmount')}
                         <Input type="number" step="0.01" value={nuovaOpImporto} onChange={(e) => setNuovaOpImporto(e.target.value)} className="h-8 bg-white text-xs" /></label>
-                      <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('units')}
-                        <Input type="number" step="0.00000001" value={nuovaOpQuote} onChange={(e) => setNuovaOpQuote(e.target.value)} className="h-8 bg-white text-xs" /></label>
+                      {!SOLO_CONTANTE_DA_MOVIMENTO.includes(nuovaOpTipo) && (
+                        <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('units')}
+                          <Input type="number" step="0.00000001" value={nuovaOpQuote} onChange={(e) => setNuovaOpQuote(e.target.value)} className="h-8 bg-white text-xs" /></label>
+                      )}
                     </div>
                     <div className="flex justify-end gap-1.5">
                       <Button type="button" variant="ghost" size="sm" onClick={() => setNuovaOpAperta(false)} className="h-7 text-xs">{t('cancel')}</Button>
@@ -4448,7 +4460,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
   // rapporto, che sta nelle quote. Gli altri movimenti di solo contante non
   // hanno quote: chiedergliele vorrebbe dire far inventare un numero.
   const tipoSplit = ledgerTypeInput === 'Split';
-  const tipoContante = tipoSplit || ['Dividend', 'Fee', 'Deposit', 'Withdrawal'].includes(ledgerTypeInput);
+  const tipoContante = tipoSplit || SOLO_CONTANTE_DA_MOVIMENTO.includes(ledgerTypeInput);
   // Il prezzo non si digita: e' importo diviso quantita', cosi' le tre cifre
   // non possono contraddirsi.
   const derivedPrice = (() => {
