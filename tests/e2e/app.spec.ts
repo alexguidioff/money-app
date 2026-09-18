@@ -194,6 +194,44 @@ test('Regole di categorizzazione: la regola scritta in Movimenti decide la categ
   expect(errori).toEqual([]);
 });
 
+test('Ledger: uno split 2:1 raddoppia le quote e non tocca il costo', async ({ page }) => {
+  // Uno split non aggiunge righe al portafoglio: cambia i numeri della
+  // posizione, ed e' li' che si guarda. Percio' il giro e' acquisto, split dal
+  // modulo, e di nuovo la tabella delle posizioni.
+  const errori = raccogliErrori(page);
+  const strumento = await page.request.post('/api/investments/instruments', { data: { name: 'Split e2e' } });
+  expect(strumento.ok()).toBe(true);
+  const acquisto = await page.request.post('/api/investments/ledger', { data: {
+    occurred_on: '2026-02-10', name: 'Split e2e', transaction_type: 'Buy',
+    amount: 1000, units: 10, price: 100, currency: 'EUR' } });
+  expect(acquisto.ok(), await acquisto.text()).toBe(true);
+
+  await avvia(page);
+  await apri(page, 'Investimenti');
+  const posizioni = page.locator('[data-slot="card"]', { has: page.getByText('Posizioni', { exact: true }) });
+  const riga = posizioni.getByRole('row', { name: /Split e2e/ });
+  await expect(riga.getByRole('cell').nth(1)).toHaveText('10');
+  await expect(riga.getByRole('cell').nth(2)).toHaveText(/^1000,00\s*€$/);
+
+  await page.getByRole('button', { name: 'Ledger', exact: true }).click();
+  await page.getByRole('button', { name: 'Nuova operazione' }).click();
+  const dialogo = page.getByRole('dialog');
+  await dialogo.locator('select[name="transaction_type"]').selectOption('Split');
+  await dialogo.locator('input[name="name"]').fill('Split e2e');
+  // Col tipo Split il campo si chiama "Rapporto": 2 = due quote nuove per una
+  // vecchia. L'importo non si scrive, uno split non si paga.
+  await dialogo.locator('input[name="units"]').fill('2');
+  await dialogo.getByRole('button', { name: 'Salva', exact: true }).click();
+  // Il modulo si chiude solo se il salvataggio e' andato: un rapporto rifiutato
+  // lo lascerebbe aperto con il messaggio sotto.
+  await expect(dialogo).toBeHidden();
+
+  await page.getByRole('button', { name: 'Portafoglio', exact: true }).click();
+  await expect(riga.getByRole('cell').nth(1)).toHaveText('20');
+  await expect(riga.getByRole('cell').nth(2)).toHaveText(/^1000,00\s*€$/);
+  expect(errori).toEqual([]);
+});
+
 test('Budget: la card del risparmio del mese guarda solo il mese', async ({ page }) => {
   // Mostrava entrate e spese dell'anno fino a quel mese sotto il titolo "il mese".
   const errori = raccogliErrori(page);
