@@ -16,6 +16,9 @@ export type RetirementProfile = {
   country: string;
   targetRetirementAge: number;
   realReturn: number;
+  // Quanto oscillano i rendimenti attorno alla media: entra solo nella
+  // simulazione, non nel piano deterministico.
+  returnVolatility: number;
   withdrawalRate: number;
   withdrawalTaxRate: number;
   expenseBasis: 'last_year' | 'average' | 'median' | 'custom';
@@ -30,6 +33,7 @@ const DEFAULTS: RetirementProfile = {
   country: 'IT',
   targetRetirementAge: 67,
   realReturn: 4,
+  returnVolatility: 15,
   withdrawalRate: 4,
   withdrawalTaxRate: 0,
   expenseBasis: 'average',
@@ -93,6 +97,9 @@ export function RetirementProfileForm({ apiUrl, onSaved }: { apiUrl: string; onS
     }
     if (profile.realReturn < -50 || profile.realReturn > 50) {
       return t('fireProfileInvalidReturn');
+    }
+    if (profile.returnVolatility < 0 || profile.returnVolatility > 100) {
+      return t('fireProfileInvalidVolatility');
     }
     if (profile.withdrawalRate <= 0 || profile.withdrawalRate > 100) {
       return t('fireProfileInvalidWithdrawalRate');
@@ -172,6 +179,11 @@ export function RetirementProfileForm({ apiUrl, onSaved }: { apiUrl: string; onS
             <Field label={t('fireProfileRealReturn')} unit={`% (${t('fireProfileReal')})`}>
               <Input type="number" step="0.1" min={-50} max={50} value={profile.realReturn}
                 onChange={(e) => setProfile({ ...profile, realReturn: Number(e.target.value) })} className="h-10 bg-white" />
+            </Field>
+            <Field label={t('fireReturnVolatility')} unit="%">
+              <Input type="number" step="0.5" min={0} max={100} value={profile.returnVolatility}
+                onChange={(e) => setProfile({ ...profile, returnVolatility: Number(e.target.value) })} className="h-10 bg-white" />
+              <span className="block text-[10px] font-normal text-[#87918e]">{t('fireReturnVolatilityHelp')}</span>
             </Field>
             <Field label={t('fireProfileWithdrawalRate')} unit={`% (${t('fireProfileReal')})`}>
               <Input type="number" step="0.1" min={0.1} max={100} value={profile.withdrawalRate}

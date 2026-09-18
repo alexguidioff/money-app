@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { expect, it } from 'vitest';
 import type { RetirementProfile } from '@/components/settings/retirement-profile-form';
-import { accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationRulePayload, expenseRulesPayload,
+import { accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, expenseRulesPayload,
   goalPayload, incomeStreamPayload,
   ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, splitPayload, transactionPayload } from '@/lib/payloads';
 
@@ -30,7 +30,8 @@ const annoProssimo = `${new Date().getFullYear() + 5}-01-01`;
 
 // Lo stato del modulo profilo cosi' com'e' al salvataggio: e' quello che parte.
 const profilo: RetirementProfile = {
-  birthYear: 1998, country: 'CH', targetRetirementAge: 60, realReturn: 4, withdrawalRate: 3.5,
+  birthYear: 1998, country: 'CH', targetRetirementAge: 60, realReturn: 4, returnVolatility: 12,
+  withdrawalRate: 3.5,
   withdrawalTaxRate: 8, expenseBasis: 'custom', customAnnualExpenses: 40000, leanAnnualExpenses: 30000,
   inflation: 1.5, notes: '',
 };
@@ -91,6 +92,10 @@ const richieste = [
     pattern: 'spesa lidl', category: 'Groceries', minAmount: '10' }) },
   { endpoint: 'categorizationRule', case: 'espressione regolare spenta', body: categorizationRulePayload({
     pattern: '^atm \\d+', category: 'Commissions', isRegex: true, transactionType: 'Expenses', active: false }) },
+  // Il lotto sono le stesse regole del modulo, una per proposta spuntata.
+  { endpoint: 'categorizationBulk', case: 'due proposte accettate', body: categorizationBulkPayload([
+    { pattern: 'spesa lidl', category: 'Groceries', transactionType: 'Expenses' },
+    { pattern: 'bar', category: 'Eating out' }]) },
 ];
 
 it('i corpi delle richieste sono costruiti e scritti per il backend', () => {
