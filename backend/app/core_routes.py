@@ -2481,6 +2481,17 @@ def _valida_regola(payload: RulePayload, session: Session, *, esistente: Categor
     minimo, massimo = _importo(payload.min_amount), _importo(payload.max_amount)
     if minimo is not None and massimo is not None and minimo > massimo:
         raise HTTPException(status_code=422, detail="ruleAmountRange")
+    # Il vincolo sulla tabella non basta: in Postgres due NULL sono distinti, e
+    # un tipo nullo vuol dire "spese ed entrate". Qui lo si confronta come un
+    # valore, cosi' il doppione si vede anche quando il tipo non c'e'. Il
+    # vincolo resta come rete per due salvataggi simultanei.
+    condizione = [CategorizationRule.pattern == pattern,
+                  CategorizationRule.transaction_type.is_(None) if payload.transaction_type is None
+                  else CategorizationRule.transaction_type == payload.transaction_type]
+    if esistente is not None:
+        condizione.append(CategorizationRule.id != esistente.id)
+    if session.scalar(select(CategorizationRule.id).where(*condizione)) is not None:
+        raise HTTPException(status_code=422, detail="ruleDuplicate")
     if esistente is None:
         quante = session.scalar(select(func.count(CategorizationRule.id))) or 0
         if quante >= MAX_REGOLE:

@@ -130,7 +130,7 @@ def _semina(session: Session) -> None:
     # Una regola con tutti i campi facoltativi valorizzati: un elenco vuoto
     # sarebbe compatibile con qualunque tipo e non controllerebbe niente.
     session.add_all([
-        CategorizationRule(position=0, pattern="spesa lidl", category="Groceries"),
+        CategorizationRule(position=0, pattern="spesa coop", category="Groceries"),
         CategorizationRule(position=1, pattern=r"^pos \d+", is_regex=True, category="Commissions",
                            transaction_type="Expenses", min_amount=Decimal("10"), max_amount=Decimal("500"),
                            active=False),

@@ -150,6 +150,19 @@ class RotteTests(unittest.TestCase):
         self.session.commit()
         self.assertEqual("ruleLimitReached", self._rifiuto(pattern="una di troppo"))
 
+    def test_due_regole_uguali_non_si_salvano_nemmeno_senza_tipo(self) -> None:
+        # Il tipo assente vale per spese ed entrate: due regole cosi' sono la
+        # stessa regola scritta due volte. Il vincolo della tabella non le
+        # vedrebbe, perche' in Postgres due NULL sono diversi fra loro.
+        self._crea(transaction_type="Expenses")
+        self.assertEqual("ruleDuplicate", self._rifiuto(transaction_type="Expenses"))
+        prima = self._crea(pattern="senza tipo")["id"]
+        self.assertEqual("ruleDuplicate", self._rifiuto(pattern="senza tipo"))
+        # Il tipo diverso invece e' un'altra regola, e si salva.
+        self.assertEqual("Groceries", self._crea(pattern="senza tipo", transaction_type="Income")["category"])
+        # E modificare una regola non la fa scontrare con se stessa.
+        update_categorization_rule(prima, RulePayload(pattern="senza tipo", category="Groceries"), self.session)
+
     def test_la_regola_nasce_in_coda_e_l_ordine_si_riscrive(self) -> None:
         prima, seconda = self._crea()["id"], self._crea(pattern="gtt")["id"]
         self.assertEqual([prima, seconda], [riga["id"] for riga in categorization_rules(self.session)["items"]])
