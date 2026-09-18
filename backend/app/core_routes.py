@@ -663,6 +663,9 @@ def _invested_by_month(session: Session, year: int) -> list[dict[str, Any]]:
         select(InvestmentTransaction).where(extract("year", InvestmentTransaction.occurred_on) == year)
     ).all()
     for row in rows:
+        # Solo acquisti e vendite. Un dividendo e' reddito del portafoglio, non
+        # denaro versato: aggiungerlo qui direbbe che questo mese si e'
+        # investito piu' di quanto si e' investito davvero.
         if row.transaction_type not in ("Buy", "Sell"):
             continue
         amount = num(row.amount)
@@ -2186,6 +2189,8 @@ def _contributions_by_month(session: Session) -> list[dict[str, Any]]:
     """
     monthly: dict[str, float] = defaultdict(float)
     for row in session.scalars(select(InvestmentTransaction)).all():
+        # Solo acquisti e vendite, per la stessa ragione di sopra: un dividendo
+        # incassato e' reddito, e contarlo qui gonfierebbe i versamenti.
         if row.transaction_type not in ("Buy", "Sell") or not row.occurred_on:
             continue
         key = f"{row.occurred_on.year}-{row.occurred_on.month:02d}"
@@ -2249,6 +2254,12 @@ def investments_dashboard(session: Session = Depends(get_session)) -> dict[str, 
             "hasQuote": p["has_quote"],
             "marketValue": num(p["market_value"]),
             "realizedGain": num(p["realized_gain"]),
+            # Dividendi e interessi incassati, e commissioni pagate: restano
+            # fuori dal guadagno, che e' la differenza fra quanto vale e quanto
+            # e' costato, cosi' si vede separato quanto ha reso lo strumento e
+            # quanto ha pagato in contanti.
+            "incomeReceived": num(p["income_received"]),
+            "feesPaid": num(p["fees_paid"]),
             "unrealizedGain": num(p["unrealized_gain"]),
             "totalGain": num(p["total_gain"]),
             "returnRate": float(p["return_rate"]) if p["return_rate"] is not None else None,
