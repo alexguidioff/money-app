@@ -1982,7 +1982,12 @@ def update_setting(key: str, payload: SettingValueUpdate, session: Session = Dep
 # ---------------------------------------------------------------------------
 
 
-VALID_INVESTMENT_TX_TYPES = {"Buy", "Sell", "Dividend", "Fee", "Deposit", "Withdrawal"}
+VALID_INVESTMENT_TX_TYPES = {"Buy", "Sell", "Dividend", "Fee", "Deposit", "Withdrawal", "Split"}
+
+# Il rapporto di uno split sta nelle quote: 2 = due nuove per una vecchia, 0,5 =
+# un raggruppamento. Oltre mille non e' un frazionamento, e' un errore di
+# battitura, e le quote non si aggiustano a mano da sole.
+RAPPORTO_SPLIT_MASSIMO = Decimal("1000")
 
 
 def _investment_tx_to_dict(tx: InvestmentTransaction, detail: InvestmentTransactionDetail | None = None) -> dict:
@@ -2029,13 +2034,40 @@ class InvestmentTxPayload(BaseModel):
     notes: str | None = None
 
 
-def _apply_investment_tx(tx: InvestmentTransaction, payload: InvestmentTxPayload) -> None:
+def _valida_split(session: Session, payload: InvestmentTxPayload) -> None:
+    """Uno split non muove denaro e parla di uno strumento che esiste.
+
+    Un rapporto fuori scala moltiplicherebbe le quote per un numero che non
+    vuol dire niente, e il prezzo medio (costo diviso quote) mentirebbe senza
+    che si veda niente; un importo diverso da zero direbbe che quello split e'
+    stato pagato.
+    """
+    rapporto = _to_decimal(payload.units, "units") if payload.units is not None else None
+    if rapporto is None or rapporto <= 0 or rapporto >= RAPPORTO_SPLIT_MASSIMO:
+        raise HTTPException(status_code=422, detail={"code": "splitRatioNonValido"})
+    if _to_decimal(payload.amount, "amount") != 0:
+        raise HTTPException(status_code=422, detail={"code": "splitAmountNonZero"})
+    # Uno split su uno strumento mai comprato non aggiusta niente: il motore lo
+    # scarterebbe, e chi l'ha registrato crederebbe di averlo fatto.
+    filtro = (InvestmentTransaction.ticker == payload.ticker if payload.ticker
+              else InvestmentTransaction.name == payload.name.strip())
+    esistente = session.scalar(select(InvestmentTransaction.id).where(
+        InvestmentTransaction.transaction_type.in_(("Buy", "Sell")), filtro).limit(1))
+    if esistente is None:
+        raise HTTPException(status_code=422, detail={"code": "splitStrumentoInesistente"})
+
+
+def _apply_investment_tx(tx: InvestmentTransaction, payload: InvestmentTxPayload, session: Session) -> None:
     if not payload.name or not payload.name.strip():
         raise HTTPException(status_code=422, detail="name obbligatorio")
     if payload.transaction_type not in VALID_INVESTMENT_TX_TYPES:
         raise HTTPException(status_code=422, detail=f"transaction_type non valido: {payload.transaction_type}")
     if not payload.occurred_on:
         raise HTTPException(status_code=422, detail="occurred_on obbligatorio")
+    # Prima di toccare la riga: se lo split non e' valido la transazione non
+    # deve restare modificata a meta'.
+    if payload.transaction_type == "Split":
+        _valida_split(session, payload)
     tx.name = payload.name.strip()
     tx.transaction_type = payload.transaction_type
     tx.amount = _to_decimal(payload.amount, "amount")
@@ -2138,7 +2170,7 @@ def create_investment_tx(payload: InvestmentTxPayload, force: bool = False,
                          session: Session = Depends(get_session)):
     """Crea un movimento di investimento. Aggiorna anche il detail se fee/notes presenti."""
     tx = InvestmentTransaction()
-    _apply_investment_tx(tx, payload)
+    _apply_investment_tx(tx, payload, session)
     if not force and (duplicate := operazione_gia_presente(session, payload)):
         raise HTTPException(status_code=409, detail=_duplicate_detail(duplicate))
     session.add(tx)
@@ -2266,7 +2298,7 @@ def create_ledger_with_linked_transaction(payload: CreateLedgerWithTransaction, 
                                           session: Session = Depends(get_session)):
     """Crea un'operazione del ledger + 1 Transazione bank collegata, in modo atomico."""
     itx = InvestmentTransaction()
-    _apply_investment_tx(itx, payload)
+    _apply_investment_tx(itx, payload, session)
     if not force and (duplicate := operazione_gia_presente(session, payload)):
         raise HTTPException(status_code=409, detail=_duplicate_detail(duplicate))
     try:
@@ -2439,7 +2471,7 @@ def create_investment_tx_batch(payloads: list[InvestmentTxPayload], session: Ses
     try:
         for payload in payloads:
             tx = InvestmentTransaction()
-            _apply_investment_tx(tx, payload)
+            _apply_investment_tx(tx, payload, session)
             if duplicate := operazione_gia_presente(session, payload):
                 skipped.append({"name": payload.name.strip(), "occurredOn": payload.occurred_on,
                                 "duplicateOf": _investment_tx_to_dict(duplicate)})
@@ -2501,7 +2533,7 @@ def update_investment_tx(tx_id: int, payload: InvestmentTxPayload, session: Sess
     tx = session.get(InvestmentTransaction, tx_id)
     if tx is None:
         raise HTTPException(status_code=404, detail=f"Movimento investimento {tx_id} non trovato")
-    _apply_investment_tx(tx, payload)
+    _apply_investment_tx(tx, payload, session)
     detail = session.scalar(select(InvestmentTransactionDetail).where(InvestmentTransactionDetail.transaction_id == tx_id))
     if payload.fee or payload.notes:
         if detail is None:

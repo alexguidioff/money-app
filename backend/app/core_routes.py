@@ -2318,8 +2318,14 @@ def investments_ledger(session: Session = Depends(get_session)) -> dict[str, Any
         # negative nel DB. Per la posizione cumulativa, vogliamo sempre sottrarre
         # in caso di Sell, sommare in caso di Buy, indipendentemente dal segno.
         abs_units = units.copy_abs()
-        delta = abs_units if row.transaction_type == "Buy" else -abs_units
-        running_by_name[row.name] = running_by_name.get(row.name, Decimal("0")) + delta
+        # Uno split non aggiunge ne' toglie quote: le moltiplica. Trattarlo
+        # come una vendita toglierebbe dalla posizione un numero di quote pari
+        # al rapporto, che non vuol dire niente: 2:1 non toglie due quote.
+        if row.transaction_type == "Split" and abs_units > 0:
+            running_by_name[row.name] = running_by_name.get(row.name, Decimal("0")) * abs_units
+        else:
+            delta = abs_units if row.transaction_type == "Buy" else -abs_units
+            running_by_name[row.name] = running_by_name.get(row.name, Decimal("0")) + delta
         running_at_row[row.id] = running_by_name[row.name]
     return {"items": [{"id": row.id, "occurredOn": row.occurred_on.isoformat(), "name": row.name, "transactionType": row.transaction_type, "amount": num(row.amount), "signedAmount": num(row.amount) * (-1 if row.transaction_type == "Buy" else 1), "units": num(row.units), "price": num(row.price), "currency": row.currency or "EUR", "fee": num(detail.fee) if (detail := dettagli.get(row.id)) else 0, "notes": detail.notes if detail else None, "runningUnits": float(running_at_row.get(row.id, Decimal("0"))), "linked": row.id in collegate} for row in rows]}
 
