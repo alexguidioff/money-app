@@ -37,7 +37,7 @@ from .models import ImportBatch
 # L'ordine conta: le entita' referenziate da altre vengono scritte prima, cosi'
 # il file resta leggibile anche da uno strumento che controlla i riferimenti.
 WRITE_ORDER = ["Conti", "ValutazioniConti", "Debiti", "Movimenti", "RateDebiti", "Budget", "Obiettivi", "LedgerInvestimenti", "DettagliLedger", "CollegamentiLedger",
-               "Strumenti", "Note", "Impostazioni", "Opzioni", "ProfiloPensione", "FlussiPensione"]
+               "Strumenti", "RegoleCategoria", "Note", "Impostazioni", "Opzioni", "ProfiloPensione", "FlussiPensione"]
 
 TRUE_VALUES = {"true", "vero", "1", "si", "yes"}
 FALSE_VALUES = {"false", "falso", "0", "no"}
@@ -197,7 +197,9 @@ def read_and_validate(source: str | Path | BinaryIO) -> tuple[dict, dict]:
                              or title == "Debiti" and str(meta["versione"]) in {"1.0", "1.1", "1.2"}
                              or title == "RateDebiti" and str(meta["versione"]) in {"1.0", "1.1", "1.2", "1.3"}
                              or title in {"ValutazioniConti", "ProfiloPensione", "FlussiPensione"}
-                             and str(meta["versione"]) in {"1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6"})
+                             and str(meta["versione"]) in {"1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6"}
+                             or title == "RegoleCategoria"
+                             and str(meta["versione"]) in {"1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7"})
                         else _read_sheet(workbook, title, *SHEETS[title], version=str(meta["versione"]))) for title in WRITE_ORDER}
         _check_declared_counts(meta, data)
         if len(data["ProfiloPensione"]) > 1:

@@ -196,6 +196,11 @@ PER_UTENTE = [
     "liability_transaction_details",
     "retirement_profiles",
     "income_streams",
+    # Le regole di categorizzazione sono una scelta di chi importa: senza
+    # l'isolamento, le regole di una persona finirebbero nell'anteprima di
+    # un'altra. Non va confusa con "category_rules", la tabella cancellata a
+    # ogni avvio piu' sotto in questo file.
+    "categorization_rules",
 ]
 
 # Tabelle condivise di proposito: una quotazione e il profilo di uno strumento

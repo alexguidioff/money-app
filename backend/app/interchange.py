@@ -27,11 +27,12 @@ from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import (Account, AccountValuation, AppSetting, BudgetPlan, Goal, IncomeStream, RetirementProfile,
-                     InvestmentInstrument, InvestmentTransaction, InvestmentTransactionDetail,
+from .models import (Account, AccountValuation, AppSetting, BudgetPlan, CategorizationRule, Goal, IncomeStream,
+                     RetirementProfile, InvestmentInstrument, InvestmentTransaction,
+                     InvestmentTransactionDetail,
                      LiabilityProfile, LiabilityTransactionDetail, LookupOption, Note, Transaction, TransactionLedgerLink)
 
-FORMAT_VERSION = "1.7"
+FORMAT_VERSION = "1.8"
 
 
 def _cell(value: Any) -> Any:
@@ -77,6 +78,8 @@ SHEETS: dict[str, tuple[Any, list[str]]] = {
     "CollegamentiLedger": (TransactionLedgerLink, ["id", "transaction_id", "ledger_id"]),
     "Strumenti": (InvestmentInstrument, ["id", "name", "provider_symbol", "isin", "asset_class", "area", "sector",
                                          "currency", "target_weight"]),
+    "RegoleCategoria": (CategorizationRule, ["id", "position", "pattern", "is_regex", "category",
+                                              "transaction_type", "min_amount", "max_amount", "active"]),
     "Note": (Note, ["id", "section", "title", "body", "status"]),
     "Impostazioni": (AppSetting, ["key", "label", "value"]),
     "Opzioni": (LookupOption, ["id", "option_group", "position", "value"]),

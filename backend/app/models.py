@@ -457,3 +457,44 @@ class IncomeStream(Base):
     # abbassa - e senza questo secondo punto non si puo' dire di quanto.
     amount_if_stopping_now: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
     notes: Mapped[str | None] = mapped_column(Text)
+
+
+class CategorizationRule(Base):
+    """Una regola che propone la categoria di un movimento in importazione.
+
+    Vive solo nell'anteprima dell'import: riempie una casella che l'utente vede
+    e puo' cambiare riga per riga. Nessuna regola scrive mai in database senza
+    essere passata sotto gli occhi di chi importa - e' la proprieta' di
+    sicurezza di tutta la funzione, e per questo le regole non si applicano ne'
+    al salvataggio ne' alla creazione manuale di un movimento.
+
+    Il nome della tabella non e' ``category_rules``: quella viene cancellata a
+    ogni avvio da una riga rimasta in ``migrations.tracked_changes``, residuo
+    di una versione precedente della funzione. Rinominarla qui la farebbe
+    sparire a ogni riavvio senza un errore.
+    """
+
+    __tablename__ = "categorization_rules"
+    __table_args__ = (UniqueConstraint("user_id", "pattern", "transaction_type"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, default=current_user_id)
+    # Vince la prima regola che combacia, in quest'ordine: l'ordine e' una
+    # scelta dell'utente e deve restare leggibile guardando l'elenco.
+    position: Mapped[int] = mapped_column(default=0)
+    pattern: Mapped[str] = mapped_column(String(255))
+    # Con is_regex spento il pattern e' testo contenuto nella descrizione; con
+    # la spunta accesa e' un'espressione regolare, che si compila una volta
+    # sola per import e non una volta per riga.
+    is_regex: Mapped[bool] = mapped_column(default=False)
+    category: Mapped[str] = mapped_column(String(255))
+    # Nullo vale per entrambi i tipi: la stessa regola serve a una spesa e a
+    # un'entrata con la stessa descrizione.
+    transaction_type: Mapped[str | None] = mapped_column(String(30))
+    # Confrontati con l'importo assoluto della riga, estremi inclusi: il verso
+    # lo da' il tipo, non il segno.
+    min_amount: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    max_amount: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
+    # Spenta resta nell'elenco e non si applica: e' il modo di mettere da parte
+    # una regola senza perdere il pattern scritto.
+    active: Mapped[bool] = mapped_column(default=True)
