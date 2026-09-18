@@ -30,15 +30,18 @@ echo "=== CONTRATTI: risposte vere contro i tipi del frontend ==="
 "${CANDIDATA[@]}" python -m tests.contratti risposte > tests/fixtures/contracts/risposte.json 2>/tmp/risposte.err || { echo "STOP generazione risposte"; tail -5 /tmp/risposte.err; exit 1; }
 pnpm vitest run tests/contracts/risposte.test.ts > /tmp/vitest-contratti.log 2>&1 || { echo "STOP contratti risposte"; tail -40 /tmp/vitest-contratti.log; exit 1; }; grep -E "Tests +[0-9]" /tmp/vitest-contratti.log
 echo "=== SUITE BE COMPLETA (nessuna esclusione) ==="
-"${CANDIDATA[@]}" python -m pytest tests/ -q > /tmp/pytest.log 2>&1
+"${CANDIDATA[@]}" python -m pytest tests/ -q -rs > /tmp/pytest.log 2>&1
 ESITO=$?
 tail -1 /tmp/pytest.log
 [ $ESITO -ne 0 ] && { echo "STOP: test rossi, non pubblico"; grep -E "^FAILED|^ERROR" /tmp/pytest.log | head -10; exit 1; }
 # Chi ha un vecchio Money.xlsx montato vuole i test di parita' eseguiti davvero:
 # se venissero saltati la suite sembrerebbe verde con otto controlli in meno.
+# L'unico salto ammesso e' quello di chi vuole un Postgres vero, che la suite
+# su sqlite non ha: si guarda il motivo, non il numero, cosi' aggiungere un
+# test che chiede Postgres non allarga il permesso anche ad altri.
 if [ -f "${MONEY_XLSX_HOST_DIR:-./imports}/Money.xlsx" ]; then
-  SALTATI=$(grep -oE "[0-9]+ skipped" /tmp/pytest.log | grep -oE "[0-9]+")
-  [ "${SALTATI:-0}" -gt 1 ] && { echo "STOP: $SALTATI test saltati (atteso 1): il workbook c'e' ma i test di parita' non girano"; exit 1; }
+  SALTATI=$(grep -E "^SKIPPED" /tmp/pytest.log | grep -vc "PostgreSQL")
+  [ "${SALTATI:-0}" -gt 0 ] && { echo "STOP: $SALTATI test saltati: il workbook c'e' ma i test di parita' non girano"; grep -E "^SKIPPED" /tmp/pytest.log; exit 1; }
 fi
 echo "=== BUILD WEB CANDIDATO ==="
 pnpm build > /tmp/b.log 2>&1 || { echo "STOP build"; tail -20 /tmp/b.log; exit 1; }
