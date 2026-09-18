@@ -17,14 +17,15 @@ export type FireChartLabels = Record<
 // Il componente pagina passa testi ottenuti da t(): le traduzioni appartengono
 // al junior e qui non si aggiungono chiavi o ripieghi italiani nascosti.
 // Chiavi proposte: fireChart + ciascun nome di FireChartLabels in PascalCase.
-// scenarioNotice deve spiegare che la banda e' fra scenari, non un intervallo
-// di confidenza. Tutti gli importi devono avere lo stesso perimetro investibile
+// scenarioNotice deve spiegare che la banda e' fra percentili misurati su piu'
+// percorsi, non un intervallo di confidenza, e che nessun percorso reale segue
+// la curva p10. Tutti gli importi devono avere lo stesso perimetro investibile
 // e la stessa base reale; lo storico non viene usato per stimare rendimenti.
 export type FireChartProps = {
   storico: readonly FireChartPoint[];
   centrale: readonly FireChartPoint[];
-  pessimistico: readonly FireChartPoint[];
-  ottimistico: readonly FireChartPoint[];
+  p10: readonly FireChartPoint[];
+  p90: readonly FireChartPoint[];
   annoRitiro: number;
   annoPrimoFlusso: number | null;
   labels: FireChartLabels;
@@ -34,7 +35,7 @@ export function FireChart(props: FireChartProps) {
   const { formatEuro, formatCompactEuro, locale } = useI18n();
   const { labels, annoRitiro, annoPrimoFlusso } = props;
   const rows = useMemo(() => buildFireChartData(props),
-    [props.storico, props.centrale, props.pessimistico, props.ottimistico]);
+    [props.storico, props.centrale, props.p10, props.p90]);
   const projected = rows.filter((row) => row.central != null);
   const start = projected[0]?.anno;
   const end = rows.at(-1)?.anno;

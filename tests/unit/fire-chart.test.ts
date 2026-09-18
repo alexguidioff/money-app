@@ -43,23 +43,23 @@ describe('dati del grafico FIRE', () => {
     const righe = buildFireChartData({
       storico: [punto(2024, 100), punto(2025, 200), punto(2026, 300), punto(2027, 999)],
       centrale: [punto(2026, 300, 1000), punto(2027, 400, 1000)],
-      pessimistico: [], ottimistico: [],
+      p10: [], p90: [],
     });
     expect(righe.find((r) => r.anno === 2027)?.history).toBeUndefined();
     expect(righe.find((r) => r.anno === 2026)).toMatchObject({ history: 300, central: 300 });
   });
 
-  it('un anno senza scenario resta senza banda, non a zero', () => {
+  it('un anno senza percentili resta senza banda, non a zero', () => {
     const righe = buildFireChartData({
       storico: [], centrale: [punto(2026, 300), punto(2027, 400)],
-      pessimistico: [punto(2026, 280)], ottimistico: [punto(2026, 320)],
+      p10: [punto(2026, 280)], p90: [punto(2026, 320)],
     });
     expect(righe.find((r) => r.anno === 2027)?.range).toBeUndefined();
   });
 
   it('la banda e\' ordinata anche se gli scenari si incrociano', () => {
     const [riga] = buildFireChartData({
-      storico: [], centrale: [punto(2026, 300)], pessimistico: [punto(2026, 350)], ottimistico: [punto(2026, 250)],
+      storico: [], centrale: [punto(2026, 300)], p10: [punto(2026, 350)], p90: [punto(2026, 250)],
     });
     expect(riga.range).toEqual([250, 350]);
   });

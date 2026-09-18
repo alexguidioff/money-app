@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useI18n } from '@/lib/i18n-context';
 import { FireChart, type FireChartPoint } from '@/components/fire-chart';
 import { MilestonesCard } from '@/components/fire/milestones-card';
+import { MonteCarloCard, type MonteCarloPayload } from '@/components/fire/montecarlo-card';
 import { LeverageTable, type LeverageRow } from '@/components/fire/leverage-table';
 import { AgeShiftSlider } from '@/components/fire/age-shift-slider';
 
@@ -41,7 +42,10 @@ export type FirePlan = {
   leanCapped: boolean;
   series: SeriePunto[];
   history: Array<{ year: number; capital: number }>;
-  scenarios: Record<string, Array<{ year: number | null; capital: number }>>;
+  // p10 e p90: i percentili della simulazione, non due scenari a rendimento
+  // spostato. Le eta' sono le stesse della serie centrale.
+  scenarios: Record<string, Array<{ age: number; year: number | null; capital: number }>>;
+  monteCarlo: MonteCarloPayload;
   milestones: Record<string, Milestone>;
   warnings: string[];
 };
@@ -113,6 +117,7 @@ export function FirePage({ apiUrl, onOpenSettings }: { apiUrl: string; onOpenSet
     rendite_non_indicizzate_escluse_dopo_regime: t('fireWarningErosion'),
     capitale_insufficiente_nella_proiezione: t('fireWarningDepleted', { age: piano.depletedAtAge ?? '' }),
     pensione_interpolata_non_stima_ente: t('fireWarningInterpolated'),
+    montecarlo_rendimenti_indipendenti: t('fireWarningMonteCarlo'),
   };
   const avvisi = piano.warnings.filter((c) => c in testiAvvisi).map((c) => [c, testiAvvisi[c]] as const);
 
@@ -150,8 +155,8 @@ export function FirePage({ apiUrl, onOpenSettings }: { apiUrl: string; onOpenSet
     <FireChart
       storico={punti(piano.history.map((r) => ({ year: r.year, capital: r.capital })))}
       centrale={punti(piano.series)}
-      pessimistico={punti(piano.scenarios.pessimistic ?? [])}
-      ottimistico={punti(piano.scenarios.optimistic ?? [])}
+      p10={punti(piano.scenarios.p10 ?? [])}
+      p90={punti(piano.scenarios.p90 ?? [])}
       annoRitiro={fase('accumulo')?.toYear ?? new Date().getFullYear()}
       annoPrimoFlusso={pensione?.fromYear ?? null}
       labels={{
@@ -171,6 +176,7 @@ export function FirePage({ apiUrl, onOpenSettings }: { apiUrl: string; onOpenSet
                       leanNote={piano.leanCapped ? t('fireMilestoneLeanCapped', {
                         lean: formatEuro(dati.profile?.leanAnnualExpenses ?? 0),
                         expenses: formatEuro(dati.expensesUsed ?? 0) }) : undefined} />
+      <MonteCarloCard dati={piano.monteCarlo} />
       {piano.leverage.length > 0 && <LeverageTable rows={piano.leverage} />}
       <AgeShiftSlider apiUrl={apiUrl} />
     </div>
