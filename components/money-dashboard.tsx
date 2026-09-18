@@ -466,7 +466,12 @@ type InvestmentPosition = { name: string; isOpen: boolean; units: number; costBa
 // `rebalance.amount` e' firmato: positivo vuol dire sopra il peso obiettivo,
 // cioe' da vendere. Chi legge deve poterlo vedere anche nella tabella, dove
 // l'importo viene da comprare o da vendere secondo quel segno.
-export type InvestmentDashboardData = { snapshot: { period: string | null; marketValue: number; investedCapital: number; gain: number; returnRate: number }; ledger: { marketValue: number; costBasis: number; gain: number; quotedPositions: number; activePositions: number }; positions: InvestmentPosition[]; history: Array<{ period: string; label: string; marketValue: number; investedCapital: number; gain: number; returnRate: number | null }>; contributions: Array<{ period: string; label: string; amount: number }>; rebalance: { total: number; declaredWeight: number; warnings: string[]; rows: Array<{ name: string; currentWeight: number; targetWeight: number; drift: number; amount: number }> } };
+// Il rendimento del portafoglio: il valore oppure il motivo per cui non c'e'.
+// `reason` e' un codice, la frase la sceglie la traduzione. Mai zero al posto
+// di un motivo: uno zero si legge "non ho guadagnato niente", che e'
+// un'affermazione, e spesso falsa.
+export type InvestmentReturns = { twr: { value: number | null; reason: string | null }; xirr: { value: number | null; reason: string | null }; months: number; since: string | null; asOf: string | null };
+export type InvestmentDashboardData = { snapshot: { period: string | null; marketValue: number; investedCapital: number; gain: number; returnRate: number }; ledger: { marketValue: number; costBasis: number; gain: number; quotedPositions: number; activePositions: number }; positions: InvestmentPosition[]; history: Array<{ period: string; label: string; marketValue: number; investedCapital: number; gain: number; returnRate: number | null }>; contributions: Array<{ period: string; label: string; amount: number }>; rebalance: { total: number; declaredWeight: number; warnings: string[]; rows: Array<{ name: string; currentWeight: number; targetWeight: number; drift: number; amount: number }> }; returns: InvestmentReturns };
 export type InvestmentAllocationData = {
   total: number;
   allocations: Record<'instrument' | 'sector' | 'assetType' | 'holdings' | 'currency', Array<{ label: string; value: number; weight: number }>>;
@@ -837,7 +842,7 @@ function MoneyDashboardInner() {
   const [categorizationRules, setCategorizationRules] = useState<CategorizationRuleData[]>([]);
   const [goalsData, setGoalsData] = useState<GoalsData>({ items: [], active: 0, completed: 0, targetTotal: 0, currentTotal: 0, monthlyNeededTotal: 0, plannedSavings: 0, hasPlannedSavings: false, monthlyGap: 0 });
   const [netWorthData, setNetWorthData] = useState<NetWorthData>({ requestedPeriod: '', dataPeriod: null, totals: { bank: 0, asset: 0, liability: 0, financial: 0, liquid: 0, netWorth: 0 }, currencies: [] });
-  const [investmentDashboardData, setInvestmentDashboardData] = useState<InvestmentDashboardData>({ snapshot: { period: null, marketValue: 0, investedCapital: 0, gain: 0, returnRate: 0 }, ledger: { marketValue: 0, costBasis: 0, gain: 0, quotedPositions: 0, activePositions: 0 }, positions: [], history: [], contributions: [], rebalance: { total: 0, declaredWeight: 0, warnings: [], rows: [] } });
+  const [investmentDashboardData, setInvestmentDashboardData] = useState<InvestmentDashboardData>({ snapshot: { period: null, marketValue: 0, investedCapital: 0, gain: 0, returnRate: 0 }, ledger: { marketValue: 0, costBasis: 0, gain: 0, quotedPositions: 0, activePositions: 0 }, positions: [], history: [], contributions: [], rebalance: { total: 0, declaredWeight: 0, warnings: [], rows: [] }, returns: { twr: { value: null, reason: null }, xirr: { value: null, reason: null }, months: 0, since: null, asOf: null } });
   const [investmentLedger, setInvestmentLedger] = useState<InvestmentTransaction[]>([]);
     const [investmentAllocationData, setInvestmentAllocationData] = useState<InvestmentAllocationData>({ total: 0, allocations: { instrument: [], sector: [], assetType: [], holdings: [], currency: [] }, coverage: { covered: 0, uncovered: 0, coveredPercent: 0, missing: [], lastFetch: null, sourceErrors: [] } });
   const [notesData, setNotesData] = useState<NoteData[]>([]);
@@ -4407,6 +4412,37 @@ function RebalanceCard({ riordino, posizioni, onInstrumentSave }: {
   </Card>;
 }
 
+// I motivi arrivano dal server come codici: la frase la sceglie la traduzione.
+// Un codice che qui non compare non fa sparire la riga, dice solo che il
+// rendimento non e' calcolabile.
+const MOTIVI_RENDIMENTO: Record<string, TranslationKey> = {
+  prezzo_mancante: 'returnReasonMissingPrice',
+  storia_troppo_corta: 'returnReasonShortHistory',
+  nessun_flusso: 'returnReasonNoFlows',
+  flussi_senza_cambio_di_segno: 'returnReasonNoSignChange',
+  xirr_non_converge: 'returnReasonNoConvergence',
+};
+
+function RendimentoCard({ titolo, spiegazione, esito }: {
+  titolo: string;
+  spiegazione: string;
+  esito: InvestmentReturns['twr'];
+}) {
+  const { t, formatNumber } = useI18n();
+  return <Card className="border-black/6 bg-white shadow-sm">
+    <CardContent className="p-5">
+      <p className="mb-4 text-sm font-medium text-[#71807c]">{titolo}</p>
+      {/* Il motivo sta al posto del numero, in grigio: non un trattino e non
+          uno zero, perche' "non ho guadagnato niente" e' un'altra cosa da
+          "non si puo' sapere". */}
+      {esito.value === null
+        ? <p className="text-base font-medium text-[#71807c]">{t(MOTIVI_RENDIMENTO[esito.reason ?? ''] ?? 'returnReasonUnknown')}</p>
+        : <p className={`text-[25px] font-semibold tracking-[-0.03em] tabular-nums ${esito.value >= 0 ? 'text-[#2d7b65]' : 'text-[#bd5e46]'}`}>{formatNumber(esito.value, { style: 'percent', maximumFractionDigits: 2, signDisplay: 'always' })}</p>}
+      <p className="mt-2 text-xs text-[#618078]">{spiegazione}</p>
+    </CardContent>
+  </Card>;
+}
+
 function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChanged, onSave, onDelete, onInstrumentSave, onRefresh, accounts }: { apiUrl: string; onQuotesChanged: () => Promise<void>; dashboard: InvestmentDashboardData; ledger: InvestmentTransaction[]; allocation: InvestmentAllocationData; onSave: (transactionId: number | null, payload: Record<string, string | number | boolean>) => Promise<void>; onDelete: (transaction: InvestmentTransaction) => Promise<void>; onInstrumentSave: (instrumentId: number, payload: Record<string, string | number | null>) => Promise<void>; onRefresh: () => Promise<{ updated: number; errors: Array<{ code?: string; error?: string }> }>; accounts: Account[] }) {
   const { t, lang, locale, formatEuro, formatCompactEuro, formatDate, monthNames, formatPeriodLabel } = useI18n();
   const [tab, setTab] = useState<'portfolio' | 'ledger' | 'instruments' | 'allocation' | 'quotes'>('portfolio');
@@ -4693,7 +4729,10 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
     </div>
 
     {tab === 'portfolio' && <div className="space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><MetricCard title={t('portfolioValue')} value={dashboard.snapshot.marketValue} change={dashboard.snapshot.period ? t('excelHistory', { period: formatDate(`${dashboard.snapshot.period}T12:00:00`, { month: 'long', year: 'numeric' }) }) : t('noHistory')} icon={Landmark} tone="worth" /><MetricCard title={t('investedCapital')} value={dashboard.snapshot.investedCapital} change={t('netContributionsOverTime')} icon={CircleDollarSign} tone="saving" /><MetricCard title={t('gainLoss')} value={dashboard.snapshot.gain} change={t('percentOnCapital', { percent: dashboard.snapshot.returnRate.toLocaleString(locale) })} icon={TrendingUp} tone={dashboard.snapshot.gain >= 0 ? 'income' : 'expense'} /><MetricCard title={t('connectedQuotes')} value={dashboard.ledger.quotedPositions} valueLabel={`${dashboard.ledger.quotedPositions}/${dashboard.ledger.activePositions}`} change={t('withLocalCache')} icon={RefreshCw} tone="worth" /></div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><MetricCard title={t('portfolioValue')} value={dashboard.snapshot.marketValue} change={dashboard.snapshot.period ? t('excelHistory', { period: formatDate(`${dashboard.snapshot.period}T12:00:00`, { month: 'long', year: 'numeric' }) }) : t('noHistory')} icon={Landmark} tone="worth" /><MetricCard title={t('investedCapital')} value={dashboard.snapshot.investedCapital} change={t('netContributionsOverTime')} icon={CircleDollarSign} tone="saving" /><MetricCard title={t('gainLoss')} value={dashboard.snapshot.gain} change={t('percentOnCapital', { percent: dashboard.snapshot.returnRate.toLocaleString(locale) })} icon={TrendingUp} tone={dashboard.snapshot.gain >= 0 ? 'income' : 'expense'} /><MetricCard title={t('connectedQuotes')} value={dashboard.ledger.quotedPositions} valueLabel={`${dashboard.ledger.quotedPositions}/${dashboard.ledger.activePositions}`} change={t('withLocalCache')} icon={RefreshCw} tone="worth" /><RendimentoCard titolo={t('twrReturn')} spiegazione={t('twrHint')} esito={dashboard.returns.twr} /><RendimentoCard titolo={t('xirrReturn')} spiegazione={t('xirrHint')} esito={dashboard.returns.xirr} /></div>
+      {/* Il metodo si dichiara: chi legge un rendimento ha diritto di sapere su
+          cosa e' calcolato, e da quando. */}
+      {dashboard.returns.since && <p className="text-xs text-[#7b8784]">{t('returnsMethod', { from: formatDate(`${dashboard.returns.since}T12:00:00`, { month: 'long', year: 'numeric' }), to: formatDate(`${dashboard.returns.asOf}T12:00:00`, { month: 'long', year: 'numeric' }) })}</p>}
       <Card className="border-black/6 bg-white shadow-sm"><CardHeader className="flex-row items-start justify-between gap-4"><div><CardTitle className="text-[17px]">{t('valueAndInvestedCapital')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('valueAndInvestedCapitalSubtitle')}</p></div><Button type="button" variant="outline" disabled={busy} onClick={async () => { setBusy(true); setError(''); try { const outcome = await onRefresh(); if (outcome.errors.length) setError(t('quotesRefreshedWithErrors', { ok: outcome.updated, ko: outcome.errors.length })); else if (outcome.updated === 0) setError(t('noTickersConfigured')); } catch { setError(t('cannotReachQuoteSource')); } finally { setBusy(false); } }}><RefreshCw className={`size-4 ${busy ? 'animate-spin' : ''}`} />{t('refreshQuotes')}</Button></CardHeader><CardContent>
         <div className="mb-3 flex w-fit gap-1 rounded-lg border border-black/6 bg-[#f4f5f1] p-1 text-xs">
           {([['amount', t('inEuro')], ['return', t('inPercent')]] as const).map(([value, label]) => (
