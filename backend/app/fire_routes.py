@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 from .core_routes import _net_worth_breakdown, _summary_core, budget_actual_year, net_worth_series, nomi_categorie
 from .database import get_session
 from .fire_engine import Flusso, piano_fire
+from .fire_montecarlo import EsitoMonteCarlo, simula
 from .models import IncomeStream, RetirementProfile
 
 router = APIRouter()
@@ -51,9 +52,11 @@ TIPI_AMMESSI = frozenset({"annuity", "capital"})
 TRAGUARDI = {"solo_ponte": "bridge"}
 
 # Uno scenario solo sarebbe una bugia di precisione: il rischio vero non e' la
-# media dei rendimenti ma la loro *sequenza*. Tre curve dicono almeno che il
-# futuro ha una larghezza. Gli scarti sono ipotesi dichiarate, non previsioni.
-SCARTO_SCENARI = Decimal("0.02")
+# media dei rendimenti ma la loro *sequenza*. Un rendimento costante pero' non
+# produce mai una sequenza sfortunata, quindi uno scarto fisso sulla media non
+# poteva dirlo: diceva cosa succede se la media e' diversa, non se i primi anni
+# di prelievo vanno male. La larghezza ora la misurano i percorsi di
+# `fire_montecarlo`, e le due curve laterali sono i loro percentili.
 
 # Fin dove si disegna. Il motore calcola fino a 100 anni - l'esaurimento del
 # capitale va visto anche se arriva tardi - ma oltre i 90 la curva serve solo
@@ -261,15 +264,12 @@ def fire(session: Session = Depends(get_session)) -> dict[str, Any]:
     c = _contesto(session, profilo)
     try:
         piano = _piano(c)
-        centrale = _frazione(profilo.real_return, "4")
-        scenari = {
-            "pessimistic": _piano(c, rendimento=max(centrale - SCARTO_SCENARI, Decimal("-0.99"))),
-            "optimistic": _piano(c, rendimento=centrale + SCARTO_SCENARI),
-        }
+        esito = _montecarlo(c, piano)
+        scenari = {"p10": esito.percentili[10], "p90": esito.percentili[90]}
         leva = _leva(c, piano)
     except ValueError as errore:
         raise _errore_motore(errore) from errore
-    return _risposta(c, piano, scenari, _storico_patrimonio(session, c.oggi), leva)
+    return _risposta(c, piano, esito, scenari, _storico_patrimonio(session, c.oggi), leva)
 
 
 def _piano(c: _Contesto, versamenti: Decimal | None = None, rendimento: Decimal | None = None,
@@ -294,6 +294,32 @@ def _piano(c: _Contesto, versamenti: Decimal | None = None, rendimento: Decimal 
         # queste cambiano con la storia: un profilo salvato ieri non deve
         # rompere la pagina oggi. Lean pari alle spese equivale a FI.
         spese_lean_annue=None if lean is None else min(Decimal(lean), c.spese_pensione),
+    )
+
+
+def _montecarlo(c: _Contesto, piano) -> EsitoMonteCarlo:
+    """La distribuzione del piano, sulle rendite che il motore ha gia' calcolato.
+
+    Le entrate non si ricalcolano qui: il rischio di sequenza riguarda i
+    rendimenti del capitale, non le pensioni, e una seconda implementazione dei
+    flussi prima o poi divergerebbe dalla prima.
+
+    Si simula almeno fino al ritiro. Fermarsi a 90 anni con un ritiro a 95
+    direbbe "regge sempre" per il solo motivo che la finestra si chiude prima
+    di cominciare a prelevare; oltre i 90 la curva non si disegna comunque.
+    """
+    ritiro = max(c.profilo.target_retirement_age, c.eta)
+    return simula(
+        capitale=float(c.patrimonio["total"]),
+        # In pensione si spendono queste, non quelle di oggi.
+        spese_annue=float(c.spese_pensione),
+        versamenti_annui=float(c.versamenti),
+        entrate_per_eta={p.eta: float(p.rendite) for p in piano.serie},
+        eta_oggi=c.eta, eta_ritiro=ritiro,
+        eta_fine=max(ETA_FINE_GRAFICO, ritiro),
+        rendimento_medio=float(_frazione(c.profilo.real_return, "4")),
+        volatilita=float(c.profilo.return_volatility) / 100,
+        aliquota_prelievo=float(_frazione(c.profilo.withdrawal_tax_rate)),
     )
 
 
@@ -338,7 +364,11 @@ def _storico_patrimonio(session: Session, oggi: date) -> list[dict[str, Any]]:
     return [{"year": anno, "capital": valore} for anno, valore in sorted(per_anno.items())]
 
 
-def _risposta(c: _Contesto, piano, scenari, storico, leva) -> dict[str, Any]:
+def _risposta(c: _Contesto, piano, esito: EsitoMonteCarlo, scenari, storico, leva) -> dict[str, Any]:
+    # I percentili non portano l'anno: le eta' sono le stesse della serie
+    # centrale, quindi l'anno e' quello che il motore ha gia' scritto per
+    # quell'eta', non un secondo calendario calcolato qui.
+    anni = {p.eta: p.anno for p in piano.serie}
     return {
         "configured": True,
         "age": c.eta,
@@ -382,7 +412,16 @@ def _risposta(c: _Contesto, piano, scenari, storico, leva) -> dict[str, Any]:
             "milestones": {TRAGUARDI.get(nome, nome): {"capitalNeeded": float(t.capitale_necessario) if t.capitale_necessario is not None else None,
                                   "reached": t.raggiunto}
                            for nome, t in piano.traguardi.items()},
-            "warnings": list(piano.avvertenze),
+            "warnings": [*piano.avvertenze, "montecarlo_rendimenti_indipendenti"],
+            # La simulazione non e' una previsione piu' di quanto lo sia il
+            # piano: e' una distribuzione di ipotesi, e va detto che i
+            # rendimenti estratti sono indipendenti fra loro.
+            "monteCarlo": {
+                "successRate": float(esito.successo),
+                "paths": esito.percorsi,
+                "volatility": float(c.profilo.return_volatility) / 100,
+                "medianDepletionAge": esito.eta_esaurimento_mediana,
+            },
             # Le spese lean oltre quelle di riferimento vengono portate al loro
             # livello (vedi `_piano`): la pagina deve dirlo, altrimenti Lean e
             # FI mostrano lo stesso numero senza una ragione visibile.
@@ -390,9 +429,9 @@ def _risposta(c: _Contesto, piano, scenari, storico, leva) -> dict[str, Any]:
                           and Decimal(c.profilo.lean_annual_expenses) > c.spese_pensione,
             "history": storico,
             "leverage": leva,
-            "scenarios": {nome: [{"age": p.eta, "year": p.anno, "capital": float(p.capitale)}
-                                 for p in alt.serie if p.eta <= ETA_FINE_GRAFICO]
-                          for nome, alt in scenari.items()},
+            "scenarios": {nome: [{"age": p.eta, "year": anni.get(p.eta), "capital": float(p.capitale)}
+                                 for p in serie if p.eta <= ETA_FINE_GRAFICO]
+                          for nome, serie in scenari.items()},
         },
     }
 
@@ -400,7 +439,9 @@ def _risposta(c: _Contesto, piano, scenari, storico, leva) -> dict[str, Any]:
 def _profilo_dict(riga: RetirementProfile) -> dict[str, Any]:
     return {"birthYear": riga.birth_year, "country": riga.country,
             "targetRetirementAge": riga.target_retirement_age,
-            "realReturn": float(riga.real_return), "withdrawalRate": float(riga.withdrawal_rate),
+            "realReturn": float(riga.real_return),
+            "returnVolatility": float(riga.return_volatility),
+            "withdrawalRate": float(riga.withdrawal_rate),
             "withdrawalTaxRate": float(riga.withdrawal_tax_rate),
             "expenseBasis": riga.expense_basis,
             "customAnnualExpenses": float(riga.custom_annual_expenses) if riga.custom_annual_expenses is not None else None,
@@ -425,6 +466,7 @@ class ProfiloPayload(BaseModel):
     country: str = Field(min_length=2, max_length=2)
     target_retirement_age: int = Field(ge=18, le=100, alias="targetRetirementAge")
     real_return: float = Field(ge=-50, le=50, alias="realReturn")
+    return_volatility: float = Field(default=15, ge=0, le=100, alias="returnVolatility")
     withdrawal_rate: float = Field(gt=0, le=100, alias="withdrawalRate")
     withdrawal_tax_rate: float = Field(ge=0, lt=100, alias="withdrawalTaxRate")
     expense_basis: str = Field(default="average", alias="expenseBasis")
@@ -445,6 +487,7 @@ def salva_profilo(payload: ProfiloPayload, session: Session = Depends(get_sessio
     for campo in ("birth_year", "country", "target_retirement_age", "expense_basis", "notes"):
         setattr(riga, campo, getattr(payload, campo))
     riga.real_return = Decimal(str(payload.real_return))
+    riga.return_volatility = Decimal(str(payload.return_volatility))
     riga.withdrawal_rate = Decimal(str(payload.withdrawal_rate))
     riga.withdrawal_tax_rate = Decimal(str(payload.withdrawal_tax_rate))
     riga.custom_annual_expenses = (Decimal(str(payload.custom_annual_expenses))

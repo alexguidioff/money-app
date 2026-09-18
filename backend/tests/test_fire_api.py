@@ -22,13 +22,14 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.database import Base
 from unittest.mock import patch
 
-from app.fire_routes import (_anni_di_riferimento, _frazione, _spese_di_riferimento, _spese_in_pensione,
+from app.fire_routes import (ETA_FINE_GRAFICO, _anni_di_riferimento, _frazione, _spese_di_riferimento, _spese_in_pensione,
                              _storico_patrimonio, _versamenti, elenco_flussi, leggi_regole, salva_regole,
                              spostamento_pensioni, crea_flusso, modifica_flusso, RegolaPayload, RegolePayload,
                              flusso_da_riga, fire, leggi_profilo, salva_profilo,
@@ -451,3 +452,63 @@ class FlussiCheRompevanoLaPaginaTests(unittest.TestCase):
             modifica_flusso(riga["id"], FlussoPayload(name="INPS", amount=6000, start_age=67,
                                                       amount_if_stopping_now=9000), self.session)
         self.assertEqual(Decimal("3000"), self.session.get(IncomeStream, riga["id"]).amount_if_stopping_now)
+
+
+class MonteCarloTests(unittest.TestCase):
+    """La banda del grafico: da scarto sul rendimento medio a percentili veri."""
+
+    def setUp(self) -> None:
+        self.engine = create_engine("sqlite://")
+        Base.metadata.create_all(self.engine)
+        self.session = Session(self.engine)
+        salva_profilo(ProfiloPayload(
+            birth_year=date.today().year - 28, country="CH", target_retirement_age=65,
+            real_return=6, withdrawal_rate=4, withdrawal_tax_rate=0,
+            expense_basis="custom", custom_annual_expenses=20000), self.session)
+        self.session.add(IncomeStream(name="AVS", kind="annuity", amount=Decimal("12000"), start_age=65))
+        self.session.commit()
+
+    def tearDown(self) -> None:
+        self.session.close()
+
+    def test_la_simulazione_arriva_alla_pagina(self) -> None:
+        piano = fire(self.session)["plan"]
+        esito = piano["monteCarlo"]
+        self.assertEqual(5000, esito["paths"])
+        self.assertGreaterEqual(esito["successRate"], 0)
+        self.assertLessEqual(esito["successRate"], 1)
+        self.assertAlmostEqual(0.15, esito["volatility"])
+        # Le due curve laterali coprono le stesse eta' della centrale, fino a
+        # dove il grafico si disegna.
+        self.assertEqual(len(piano["series"]), len(piano["scenarios"]["p10"]))
+        self.assertEqual(len(piano["series"]), len(piano["scenarios"]["p90"]))
+        self.assertEqual(ETA_FINE_GRAFICO, piano["scenarios"]["p90"][-1]["age"])
+
+    def test_il_decimo_percentile_non_supera_il_novantesimo(self) -> None:
+        piano = fire(self.session)["plan"]
+        for basso, alto in zip(piano["scenarios"]["p10"], piano["scenarios"]["p90"], strict=True):
+            self.assertEqual(basso["age"], alto["age"])
+            self.assertLessEqual(basso["capital"], alto["capital"])
+            self.assertIsNotNone(basso["year"])
+
+    def test_quando_non_regge_la_pagina_sa_a_che_eta(self) -> None:
+        # Patrimonio zero e nessun risparmio: ogni percorso si esaurisce al
+        # primo anno di ritiro. Una percentuale senza l'eta' non direbbe niente.
+        esito = fire(self.session)["plan"]["monteCarlo"]
+        self.assertEqual(0.0, esito["successRate"])
+        self.assertEqual(65, esito["medianDepletionAge"])
+
+    def test_un_profilo_salvato_prima_prende_la_volatilita_predefinita(self) -> None:
+        # La colonna nuova nasce con 15 e il salvataggio la mette se manca: chi
+        # aveva gia' un profilo non deve ritrovarsi un campo vuoto ne' un errore.
+        self.assertEqual(15.0, leggi_profilo(self.session)["returnVolatility"])
+        self.assertEqual(0.15, fire(self.session)["plan"]["monteCarlo"]["volatility"])
+
+    def test_una_volatilita_impossibile_non_si_salva(self) -> None:
+        # Il modello la rifiuta e FastAPI ne fa un 422: qui si presidia il
+        # confine, cioe' che il valore non passi oltre.
+        for valore in (-1, 101):
+            with self.assertRaises(ValidationError):
+                ProfiloPayload(birth_year=1998, country="CH", target_retirement_age=65,
+                               real_return=4, return_volatility=valore, withdrawal_rate=4,
+                               withdrawal_tax_rate=0)
