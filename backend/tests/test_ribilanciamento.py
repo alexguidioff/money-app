@@ -9,8 +9,15 @@ normalizzare pesi che non tornano, produce numeri plausibili e sbagliati.
 from __future__ import annotations
 
 import unittest
+from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+from app.core_routes import investments_dashboard
+from app.database import Base
+from app.models import InvestmentInstrument, InvestmentTransaction
 from app.ribilanciamento import PosizionePeso, riequilibrio
 
 
@@ -95,6 +102,69 @@ class RiequilibrioTests(unittest.TestCase):
             esito = riequilibrio(posizioni)
             self.assertEqual(Decimal("0"), esito.totale)
             self.assertEqual((), esito.righe)
+
+
+class RiequilibrioNellaRispostaTests(unittest.TestCase):
+    """Il blocco arriva davvero nella pagina, con i pesi della tabella sopra.
+
+    I pesi obiettivo sono frazioni (0,6 = 60%): la formula del piano sottrae il
+    peso al peso, e una tolleranza di 0,005 su una scala 0-100 non vorrebbe dire
+    niente. Senza prezzi in cache il valore di mercato e' l'ultimo prezzo di
+    transazione, come per le posizioni.
+    """
+
+    def setUp(self) -> None:
+        self.engine = create_engine("sqlite://")
+        Base.metadata.create_all(self.engine)
+        self.session = Session(self.engine)
+        self.session.add_all([
+            InvestmentInstrument(name="ETF Mondo", provider_symbol="SWDA.MI", currency="EUR",
+                                 target_weight=Decimal("0.6")),
+            InvestmentInstrument(name="Obbligazioni", provider_symbol="AGGH.MI", currency="EUR",
+                                 target_weight=Decimal("0.4")),
+            InvestmentInstrument(name="Da classificare", provider_symbol="XXX.MI", currency="EUR"),
+        ])
+        self.session.commit()
+
+    def tearDown(self) -> None:
+        self.session.close()
+
+    def _possiede(self, nome: str, quote: str, prezzo: str) -> None:
+        self.session.add(InvestmentTransaction(name=nome, transaction_type="Buy", occurred_on=date(2024, 1, 1),
+                                               units=Decimal(quote), price=Decimal(prezzo),
+                                               amount=Decimal(quote) * Decimal(prezzo)))
+        self.session.commit()
+
+    def test_in_linea_con_gli_obiettivi_non_propone_niente(self) -> None:
+        self._possiede("ETF Mondo", "60", "100")
+        self._possiede("Obbligazioni", "40", "100")
+        riordino = investments_dashboard(self.session)["rebalance"]
+        self.assertEqual(10000.0, riordino["total"])
+        self.assertEqual(1.0, riordino["declaredWeight"])
+        self.assertEqual([], riordino["rows"])
+        self.assertEqual([], riordino["warnings"])
+
+    def test_chi_e_fuori_peso_compare_con_l_importo_firmato(self) -> None:
+        self._possiede("ETF Mondo", "80", "100")
+        self._possiede("Obbligazioni", "20", "100")
+        riordino = investments_dashboard(self.session)["rebalance"]
+        self.assertEqual(["ETF Mondo", "Obbligazioni"], [r["name"] for r in riordino["rows"]])
+        vendita, acquisto = riordino["rows"]
+        self.assertEqual(0.8, vendita["currentWeight"])
+        self.assertEqual(0.6, vendita["targetWeight"])
+        self.assertEqual(0.2, vendita["drift"])
+        # Il segno e' il verso: positivo sopra il peso obiettivo, quindi da
+        # vendere. Le due operazioni si compensano e il totale non si muove.
+        self.assertEqual(2000.0, vendita["amount"])
+        self.assertEqual(-2000.0, acquisto["amount"])
+
+    def test_lo_strumento_senza_obiettivo_non_entra_nel_denominatore(self) -> None:
+        self._possiede("ETF Mondo", "60", "100")
+        self._possiede("Obbligazioni", "40", "100")
+        self._possiede("Da classificare", "500", "100")
+        riordino = investments_dashboard(self.session)["rebalance"]
+        self.assertEqual(10000.0, riordino["total"])
+        self.assertEqual([], riordino["rows"])
 
 
 if __name__ == "__main__":

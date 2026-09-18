@@ -28,6 +28,7 @@ from .models import (Account, AppSetting, BudgetPlan, CategorizationRule,
                      InstrumentProfile as InstrumentProfileModel,
                      AccountValuation, LiabilityTransactionDetail,
                      LookupOption, MarketPrice, Note, Transaction, TransactionLedgerLink)
+from .ribilanciamento import PosizionePeso, riequilibrio
 
 router = APIRouter()
 # I template delle ricorrenze vivono nella stessa tabella dei movimenti ma non
@@ -2271,10 +2272,28 @@ def investments_dashboard(session: Session = Depends(get_session)) -> dict[str, 
             "sector": instrument.sector if instrument else "Altro",
             "targetWeight": float(instrument.target_weight) if instrument and instrument.target_weight is not None else None,
         })
+    # Il riequilibrio si ricava dalle posizioni appena costruite, non da una
+    # seconda lettura: due elenchi calcolati a parte prima o poi divergono, e la
+    # pagina mostrerebbe pesi che non corrispondono alla tabella sopra.
+    riordino = riequilibrio([
+        PosizionePeso(nome=voce["name"], valore=Decimal(str(voce["marketValue"])),
+                      obiettivo=None if voce["targetWeight"] is None else Decimal(str(voce["targetWeight"])),
+                      aperta=voce["isOpen"])
+        for voce in position_items])
     return {"snapshot": {"period": latest["period"] if latest else None, "marketValue": market, "investedCapital": invested, "gain": gain, "returnRate": round(gain/invested*100, 2) if invested else 0}, "ledger": {"marketValue": market, "costBasis": invested, "gain": gain, "quotedPositions": quoted, "activePositions": len(positions)}, "positions": position_items, "history": [{"period": row["period"], "label": f"{MONTHS[date.fromisoformat(row['period']).month-1]} {date.fromisoformat(row['period']).year}", "marketValue": row["marketValue"], "investedCapital": row["investedCapital"], "gain": round(row["marketValue"] - row["investedCapital"], 2),
         # Rendimento in percentuale: distingue "sta rendendo" da "ho versato di piu'".
         "returnRate": round((row["marketValue"] / row["investedCapital"] - 1) * 100, 2) if row["investedCapital"] else None}
-        for row in history], "contributions": contributions}
+        for row in history], "contributions": contributions,
+        # Gli importi sono firmati: positivo vuol dire sopra il peso obiettivo,
+        # cioe' da vendere. La pagina decide il colore, non riceve una decisione.
+        "rebalance": {
+            "total": float(riordino.totale),
+            "declaredWeight": float(riordino.pesi_dichiarati),
+            "warnings": list(riordino.avvisi),
+            "rows": [{"name": r.nome, "currentWeight": float(r.peso_attuale),
+                      "targetWeight": float(r.obiettivo), "drift": float(r.deriva),
+                      "amount": float(r.importo)} for r in riordino.righe],
+        }}
 
 
 @router.get("/api/investments/ledger")
