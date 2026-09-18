@@ -4286,10 +4286,16 @@ function TargetWeightsEditor({ posizioni, onInstrumentSave }: {
   }
 
   if (!modificabili.length) return null;
-  return <details className="border-t border-black/6">
-    <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-[#52615d]">{t('allocWeightsEditor')}</summary>
+  // La riga apribile si porta il triangolo del browser e un fondo che cambia
+  // al passaggio: senza, non si capisce che sotto la tabella delle proposte
+  // comincia un'altra cosa, non un secondo pezzo della stessa.
+  return <details className="group border-t border-black/6">
+    <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3 text-sm font-medium text-[#52615d] transition hover:bg-[#f8f9f6] [&::-webkit-details-marker]:hidden">
+      {t('allocWeightsEditor')}
+      <ChevronDown className="size-4 shrink-0 text-black/45 transition group-open:rotate-180" />
+    </summary>
     <div className="overflow-x-auto"><table className="w-full text-sm">
-      <thead className="bg-[#f4f5f1] text-xs text-[#52615d]"><tr>
+      <thead className="text-xs text-[#87918e]"><tr>
         <th className="px-5 py-2 text-left">{t('instrument')}</th>
         <th className="px-3 py-2 text-right">{t('allocTargetWeight')}</th>
       </tr></thead>
@@ -4330,13 +4336,15 @@ function RebalanceCard({ riordino, posizioni, onInstrumentSave }: {
     <CardContent className="p-0">
       {/* L'avviso sta sopra la tabella perche' e' l'unica cosa che puo' rendere
           sbagliati tutti i numeri sotto: se i pesi non tornano, la colpa non e'
-          del calcolo. */}
-      {riordino.warnings.includes('pesi_non_sommano_a_cento') && <p role="alert" className="mx-5 mt-3 rounded-lg border border-[#f2d7cb] bg-[#fdf1ec] px-3 py-2 text-xs text-[#a05f4e]">{t('allocTargetSum', { sum: percentuale(riordino.declaredWeight) })}</p>}
+          del calcolo. Senza pesi obiettivo, pero', non c'e' nessuna somma da
+          correggere: li' l'avviso direbbe "sommano a 0%, non al 100%" sopra la
+          riga che spiega che non c'e' niente da riequilibrare. */}
+      {riordino.total > 0 && riordino.warnings.includes('pesi_non_sommano_a_cento') && <p role="alert" className="mx-5 mt-3 rounded-lg border border-[#f2d7cb] bg-[#fdf1ec] px-3 py-2 text-xs text-[#a05f4e]">{t('allocTargetSum', { sum: percentuale(riordino.declaredWeight) })}</p>}
       {riordino.total <= 0
         ? <p className="px-5 py-6 text-sm text-[#71807c]">{t('allocNoTargets')}</p>
         : riordino.rows.length === 0
           ? <p className="px-5 py-6 text-sm font-medium text-[#2d7b65]">{t('allocInLine')}</p>
-          : <div className="overflow-x-auto"><table className="w-full text-sm">
+          : <div className="overflow-x-auto"><table className="min-w-[640px] w-full text-sm">
             <thead className="bg-[#f4f5f1] text-xs text-[#52615d]"><tr><th className="px-5 py-3 text-left">{t('instrument')}</th><th className="px-3 py-3 text-right">{t('allocCurrentWeight')}</th><th className="px-3 py-3 text-right">{t('allocTargetWeight')}</th><th className="px-3 py-3 text-right">{t('allocDrift')}</th><th className="px-5 py-3 text-right">{t('allocAmount')}</th></tr></thead>
             <tbody className="divide-y divide-black/5">{riordino.rows.map((riga) => {
               const comprare = riga.amount < 0;
