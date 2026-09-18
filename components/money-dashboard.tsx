@@ -198,7 +198,10 @@ type LinkedLedgerSummary = {
 
 type LinkedLedgerDraft = {
   name: string;
-  transactionType: 'Buy' | 'Sell';
+  transactionType: LedgerTypeDaMovimento;
+  // Solo per i tipi senza quote: un dividendo muove il suo importo, non
+  // quote per prezzo.
+  amount: string;
   units: string;
   price: string;
   fee: string;
@@ -440,6 +443,17 @@ const LEDGER_TYPE_LABEL: Record<LedgerOperationType, TranslationKey> = {
   Buy: 'buy', Sell: 'sell', Dividend: 'ledgerDividend', Fee: 'ledgerFee',
   Deposit: 'ledgerDeposit', Withdrawal: 'ledgerWithdrawal', Split: 'ledgerSplit',
 };
+
+// I tipi che si possono creare partendo da un movimento. Lo split non c'e':
+// non muove un centesimo e vuole importo zero, mentre un movimento un importo
+// ce l'ha sempre. Gli altri sei si collegano, perche' la regola del
+// collegamento guarda il tipo del *movimento* (dev'essere Investment), non
+// quello dell'operazione.
+export const LEDGER_TYPES_DA_MOVIMENTO = (Object.keys(LEDGER_TYPE_LABEL) as LedgerOperationType[])
+  .filter((tipo) => tipo !== 'Split');
+export type LedgerTypeDaMovimento = Exclude<LedgerOperationType, 'Split'>;
+// Senza quote: si digita l'importo, non quote e prezzo.
+export const SOLO_CONTANTE_DA_MOVIMENTO: readonly LedgerTypeDaMovimento[] = ['Dividend', 'Fee', 'Deposit', 'Withdrawal'];
 
 export type InvestmentTransaction = { id: number; occurredOn: string; name: string; transactionType: LedgerOperationType; amount: number; signedAmount: number; units: number; price: number; currency: string; fee: number; notes: string | null; runningUnits: number;
   // Agganciata a un movimento dei conti: e' il collegamento che dice a quale
@@ -852,7 +866,7 @@ function MoneyDashboardInner() {
   const [linkPickerQuery, setLinkPickerQuery] = useState('');
   const [nuovaOpAperta, setNuovaOpAperta] = useState(false);
   const [nuovaOpNome, setNuovaOpNome] = useState('');
-  const [nuovaOpTipo, setNuovaOpTipo] = useState<'Buy' | 'Sell'>('Buy');
+  const [nuovaOpTipo, setNuovaOpTipo] = useState<LedgerTypeDaMovimento>('Buy');
   const [nuovaOpImporto, setNuovaOpImporto] = useState('');
   const [nuovaOpQuote, setNuovaOpQuote] = useState('');
   const [linkEditingBusy, setLinkEditingBusy] = useState(false);
@@ -1246,6 +1260,7 @@ function MoneyDashboardInner() {
             linked_ledger: linkedLedgerRows.map((row) => ({
               name: row.name.trim(),
               transaction_type: row.transactionType,
+              amount: SOLO_CONTANTE_DA_MOVIMENTO.includes(row.transactionType) ? Number(row.amount || 0) : undefined,
               units: Number(row.units || 0),
               price: Number(row.price || 0),
               currency: 'EUR',
@@ -2499,7 +2514,7 @@ function MoneyDashboardInner() {
                       const next = event.target.checked;
                       setLinkLedgerOpen(next);
                       if (!next) setLinkedLedgerRows([]);
-                      else if (linkedLedgerRows.length === 0) setLinkedLedgerRows([{ name: '', transactionType: 'Buy', units: '', price: '', fee: '0', notes: '' }]);
+                      else if (linkedLedgerRows.length === 0) setLinkedLedgerRows([{ name: '', transactionType: 'Buy', amount: '', units: '', price: '', fee: '0', notes: '' }]);
                     }}
                     className="size-4 accent-[var(--money-primary)]"
                   />
@@ -2526,12 +2541,24 @@ function MoneyDashboardInner() {
                             <Input list="strumenti-esistenti" autoComplete="off" value={row.name} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, name: event.target.value } : item))} className="h-8 bg-white text-xs" />
                           </label>
                           <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('operation')}
-                            <select value={row.transactionType} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, transactionType: event.target.value as 'Buy' | 'Sell' } : item))} className="h-8 w-full rounded-md border border-input bg-white px-2 text-xs">
-                              <option value="Buy">{t('buy')}</option>
-                              <option value="Sell">{t('sell')}</option>
+                            <select value={row.transactionType} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, transactionType: event.target.value as LedgerTypeDaMovimento } : item))} className="h-8 w-full rounded-md border border-input bg-white px-2 text-xs">
+                              {LEDGER_TYPES_DA_MOVIMENTO.map((tipo) => <option key={tipo} value={tipo}>{t(LEDGER_TYPE_LABEL[tipo])}</option>)}
                             </select>
                           </label>
                         </div>
+                        {SOLO_CONTANTE_DA_MOVIMENTO.includes(row.transactionType) ? (
+                          // Quote e prezzo non vogliono dire niente per un dividendo
+                          // o un versamento: al loro posto l'importo, come fa il
+                          // modulo del ledger.
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldAmount')}
+                              <Input type="number" step="0.01" value={row.amount} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, amount: event.target.value } : item))} className="h-8 bg-white text-xs" />
+                            </label>
+                            <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fee')}
+                              <Input type="number" step="0.01" value={row.fee} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, fee: event.target.value } : item))} className="h-8 bg-white text-xs" />
+                            </label>
+                          </div>
+                        ) : (
                         <div className="grid grid-cols-3 gap-2">
                           <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('units')}
                             <Input type="number" step="0.00000001" value={row.units} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, units: event.target.value } : item))} className="h-8 bg-white text-xs" />
@@ -2543,11 +2570,16 @@ function MoneyDashboardInner() {
                             <Input type="number" step="0.01" value={row.fee} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, fee: event.target.value } : item))} className="h-8 bg-white text-xs" />
                           </label>
                         </div>
+                        )}
                       </div>
                     ))}
-                    <Button type="button" variant="outline" size="sm" onClick={() => setLinkedLedgerRows([...linkedLedgerRows, { name: '', transactionType: 'Buy', units: '', price: '', fee: '0', notes: '' }])} className="h-7 text-xs">+ {t('addInstrument')}</Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setLinkedLedgerRows([...linkedLedgerRows, { name: '', transactionType: 'Buy', amount: '', units: '', price: '', fee: '0', notes: '' }])} className="h-7 text-xs">+ {t('addInstrument')}</Button>
                     {linkedLedgerRows.length > 0 && (() => {
-                      const total = linkedLedgerRows.reduce((acc, r) => acc + Number(r.units || 0) * Number(r.price || 0), 0);
+                      // Il lordo di una riga di solo contante e' il suo importo: quote
+                      // per prezzo darebbe zero e il riepilogo direbbe "0,00" sotto un
+                      // dividendo da cento euro.
+                      const total = linkedLedgerRows.reduce((acc, r) => acc + (SOLO_CONTANTE_DA_MOVIMENTO.includes(r.transactionType)
+                        ? Number(r.amount || 0) : Number(r.units || 0) * Number(r.price || 0)), 0);
                       const fees = linkedLedgerRows.reduce((acc, r) => acc + Number(r.fee || 0), 0);
                       // Il preview della somma si appoggia sullo stato del form
                       // tenuto aggiornato dal onChange del form stesso.
@@ -2612,7 +2644,7 @@ function MoneyDashboardInner() {
                       <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('instrument')}
                         <Input list="strumenti-esistenti" autoComplete="off" value={nuovaOpNome} onChange={(e) => setNuovaOpNome(e.target.value)} className="h-8 bg-white text-xs" /></label>
                       <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('operation')}
-                        <select value={nuovaOpTipo} onChange={(e) => setNuovaOpTipo(e.target.value as 'Buy' | 'Sell')} className="h-8 w-full rounded-md border border-input bg-white px-2 text-xs"><option value="Buy">{t('buy')}</option><option value="Sell">{t('sell')}</option></select></label>
+                        <select value={nuovaOpTipo} onChange={(e) => setNuovaOpTipo(e.target.value as LedgerTypeDaMovimento)} className="h-8 w-full rounded-md border border-input bg-white px-2 text-xs">{LEDGER_TYPES_DA_MOVIMENTO.map((tipo) => <option key={tipo} value={tipo}>{t(LEDGER_TYPE_LABEL[tipo])}</option>)}</select></label>
                       <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldAmount')}
                         <Input type="number" step="0.01" value={nuovaOpImporto} onChange={(e) => setNuovaOpImporto(e.target.value)} className="h-8 bg-white text-xs" /></label>
                       <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('units')}

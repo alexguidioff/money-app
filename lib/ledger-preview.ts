@@ -1,4 +1,12 @@
-export type RigaOperazione = { transactionType: 'Buy' | 'Sell'; units: string; price: string; fee: string };
+export type LedgerRigaTipo = 'Buy' | 'Sell' | 'Dividend' | 'Fee' | 'Deposit' | 'Withdrawal';
+export type RigaOperazione = { transactionType: LedgerRigaTipo; units: string; price: string; fee: string; amount?: string };
+
+// Dividendi, commissioni, versamenti e prelievi non hanno quote: il denaro che
+// muovono e' il loro importo, non quote per prezzo. Tenerli qui dentro evita
+// che una riga di solo contante risulti da zero euro e faccia sembrare
+// l'operazione "non corrispondente" al movimento.
+const SOLO_CONTANTE: readonly LedgerRigaTipo[] = ['Dividend', 'Fee', 'Deposit', 'Withdrawal'];
+const IN_ENTRATA: readonly LedgerRigaTipo[] = ['Sell', 'Dividend', 'Deposit'];
 
 /**
  * Il denaro che le operazioni del ledger muovono, da confrontare con l'importo
@@ -8,8 +16,12 @@ export type RigaOperazione = { transactionType: 'Buy' | 'Sell'; units: string; p
  */
 export function nettoOperazioni(rows: readonly RigaOperazione[]): number {
   return Math.abs(rows.reduce((acc, r) => {
-    const lordo = Number(r.units || 0) * Number(r.price || 0);
     const fee = Number(r.fee || 0);
+    if (SOLO_CONTANTE.includes(r.transactionType)) {
+      const importo = Number(r.amount || 0);
+      return acc + (IN_ENTRATA.includes(r.transactionType) ? importo : -importo);
+    }
+    const lordo = Number(r.units || 0) * Number(r.price || 0);
     return acc + (r.transactionType === 'Sell' ? -(lordo - fee) : lordo + fee);
   }, 0));
 }
