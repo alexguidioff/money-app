@@ -1219,9 +1219,17 @@ const it = {
   ruleAmountRange: 'L\'importo minimo è più alto del massimo.',
   ruleLimitReached: 'Hai già 200 regole: cancellane una per aggiungerne un\'altra.',
   ruleDuplicate: 'Esiste già una regola con questo testo e questo tipo.',
-  categoryFromRule: 'Categoria dalla regola: «{{rule}}»',
+  categoryFromRule: 'da: {{rule}}',
   categoryRuleClear: 'Togli la regola',
   statementRulesDiscarded: 'Regole non valide, ignorate in questa anteprima: {{rules}}',
+  learnFromHistory: 'Impara dai miei movimenti',
+  ruleProposals: 'Regole proposte',
+  ruleOccurrences: '{{count}} volte',
+  ruleConfidenceSure: 'sicura',
+  ruleConfidenceUnsure: 'da controllare',
+  ruleInconsistent: 'Descrizioni incoerenti',
+  ruleAcceptChecked: 'Accetta le spuntate ({{count}})',
+  ruleNoneFound: 'Non c\'è ancora niente da imparare: servono almeno tre movimenti con la stessa descrizione e la stessa categoria.',
 
 };
 
@@ -2406,9 +2414,17 @@ const en: TranslationTable = {
   ruleAmountRange: 'The minimum amount is higher than the maximum.',
   ruleLimitReached: 'You already have 200 rules: delete one to add another.',
   ruleDuplicate: 'A rule with this text and this type already exists.',
-  categoryFromRule: 'Category from the rule: “{{rule}}”',
+  categoryFromRule: 'from: {{rule}}',
   categoryRuleClear: 'Remove the rule',
   statementRulesDiscarded: 'Invalid rules, ignored in this preview: {{rules}}',
+  learnFromHistory: 'Learn from my transactions',
+  ruleProposals: 'Suggested rules',
+  ruleOccurrences: '{{count}} times',
+  ruleConfidenceSure: 'sure',
+  ruleConfidenceUnsure: 'to check',
+  ruleInconsistent: 'Inconsistent descriptions',
+  ruleAcceptChecked: 'Accept the checked ones ({{count}})',
+  ruleNoneFound: 'Nothing to learn yet: it takes at least three transactions with the same description and the same category.',
 
 };
 
@@ -3590,9 +3606,17 @@ const de: TranslationTable = {
   ruleAmountRange: 'Der Mindestbetrag ist höher als der Höchstbetrag.',
   ruleLimitReached: 'Du hast bereits 200 Regeln: lösche eine, um eine weitere hinzuzufügen.',
   ruleDuplicate: 'Eine Regel mit diesem Text und diesem Typ gibt es bereits.',
-  categoryFromRule: 'Kategorie aus der Regel: «{{rule}}»',
+  categoryFromRule: 'aus: {{rule}}',
   categoryRuleClear: 'Regel entfernen',
   statementRulesDiscarded: 'Ungültige Regeln, in dieser Vorschau ignoriert: {{rules}}',
+  learnFromHistory: 'Aus meinen Buchungen lernen',
+  ruleProposals: 'Vorgeschlagene Regeln',
+  ruleOccurrences: '{{count}} Mal',
+  ruleConfidenceSure: 'sicher',
+  ruleConfidenceUnsure: 'zu prüfen',
+  ruleInconsistent: 'Widersprüchliche Beschreibungen',
+  ruleAcceptChecked: 'Ausgewählte übernehmen ({{count}})',
+  ruleNoneFound: 'Noch nichts zu lernen: es braucht mindestens drei Buchungen mit derselben Beschreibung und derselben Kategorie.',
 
 };
 
@@ -4774,9 +4798,17 @@ const es: TranslationTable = {
   ruleAmountRange: 'El importe mínimo es mayor que el máximo.',
   ruleLimitReached: 'Ya tienes 200 reglas: borra una para añadir otra.',
   ruleDuplicate: 'Ya existe una regla con este texto y este tipo.',
-  categoryFromRule: 'Categoría desde la regla: «{{rule}}»',
+  categoryFromRule: 'de: {{rule}}',
   categoryRuleClear: 'Quitar la regla',
   statementRulesDiscarded: 'Reglas no válidas, ignoradas en esta vista previa: {{rules}}',
+  learnFromHistory: 'Aprender de mis movimientos',
+  ruleProposals: 'Reglas propuestas',
+  ruleOccurrences: '{{count}} veces',
+  ruleConfidenceSure: 'segura',
+  ruleConfidenceUnsure: 'por revisar',
+  ruleInconsistent: 'Descripciones incoherentes',
+  ruleAcceptChecked: 'Aceptar las marcadas ({{count}})',
+  ruleNoneFound: 'Todavía no hay nada que aprender: hacen falta al menos tres movimientos con la misma descripción y la misma categoría.',
 
 };
 
@@ -5978,9 +6010,17 @@ const fr: TranslationTable = {
   ruleAmountRange: 'Le montant minimum est supérieur au maximum.',
   ruleLimitReached: 'Tu as déjà 200 règles : supprimes-en une pour en ajouter une autre.',
   ruleDuplicate: 'Une règle avec ce texte et ce type existe déjà.',
-  categoryFromRule: 'Catégorie issue de la règle : « {{rule}} »',
+  categoryFromRule: 'de : {{rule}}',
   categoryRuleClear: 'Retirer la règle',
   statementRulesDiscarded: 'Règles non valides, ignorées dans cet aperçu : {{rules}}',
+  learnFromHistory: 'Apprendre de mes mouvements',
+  ruleProposals: 'Règles proposées',
+  ruleOccurrences: '{{count}} fois',
+  ruleConfidenceSure: 'sûre',
+  ruleConfidenceUnsure: 'à vérifier',
+  ruleInconsistent: 'Descriptions incohérentes',
+  ruleAcceptChecked: 'Accepter les cochées ({{count}})',
+  ruleNoneFound: 'Rien à apprendre pour l\'instant : il faut au moins trois mouvements avec la même description et la même catégorie.',
 
 };
 

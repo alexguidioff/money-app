@@ -3,7 +3,7 @@
 import { campiMancanti, downloadFile, responseError } from '@/lib/download';
 import { previewEffectiveDate } from '@/lib/effective-date';
 import { nettoOperazioni } from '@/lib/ledger-preview';
-import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationRulePayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
+import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
 import { messaggioErroreRegola } from '@/lib/rule-errors';
 import { SyntheticEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Flame,
@@ -6130,6 +6130,10 @@ function CategoryRulesCard({ rules, categories, apiUrl, onChanged }: {
   const [editId, setEditId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [errore, setErrore] = useState('');
+  const [proposte, setProposte] = useState<CategorizationSuggestionsData | null>(null);
+  // Le spuntate, per pattern: e' quello che distingue una proposta accettata da
+  // una solo mostrata, ed e' l'unica cosa che il lotto scrive.
+  const [spuntate, setSpuntate] = useState<Set<string>>(new Set());
 
   const chiama = async (percorso: string, metodo: string, corpo?: unknown): Promise<boolean> => {
     const risposta = await fetch(`${apiUrl}/api/categorization-rules${percorso}`, {
@@ -6146,7 +6150,7 @@ function CategoryRulesCard({ rules, categories, apiUrl, onChanged }: {
   const esegui = async (azione: () => Promise<boolean>) => {
     setBusy(true); setErrore('');
     try {
-      if (await azione()) await onChanged();
+      if (await azione()) onChanged();
     } catch {
       setErrore(t('ruleSaveError'));
     } finally { setBusy(false); }
@@ -6180,10 +6184,37 @@ function CategoryRulesCard({ rules, categories, apiUrl, onChanged }: {
   const intervallo = (riga: CategorizationRuleData) => riga.minAmount === null && riga.maxAmount === null ? '—'
     : `${riga.minAmount === null ? '' : formatEuro(riga.minAmount)} – ${riga.maxAmount === null ? '' : formatEuro(riga.maxAmount)}`;
 
+  // Le sicure arrivano spuntate, le incerte no: la spunta di partenza e' il
+  // giudizio dell'app, e resta un giudizio da cui si puo' dissentire.
+  const impara = () => void esegui(async () => {
+    const risposta = await fetch(`${apiUrl}/api/categorization-rules/suggest`, { method: 'POST' });
+    if (!risposta.ok) { setErrore(await messaggioErroreRegola(risposta, t)); return false; }
+    const trovate = await risposta.json() as CategorizationSuggestionsData;
+    setProposte(trovate);
+    setSpuntate(new Set(trovate.proposte.filter((p) => p.fiducia === 'sicura').map((p) => p.pattern)));
+    return false;
+  });
+
+  const accetta = () => void esegui(async () => {
+    const scelte = (proposte?.proposte ?? []).filter((p) => spuntate.has(p.pattern));
+    const esito = await chiama('/bulk', 'POST', categorizationBulkPayload(scelte));
+    if (esito) setProposte(null);
+    return esito;
+  });
+
+  // "114 volte, 79% Groceries, 24 volte Other": quante righe sono, quanto e'
+  // decisa la scelta, e cosa dice la minoranza.
+  const dettaglio = (proposta: RuleProposalData) => [
+    t('ruleOccurrences', { count: proposta.occorrenze }),
+    `${Math.round(proposta.quota * 100)}% ${proposta.category}`,
+    ...proposta.altre.map((altra) => `${t('ruleOccurrences', { count: altra.count })} ${altra.category}`),
+  ].join(', ');
+
   return <Card className="border-black/6 bg-white shadow-sm">
-    <CardHeader>
-      <CardTitle className="text-[17px]">{t('categoryRules')}</CardTitle>
-      <p className="mt-1 text-xs text-[#7b8784]">{t('categoryRulesHint')}</p>
+    <CardHeader className="gap-3">
+      <div><CardTitle className="text-[17px]">{t('categoryRules')}</CardTitle>
+        <p className="mt-1 text-xs text-[#7b8784]">{t('categoryRulesHint')}</p></div>
+      <div><Button type="button" variant="outline" className="h-10 bg-white" disabled={busy} onClick={impara}>{t('learnFromHistory')}</Button></div>
     </CardHeader>
     <CardContent className="space-y-4">
       {rules.length === 0
@@ -6240,6 +6271,53 @@ function CategoryRulesCard({ rules, categories, apiUrl, onChanged }: {
       </form>
       {errore && <p role="alert" className="text-xs text-[#bd5e46]">{errore}</p>}
     </CardContent>
+    {/* Le proposte non si applicano da sole: la spunta e' il passaggio in cui
+        si decide, e chi non spunta niente non scrive niente. */}
+    {proposte && <Dialog open onOpenChange={(aperto) => { if (!aperto) setProposte(null); }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{t('ruleProposals')}</DialogTitle>
+          <DialogDescription>{t('categoryRulesHint')}</DialogDescription>
+        </DialogHeader>
+        {proposte.proposte.length === 0
+          ? <p className="text-sm text-[#71807c]">{t('ruleNoneFound')}</p>
+          : <div className="max-h-80 space-y-1 overflow-y-auto">
+            {proposte.proposte.map((proposta) => <label key={proposta.pattern}
+              className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-2 hover:bg-[#f7f8f5]">
+              <input type="checkbox" className="mt-0.5 size-4 shrink-0 cursor-pointer accent-[var(--money-primary)]"
+                checked={spuntate.has(proposta.pattern)}
+                onChange={(e) => setSpuntate((vecchie) => {
+                  const nuove = new Set(vecchie);
+                  e.target.checked ? nuove.add(proposta.pattern) : nuove.delete(proposta.pattern);
+                  return nuove;
+                })} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">{proposta.pattern}</span>
+                <span className="block text-xs text-[#7b8784]">{dettaglio(proposta)}</span>
+              </span>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${proposta.fiducia === 'sicura' ? 'bg-[#e5f3ed] text-[#2d7b65]' : 'bg-[#f4f5f1] text-[#61706c]'}`}>
+                {t(proposta.fiducia === 'sicura' ? 'ruleConfidenceSure' : 'ruleConfidenceUnsure')}</span>
+            </label>)}
+          </div>}
+        {/* Di sola lettura: sono le descrizioni che nessuna categoria tiene
+            insieme, e riscriverle cambierebbe budget e report gia' chiusi. */}
+        {proposte.incoerenti.length > 0 && <details className="border-t border-black/5 pt-3">
+          <summary className="cursor-pointer text-xs font-medium text-[#52615d]">{t('ruleInconsistent')}</summary>
+          <ul className="mt-2 space-y-1">
+            {proposte.incoerenti.map((riga) => <li key={riga.pattern} className="text-xs text-[#7b8784]">
+              <span className="text-[#28312f]">{riga.pattern}</span>
+              {` · ${t('ruleOccurrences', { count: riga.occorrenze })} · `}
+              {riga.categorie.map((c) => `${c.category} ${c.count}`).join(', ')}</li>)}
+          </ul>
+        </details>}
+        <DialogFooter className="mx-0 mb-0 border-0 bg-transparent p-0">
+          <Button type="button" variant="outline" disabled={busy} onClick={() => setProposte(null)}>{t('cancel')}</Button>
+          <Button type="button" disabled={busy || spuntate.size === 0} onClick={accetta}
+            className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">
+            {t('ruleAcceptChecked', { count: spuntate.size })}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>}
   </Card>;
 }
 
