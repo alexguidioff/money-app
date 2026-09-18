@@ -435,13 +435,12 @@ export type SettingsData = {
 // I tipi che il ledger conosce: acquisto, vendita, i movimenti di solo
 // contante (dividendi e interessi, commissioni, versamenti) e lo split, che
 // non muove denaro ma moltiplica le quote.
-export type LedgerOperationType = 'Buy' | 'Sell' | 'Dividend' | 'Fee' | 'Deposit' | 'Withdrawal' | 'Split';
+export type LedgerOperationType = 'Buy' | 'Sell' | 'Dividend' | 'Fee' | 'Split';
 
 // Il tipo di una riga si legge per esteso: chiamare "Vendi" un dividendo e' il
 // modo piu' veloce per correggere la riga sbagliata.
 const LEDGER_TYPE_LABEL: Record<LedgerOperationType, TranslationKey> = {
-  Buy: 'buy', Sell: 'sell', Dividend: 'ledgerDividend', Fee: 'ledgerFee',
-  Deposit: 'ledgerDeposit', Withdrawal: 'ledgerWithdrawal', Split: 'ledgerSplit',
+  Buy: 'buy', Sell: 'sell', Dividend: 'ledgerDividend', Fee: 'ledgerFee', Split: 'ledgerSplit',
 };
 
 // I tipi che si possono creare partendo da un movimento. Lo split non c'e':

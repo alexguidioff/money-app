@@ -398,10 +398,6 @@ def investment_positions(
             # portafoglio, stessa logica della commissione su una vendita.
             position["fees_paid"] += amount
             position["net_contributed"] -= amount
-        elif action in {"deposit", "deposito", "versamento"}:
-            position["net_contributed"] += amount
-        elif action in {"withdrawal", "prelievo"}:
-            position["net_contributed"] -= amount
         elif action in {"split", "frazionamento"}:
             # Il rapporto sta nelle quote: 2 = due nuove per una vecchia, 0,5 =
             # un raggruppamento. Il costo non cambia, quindi il prezzo medio

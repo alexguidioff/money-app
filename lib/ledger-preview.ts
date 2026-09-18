@@ -1,13 +1,13 @@
-export type LedgerRigaTipo = 'Buy' | 'Sell' | 'Dividend' | 'Fee' | 'Deposit' | 'Withdrawal';
+export type LedgerRigaTipo = 'Buy' | 'Sell' | 'Dividend' | 'Fee';
 export type RigaOperazione = { transactionType: LedgerRigaTipo; units: string; price: string; fee: string; amount?: string };
 
-// Dividendi, commissioni, versamenti e prelievi non hanno quote: il denaro che
+// Dividendi e commissioni non hanno quote: il denaro che
 // muovono e' il loro importo, non quote per prezzo. Tenerli qui dentro evita
 // che una riga di solo contante risulti da zero euro e faccia sembrare
 // l'operazione "non corrispondente" al movimento.
-export const LEDGER_SENZA_QUOTE = ['Dividend', 'Fee', 'Deposit', 'Withdrawal'] as const;
+export const LEDGER_SENZA_QUOTE = ['Dividend', 'Fee'] as const;
 const SOLO_CONTANTE: readonly string[] = LEDGER_SENZA_QUOTE;
-const IN_ENTRATA: readonly LedgerRigaTipo[] = ['Sell', 'Dividend', 'Deposit'];
+const IN_ENTRATA: readonly LedgerRigaTipo[] = ['Sell', 'Dividend'];
 
 /**
  * Il denaro che le operazioni del ledger muovono, da confrontare con l'importo

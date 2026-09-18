@@ -16,17 +16,17 @@ describe('anteprima delle operazioni collegate', () => {
     // Un dividendo con quote e prezzo vuoti valeva zero, e il riepilogo diceva
     // "non corrispondente" sotto un incasso perfettamente quadrato.
     expect(nettoOperazioni([{ transactionType: 'Dividend', units: '', price: '', fee: '0', amount: '120' }])).toBe(120);
-    expect(nettoOperazioni([{ transactionType: 'Deposit', units: '', price: '', fee: '0', amount: '500' }])).toBe(500);
+    expect(nettoOperazioni([{ transactionType: 'Fee', units: '', price: '', fee: '0', amount: '15' }])).toBe(15);
   });
 
-  it('commissione e prelievo escono, dividendo e versamento entrano', () => {
-    // Un prelievo di 500 e un versamento di 500 nello stesso movimento si
-    // annullano: il verso deve distinguerli, altrimenti farebbero 1000.
+  it('la commissione esce e il dividendo entra: versi opposti, non due addizioni', () => {
+    // Un dividendo da 500 e una commissione da 500 nello stesso movimento si
+    // annullano. Senza il verso farebbero 1000, e il riepilogo direbbe che il
+    // movimento non corrisponde.
     expect(nettoOperazioni([
-      { transactionType: 'Deposit', units: '', price: '', fee: '0', amount: '500' },
-      { transactionType: 'Withdrawal', units: '', price: '', fee: '0', amount: '500' },
+      { transactionType: 'Dividend', units: '', price: '', fee: '0', amount: '500' },
+      { transactionType: 'Fee', units: '', price: '', fee: '0', amount: '500' },
     ])).toBe(0);
-    expect(nettoOperazioni([{ transactionType: 'Fee', units: '', price: '', fee: '0', amount: '15' }])).toBe(15);
   });
 
   it('acquisti e vendite nello stesso bonifico si compensano, campi vuoti contano zero', () => {

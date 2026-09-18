@@ -80,13 +80,15 @@ class ProventiTests(unittest.TestCase):
         self.assertEqual(Decimal("995.00"), posizione["net_contributed"])
         self.assertEqual(Decimal("5.00"), posizione["fees_paid"])
 
-    def test_versamenti_e_prelievi_muovono_solo_il_denaro_versato(self) -> None:
+    def test_un_tipo_sconosciuto_non_tocca_la_posizione(self) -> None:
+        # Versamento e prelievo sono stati tolti dai tipi validi: se una riga
+        # cosi' arrivasse comunque - da un import, da un database vecchio - il
+        # motore la deve ignorare, non attribuirle quote o costo.
         posizione = _posizione([
             _riga(1, 1, "Buy", importo="1000", quote="100"),
             _riga(2, 2, "Deposit", importo="500"),
-            _riga(3, 3, "Withdrawal", importo="200"),
         ])
-        self.assertEqual(Decimal("1300.00"), posizione["net_contributed"])
+        self.assertEqual(Decimal("1000.00"), posizione["net_contributed"])
         self.assertEqual(Decimal("1000.00"), posizione["cost_basis"])
         self.assertEqual(Decimal("100"), posizione["units"])
 

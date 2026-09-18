@@ -2002,7 +2002,11 @@ def update_setting(key: str, payload: SettingValueUpdate, session: Session = Dep
 # ---------------------------------------------------------------------------
 
 
-VALID_INVESTMENT_TX_TYPES = {"Buy", "Sell", "Dividend", "Fee", "Deposit", "Withdrawal", "Split"}
+# Versamento e prelievo sono stati tolti: muovevano solo `net_contributed`,
+# che nessuno mostra, e restavano fuori da valore, versamenti mensili e
+# flussi del rendimento. Il contante che arriva sul broker si registra come
+# giroconto fra i movimenti, dove conta davvero.
+VALID_INVESTMENT_TX_TYPES = {"Buy", "Sell", "Dividend", "Fee", "Split"}
 
 # Il rapporto di uno split sta nelle quote: 2 = due nuove per una vecchia, 0,5 =
 # un raggruppamento. Oltre mille non e' un frazionamento, e' un errore di
