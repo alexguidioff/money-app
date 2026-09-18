@@ -95,10 +95,18 @@ class TwrTests(unittest.TestCase):
         self.assertIsNone(esito.valore)
         self.assertEqual(STORIA_TROPPO_CORTA, esito.motivo)
 
-    def test_un_dividendo_lasciato_sul_conto_alza_il_rendimento(self) -> None:
-        # Il dividendo e' denaro che arriva e resta: non e' un flusso, quindi e'
-        # rendimento. Contarlo per sbaglio come versamento lo azzererebbe
-        # esattamente della cifra incassata.
+    def test_un_valore_che_cresce_da_solo_e_rendimento_un_versamento_no(self) -> None:
+        # Un aumento di valore senza flusso e' rendimento; lo stesso aumento
+        # accompagnato da un versamento pari non lo e', e vale zero.
+        #
+        # ATTENZIONE, il nome di prima diceva "un dividendo lasciato sul conto
+        # alza il rendimento": nell'app NON succede. La serie del valore
+        # contiene i soli strumenti (`portfolio_timeline`), un dividendo non
+        # muove le quote e non e' un flusso, quindi non si vede. Per un titolo a
+        # distribuzione il prezzo scende allo stacco e il rendimento risulta
+        # piu' basso del vero. Il limite e' scritto anche accanto ai flussi in
+        # core_routes.py, e cade quando la serie comprendera' la liquidita'.
+        # Qui si prova l'aritmetica del modulo, non quel comportamento.
         self.assertEqual(Decimal("0.0500"), twr([v(GEN, "100"), v(FEB, "105")]).valore)
         self.assertEqual(Decimal("0.0000"),
                          twr([v(GEN, "100"), v(FEB, "105")], [Flusso(FEB, Decimal("5"))]).valore)
