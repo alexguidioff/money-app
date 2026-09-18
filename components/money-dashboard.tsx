@@ -325,6 +325,22 @@ export type RecurringTransactionData = {
   next_occurrence: string | null;
 };
 
+export type CategorizationRuleData = {
+  id: number;
+  position: number;
+  pattern: string;
+  isRegex: boolean;
+  category: string;
+  transactionType: 'Expenses' | 'Income' | null;
+  minAmount: number | null;
+  maxAmount: number | null;
+  active: boolean;
+};
+
+export type CategorizationRulesData = {
+  items: CategorizationRuleData[];
+};
+
 type GoalData = {
   id: number;
   name: string;

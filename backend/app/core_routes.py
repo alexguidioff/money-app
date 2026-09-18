@@ -5,20 +5,24 @@ automation features are being extended independently.
 """
 import calendar
 import json
+import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import String, distinct, extract, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 
 from .calculation_engine import (account_balances_at, account_balances_series, account_reconciliation,
                                  investment_positions, normalized_name, savings_rate, source_effect)
+from .categorization import MAX_REGOLE, categorie_ammesse
 from .database import get_session
-from .models import (Account, AppSetting, BudgetPlan,
+from .models import (Account, AppSetting, BudgetPlan, CategorizationRule,
                      Goal, InvestmentInstrument, InvestmentTransaction,
                      InvestmentTransactionDetail,
                      InstrumentProfile as InstrumentProfileModel,
@@ -2417,6 +2421,137 @@ def notes(session: Session = Depends(get_session)) -> dict[str, Any]: return {"i
 
 
 
+
+
+# ---------------------------------------------------------------------------
+# Regole di categorizzazione
+# ---------------------------------------------------------------------------
+# Le regole riempiono la categoria nell'anteprima dell'import, dove si vedono e
+# si possono cambiare riga per riga. Non toccano mai i movimenti gia'
+# registrati: riscrivere una categoria storica cambierebbe budget e report gia'
+# chiusi, ed e' una decisione che si prende a parte.
+
+
+class RulePayload(BaseModel):
+    pattern: str
+    is_regex: bool = False
+    category: str
+    # I tipi che hanno una categoria. Uno spostamento fra conti non ce l'ha, e
+    # gli altri tipi li rifiuta gia' il modello prima di arrivare qui.
+    transaction_type: Literal["Expenses", "Income"] | None = None
+    min_amount: float | None = None
+    max_amount: float | None = None
+    active: bool = True
+
+
+class RuleOrderPayload(BaseModel):
+    ids: list[int]
+
+
+def _regola_json(riga: CategorizationRule) -> dict[str, Any]:
+    return {"id": riga.id, "position": riga.position, "pattern": riga.pattern, "isRegex": riga.is_regex,
+            "category": riga.category, "transactionType": riga.transaction_type,
+            "minAmount": num(riga.min_amount) if riga.min_amount is not None else None,
+            "maxAmount": num(riga.max_amount) if riga.max_amount is not None else None,
+            "active": riga.active}
+
+
+def _importo(valore: float | None) -> Decimal | None:
+    return None if valore is None else Decimal(str(valore)).quantize(Decimal("0.01"))
+
+
+def _valida_regola(payload: RulePayload, session: Session, *, esistente: CategorizationRule | None = None) -> None:
+    """Rifiuta una regola che l'anteprima non saprebbe applicare.
+
+    Sono i controlli di un confine: una regex che non si compila fermerebbe
+    l'import di un estratto conto intero, e un pattern vuoto combacerebbe con
+    ogni riga, cioe' categorizzerebbe tutto allo stesso modo senza che nessuno
+    se ne accorga.
+    """
+    pattern = payload.pattern.strip()
+    if not pattern or len(pattern) > 255:
+        raise HTTPException(status_code=422, detail="rulePatternRequired")
+    if payload.is_regex:
+        try:
+            re.compile(pattern)
+        except re.error as error:
+            raise HTTPException(status_code=422, detail="ruleRegexInvalid") from error
+    if payload.category.strip() not in categorie_ammesse(session):
+        raise HTTPException(status_code=422, detail="ruleCategoryUnknown")
+    minimo, massimo = _importo(payload.min_amount), _importo(payload.max_amount)
+    if minimo is not None and massimo is not None and minimo > massimo:
+        raise HTTPException(status_code=422, detail="ruleAmountRange")
+    if esistente is None:
+        quante = session.scalar(select(func.count(CategorizationRule.id))) or 0
+        if quante >= MAX_REGOLE:
+            raise HTTPException(status_code=422, detail="ruleLimitReached")
+
+
+@router.get("/api/categorization-rules")
+def categorization_rules(session: Session = Depends(get_session)) -> dict[str, Any]:
+    righe = session.scalars(select(CategorizationRule)
+                            .order_by(CategorizationRule.position, CategorizationRule.id)).all()
+    return {"items": [_regola_json(riga) for riga in righe]}
+
+
+@router.post("/api/categorization-rules", status_code=201)
+def create_categorization_rule(payload: RulePayload, session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Crea una regola in coda alle altre: l'ordine e' la priorita'."""
+    _valida_regola(payload, session)
+    ultima = session.scalar(select(func.max(CategorizationRule.position))) or 0
+    riga = CategorizationRule(position=ultima + 1, pattern=payload.pattern.strip(), is_regex=payload.is_regex,
+                              category=payload.category.strip(), transaction_type=payload.transaction_type,
+                              min_amount=_importo(payload.min_amount), max_amount=_importo(payload.max_amount),
+                              active=payload.active)
+    session.add(riga)
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(status_code=422, detail="ruleDuplicate") from error
+    return _regola_json(riga)
+
+
+# Prima di "/{rule_id}": il percorso con l'identificativo e' un intero, e una
+# rotta registrata per prima se la prenderebbe lui.
+@router.put("/api/categorization-rules/order")
+def reorder_categorization_rules(payload: RuleOrderPayload, session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Riscrive la posizione delle regole nell'ordine ricevuto."""
+    righe = {riga.id: riga for riga in session.scalars(select(CategorizationRule)).all()}
+    for posizione, rule_id in enumerate(payload.ids):
+        if rule_id in righe:
+            righe[rule_id].position = posizione
+    session.commit()
+    return categorization_rules(session)
+
+
+@router.put("/api/categorization-rules/{rule_id}")
+def update_categorization_rule(rule_id: int, payload: RulePayload,
+                               session: Session = Depends(get_session)) -> dict[str, Any]:
+    riga = session.get(CategorizationRule, rule_id)
+    if riga is None:
+        raise HTTPException(status_code=404, detail="ruleNotFound")
+    _valida_regola(payload, session, esistente=riga)
+    riga.pattern, riga.is_regex = payload.pattern.strip(), payload.is_regex
+    riga.category, riga.transaction_type = payload.category.strip(), payload.transaction_type
+    riga.min_amount, riga.max_amount = _importo(payload.min_amount), _importo(payload.max_amount)
+    riga.active = payload.active
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(status_code=422, detail="ruleDuplicate") from error
+    return _regola_json(riga)
+
+
+@router.delete("/api/categorization-rules/{rule_id}")
+def delete_categorization_rule(rule_id: int, session: Session = Depends(get_session)) -> dict[str, Any]:
+    riga = session.get(CategorizationRule, rule_id)
+    if riga is None:
+        raise HTTPException(status_code=404, detail="ruleNotFound")
+    session.delete(riga)
+    session.commit()
+    return {"success": True}
 
 
 def register_core_routes(app: FastAPI) -> None:

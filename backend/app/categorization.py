@@ -20,7 +20,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import CategorizationRule
+from .models import BudgetPlan, CategorizationRule, LookupOption, Transaction
 
 # Sotto questa soglia una descrizione ripetuta non e' un'abitudine: sono due
 # righe capitate per caso, e una regola costruita su due righe sbaglia il
@@ -37,6 +37,23 @@ MAX_REGOLE = 200
 TIPI_CON_CATEGORIA = ("Expenses", "Income")
 
 _SPAZI = re.compile(r"\s+")
+# I gruppi di voci fra cui l'app pesca le categorie da scegliere.
+GRUPPI_CATEGORIE = ("categories_expenses", "categories_income", "categories_savings")
+
+
+def categorie_ammesse(session: Session) -> set[str]:
+    """Le categorie che l'interfaccia offre da scegliere, tutte in un insieme.
+
+    Il vocabolario di partenza, quelle gia' usate nei movimenti e quelle
+    pianificate a budget: sono esattamente le voci che finiscono nell'elenco a
+    tendina del modulo movimento. Rifiutare una categoria che l'elenco propone
+    sarebbe un errore che chi usa l'app non puo' capire ne' correggere.
+    """
+    valori = set(session.scalars(select(LookupOption.value)
+                                 .where(LookupOption.option_group.in_(GRUPPI_CATEGORIE))).all())
+    valori.update(session.scalars(select(Transaction.category).distinct()).all())
+    valori.update(session.scalars(select(BudgetPlan.category).distinct()).all())
+    return {valore.strip() for valore in valori if valore and valore.strip()}
 
 
 def normalizza(descrizione: str | None) -> str:

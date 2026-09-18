@@ -161,3 +161,26 @@ export function splitPayload(parte: { amount: string; type: string; category: st
     details: parte.details,
   };
 }
+
+/**
+ * Una regola di categorizzazione, come la manda il modulo.
+ *
+ * Gli importi arrivano dal modulo come testo: qui diventano numeri o null,
+ * perche' la stringa vuota il backend la rifiuterebbe come valore non valido.
+ */
+export function categorizationRulePayload(regola: {
+  pattern: string; category: string; isRegex?: boolean;
+  transactionType?: 'Expenses' | 'Income' | null;
+  minAmount?: string; maxAmount?: string; active?: boolean;
+}) {
+  const importo = (valore: string | undefined) => String(valore ?? '').trim() === '' ? null : Number(valore);
+  return {
+    pattern: regola.pattern,
+    is_regex: regola.isRegex ?? false,
+    category: regola.category,
+    transaction_type: regola.transactionType ?? null,
+    min_amount: importo(regola.minAmount),
+    max_amount: importo(regola.maxAmount),
+    active: regola.active ?? true,
+  };
+}

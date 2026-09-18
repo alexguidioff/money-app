@@ -37,8 +37,9 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app import backup
-from app.core_routes import (accounts, analysis, balance_sheet_series, budget_annual, budget_dashboard,
-                             budget_suggestions, budget_trends, budgets, calculations, goals, instrument_history,
+from app.core_routes import (RulePayload, accounts, analysis, balance_sheet_series, budget_annual, budget_dashboard,
+                             budget_suggestions, budget_trends, budgets, calculations, categorization_rules,
+                             create_categorization_rule, goals, instrument_history,
                              investments_allocation, investments_dashboard, investments_ledger, net_worth, notes,
                              settings, summary, summary_breakdown, transactions)
 from app.database import Base
@@ -49,7 +50,8 @@ from app.main import (AccountPayload, BudgetCreatePayload, BudgetUpdatePayload, 
                       create_account, create_budget, create_goal, create_investment_tx, create_note,
                       create_recurring_transaction, create_transaction, liabilities, list_backups_endpoint,
                       list_recurring_transactions, save_liability, split_transaction, update_budget, update_setting)
-from app.models import (Account, AccountValuation, AppSetting, BudgetPlan, Goal, IncomeStream, InvestmentInstrument,
+from app.models import (Account, AccountValuation, AppSetting, BudgetPlan, CategorizationRule, Goal, IncomeStream,
+                        InvestmentInstrument,
                         LiabilityProfile, LookupOption, MarketPrice, Note, RetirementProfile, Transaction, TransactionLedgerLink)
 from app.notifications import elenco as notifiche
 
@@ -125,6 +127,15 @@ def _semina(session: Session) -> None:
     ])
     session.commit()
     salva_regole(RegolePayload(rules=[{"category": "Housing", "mode": "change", "amount": 6000}]), session)
+    # Una regola con tutti i campi facoltativi valorizzati: un elenco vuoto
+    # sarebbe compatibile con qualunque tipo e non controllerebbe niente.
+    session.add_all([
+        CategorizationRule(position=0, pattern="spesa lidl", category="Groceries"),
+        CategorizationRule(position=1, pattern=r"^pos \d+", is_regex=True, category="Commissions",
+                           transaction_type="Expenses", min_amount=Decimal("10"), max_amount=Decimal("500"),
+                           active=False),
+    ])
+    session.commit()
 
     # Budget, obiettivi, investimenti, appunti e ricorrenze: quanto basta perche'
     # ogni elenco delle risposte abbia almeno una riga.
@@ -202,6 +213,7 @@ def risposte() -> dict[str, Any]:
         "balanceSheetSeries": balance_sheet_series(f"{anno_scorso}-01", f"{oggi.year}-{oggi.month:02d}", "month",
                                                    "networth", None, None, session),
         "notes": notes(session),
+        "categorizationRules": categorization_rules(session),
         "recurring": asyncio.run(list_recurring_transactions(session)),
         "notifications": notifiche(session),
         "backups": _backup_di_prova(),
@@ -265,6 +277,7 @@ def _gestori(session: Session) -> dict[str, tuple[type[BaseModel], Any]]:
         "budgetUpdate": (BudgetUpdatePayload, lambda p: update_budget(
             session.scalars(select(BudgetPlan.id).where(BudgetPlan.category == "Groceries")).first(), p, session)),
         "recurring": (RecurringTransactionCreate, lambda p: asyncio.run(create_recurring_transaction(p, session))),
+        "categorizationRule": (RulePayload, lambda p: create_categorization_rule(p, session)),
         "split": (SplitPayload, lambda p: split_transaction(session.scalars(select(Transaction.id).where(
             Transaction.transaction_type == "Expenses", Transaction.category == "Housing")).first(), p, session)),
     }

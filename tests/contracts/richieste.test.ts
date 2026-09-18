@@ -2,7 +2,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { expect, it } from 'vitest';
 import type { RetirementProfile } from '@/components/settings/retirement-profile-form';
-import { accountPayload, budgetCreatePayload, budgetUpdatePayload, expenseRulesPayload, goalPayload, incomeStreamPayload,
+import { accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationRulePayload, expenseRulesPayload,
+  goalPayload, incomeStreamPayload,
   ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, splitPayload, transactionPayload } from '@/lib/payloads';
 
 /*
@@ -86,6 +87,10 @@ const richieste = [
     amount: '450', type: 'Transfers', category: 'Housing', destination: 'Casa', details: 'Affitto, parte di Mary' }) },
   { endpoint: 'split', case: 'parte con un\'altra categoria', body: splitPayload({
     amount: '100', type: 'Expenses', category: 'Groceries', destination: 'Casa', details: '' }) },
+  { endpoint: 'categorizationRule', case: 'testo contenuto con importo minimo', body: categorizationRulePayload({
+    pattern: 'spesa lidl', category: 'Groceries', minAmount: '10' }) },
+  { endpoint: 'categorizationRule', case: 'espressione regolare spenta', body: categorizationRulePayload({
+    pattern: '^atm \\d+', category: 'Commissions', isRegex: true, transactionType: 'Expenses', active: false }) },
 ];
 
 it('i corpi delle richieste sono costruiti e scritti per il backend', () => {

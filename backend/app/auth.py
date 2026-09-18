@@ -358,7 +358,7 @@ TABELLE_PERSONALI = [
     "investment_instruments", "transactions", "budget_plans", "goals", "accounts",
     "notes", "dismissed_notifications", "lookup_options", "app_settings",
     "account_valuations", "liability_transaction_details", "liability_profiles",
-    "income_streams", "retirement_profiles",
+    "income_streams", "retirement_profiles", "categorization_rules",
 ]
 
 
