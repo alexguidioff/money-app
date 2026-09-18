@@ -126,13 +126,13 @@ class ValidazioneSplitTests(unittest.TestCase):
     def test_rapporto_fuori_scala_non_si_salva(self) -> None:
         for rapporto in (0, -2, 1000):
             with self.subTest(rapporto=rapporto):
-                self.assertEqual("ledgerSplitRatioNonValido", self._rifiuta(units=rapporto))
+                self.assertEqual("ledgerSplitRatioInvalid", self._rifiuta(units=rapporto))
 
     def test_uno_split_non_muove_denaro(self) -> None:
-        self.assertEqual("ledgerSplitAmountNonZero", self._rifiuta(amount=25))
+        self.assertEqual("ledgerSplitAmountNotZero", self._rifiuta(amount=25))
 
     def test_uno_split_su_uno_strumento_mai_comprato_non_si_salva(self) -> None:
-        self.assertEqual("ledgerSplitStrumentoInesistente", self._rifiuta(name="Mai comprato"))
+        self.assertEqual("ledgerSplitInstrumentMissing", self._rifiuta(name="Mai comprato"))
 
 
 class QuoteProgressiveTests(unittest.TestCase):
