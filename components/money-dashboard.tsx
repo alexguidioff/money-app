@@ -435,7 +435,10 @@ export type InvestmentTransaction = { id: number; occurredOn: string; name: stri
   linked: boolean };
 type LedgerCsvItem = { row: number; occurred_on?: string; name?: string; transaction_type?: 'Buy' | 'Sell'; amount?: number; units?: number; price?: number; currency?: string; duplicate: boolean; duplicateOf?: { id: number | null; occurredOn: string; sourceRow?: number } | null; error?: string | null };
 type InvestmentPosition = { name: string; isOpen: boolean; units: number; costBasis: number; netContributed: number; price: number; hasQuote: boolean; marketValue: number; realizedGain: number; unrealizedGain: number; totalGain: number; returnRate: number | null; incomeReceived: number; feesPaid: number; currency: string; instrumentId: number | null; providerSymbol: string | null; assetClass: string; area: string; sector: string; targetWeight: number | null };
-export type InvestmentDashboardData = { snapshot: { period: string | null; marketValue: number; investedCapital: number; gain: number; returnRate: number }; ledger: { marketValue: number; costBasis: number; gain: number; quotedPositions: number; activePositions: number }; positions: InvestmentPosition[]; history: Array<{ period: string; label: string; marketValue: number; investedCapital: number; gain: number; returnRate: number | null }>; contributions: Array<{ period: string; label: string; amount: number }> };
+// `rebalance.amount` e' firmato: positivo vuol dire sopra il peso obiettivo,
+// cioe' da vendere. Chi legge deve poterlo vedere anche nella tabella, dove
+// l'importo viene da comprare o da vendere secondo quel segno.
+export type InvestmentDashboardData = { snapshot: { period: string | null; marketValue: number; investedCapital: number; gain: number; returnRate: number }; ledger: { marketValue: number; costBasis: number; gain: number; quotedPositions: number; activePositions: number }; positions: InvestmentPosition[]; history: Array<{ period: string; label: string; marketValue: number; investedCapital: number; gain: number; returnRate: number | null }>; contributions: Array<{ period: string; label: string; amount: number }>; rebalance: { total: number; declaredWeight: number; warnings: string[]; rows: Array<{ name: string; currentWeight: number; targetWeight: number; drift: number; amount: number }> } };
 export type InvestmentAllocationData = {
   total: number;
   allocations: Record<'instrument' | 'sector' | 'assetType' | 'holdings' | 'currency', Array<{ label: string; value: number; weight: number }>>;
@@ -806,7 +809,7 @@ function MoneyDashboardInner() {
   const [categorizationRules, setCategorizationRules] = useState<CategorizationRuleData[]>([]);
   const [goalsData, setGoalsData] = useState<GoalsData>({ items: [], active: 0, completed: 0, targetTotal: 0, currentTotal: 0, monthlyNeededTotal: 0, plannedSavings: 0, hasPlannedSavings: false, monthlyGap: 0 });
   const [netWorthData, setNetWorthData] = useState<NetWorthData>({ requestedPeriod: '', dataPeriod: null, totals: { bank: 0, asset: 0, liability: 0, financial: 0, liquid: 0, netWorth: 0 }, currencies: [] });
-  const [investmentDashboardData, setInvestmentDashboardData] = useState<InvestmentDashboardData>({ snapshot: { period: null, marketValue: 0, investedCapital: 0, gain: 0, returnRate: 0 }, ledger: { marketValue: 0, costBasis: 0, gain: 0, quotedPositions: 0, activePositions: 0 }, positions: [], history: [], contributions: [] });
+  const [investmentDashboardData, setInvestmentDashboardData] = useState<InvestmentDashboardData>({ snapshot: { period: null, marketValue: 0, investedCapital: 0, gain: 0, returnRate: 0 }, ledger: { marketValue: 0, costBasis: 0, gain: 0, quotedPositions: 0, activePositions: 0 }, positions: [], history: [], contributions: [], rebalance: { total: 0, declaredWeight: 0, warnings: [], rows: [] } });
   const [investmentLedger, setInvestmentLedger] = useState<InvestmentTransaction[]>([]);
     const [investmentAllocationData, setInvestmentAllocationData] = useState<InvestmentAllocationData>({ total: 0, allocations: { instrument: [], sector: [], assetType: [], holdings: [], currency: [] }, coverage: { covered: 0, uncovered: 0, coveredPercent: 0, missing: [], lastFetch: null, sourceErrors: [] } });
   const [notesData, setNotesData] = useState<NoteData[]>([]);
@@ -4222,6 +4225,43 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
   </div>;
 }
 
+// Il riequilibrio non e' un ordine da eseguire: e' la distanza fra dove sei e
+// dove hai detto di voler stare. Il verso lo decide il segno dell'importo, che
+// arriva dal server; qui si sceglie solo il colore. Verde sotto peso (da
+// comprare), ambra sopra (da vendere).
+function RebalanceCard({ riordino }: { riordino: InvestmentDashboardData['rebalance'] }) {
+  const { t, formatEuro, formatNumber } = useI18n();
+  const percentuale = (valore: number) => formatNumber(valore, { style: 'percent', maximumFractionDigits: 1 });
+  const deriva = (valore: number) => formatNumber(valore, { style: 'percent', maximumFractionDigits: 1, signDisplay: 'always' });
+  return <Card className="border-black/6 bg-white shadow-sm">
+    <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('allocRebalance')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('allocRebalanceSubtitle')}</p></CardHeader>
+    <CardContent className="p-0">
+      {/* L'avviso sta sopra la tabella perche' e' l'unica cosa che puo' rendere
+          sbagliati tutti i numeri sotto: se i pesi non tornano, la colpa non e'
+          del calcolo. */}
+      {riordino.warnings.includes('pesi_non_sommano_a_cento') && <p role="alert" className="mx-5 mt-3 rounded-lg border border-[#f2d7cb] bg-[#fdf1ec] px-3 py-2 text-xs text-[#a05f4e]">{t('allocTargetSum', { sum: percentuale(riordino.declaredWeight) })}</p>}
+      {riordino.total <= 0
+        ? <p className="px-5 py-6 text-sm text-[#71807c]">{t('allocNoTargets')}</p>
+        : riordino.rows.length === 0
+          ? <p className="px-5 py-6 text-sm font-medium text-[#2d7b65]">{t('allocInLine')}</p>
+          : <div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead className="bg-[#f4f5f1] text-xs text-[#52615d]"><tr><th className="px-5 py-3 text-left">{t('instrument')}</th><th className="px-3 py-3 text-right">{t('allocCurrentWeight')}</th><th className="px-3 py-3 text-right">{t('allocTargetWeight')}</th><th className="px-3 py-3 text-right">{t('allocDrift')}</th><th className="px-5 py-3 text-right">{t('allocAmount')}</th></tr></thead>
+            <tbody className="divide-y divide-black/5">{riordino.rows.map((riga) => {
+              const comprare = riga.amount < 0;
+              const tono = comprare ? 'text-[#2d7b65]' : 'text-[#9a7b2f]';
+              return <tr key={riga.name}>
+                <td className="px-5 py-3 font-medium">{riga.name}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{percentuale(riga.currentWeight)}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{percentuale(riga.targetWeight)}</td>
+                <td className={`px-3 py-3 text-right tabular-nums ${tono}`}>{deriva(riga.drift)}</td>
+                <td className={`px-5 py-3 text-right font-semibold tabular-nums ${tono}`}>{t(comprare ? 'allocBuy' : 'allocSell', { amount: formatEuro(Math.abs(riga.amount)) })}</td>
+              </tr>;
+            })}</tbody>
+          </table></div>}
+    </CardContent>
+  </Card>;
+}
+
 function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChanged, onSave, onDelete, onInstrumentSave, onRefresh, accounts }: { apiUrl: string; onQuotesChanged: () => Promise<void>; dashboard: InvestmentDashboardData; ledger: InvestmentTransaction[]; allocation: InvestmentAllocationData; onSave: (transactionId: number | null, payload: Record<string, string | number | boolean>) => Promise<void>; onDelete: (transaction: InvestmentTransaction) => Promise<void>; onInstrumentSave: (instrumentId: number, payload: Record<string, string | number | null>) => Promise<void>; onRefresh: () => Promise<{ updated: number; errors: Array<{ code?: string; error?: string }> }>; accounts: Account[] }) {
   const { t, lang, locale, formatEuro, formatCompactEuro, formatDate, monthNames, formatPeriodLabel } = useI18n();
   const [tab, setTab] = useState<'portfolio' | 'ledger' | 'instruments' | 'allocation' | 'quotes'>('portfolio');
@@ -4530,6 +4570,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
         </CardContent>
       </Card>
       <Card className="border-black/6 bg-white shadow-sm"><CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0"><div><CardTitle className="text-[17px]">{t('positions')}</CardTitle><p className="text-xs text-[#7b8784]">{showClosedPositions ? t('positionsSubtitleAll') : t('positionsSubtitle')}</p></div><label className="flex items-center gap-2 text-xs font-medium text-[#52615d]"><input type="checkbox" checked={showClosedPositions} onChange={(event) => setShowClosedPositions(event.target.checked)} className="size-4 accent-[var(--money-primary)]" />{t('showClosedPositions', { count: dashboard.positions.filter((p) => !viva(p)).length })}</label></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1060px] w-full text-sm"><thead className="bg-[#f4f5f1] text-xs text-[#52615d]"><tr><th className="px-5 py-3 text-left">{t('instrument')}</th><th className="px-3 py-3 text-right">{t('quantity')}</th><th className="px-3 py-3 text-right">{t('cost')}</th><th className="px-3 py-3 text-right">{t('value')}</th><th className="px-3 py-3 text-right">{t('profitLoss')}</th><th className="px-3 py-3 text-right">{t('ledgerIncome')}</th><th className="px-3 py-3 text-right">{t('source')}</th><th className="px-5 py-3 text-right">{t('settings')}</th></tr></thead><tbody className="divide-y divide-black/5">{dashboard.positions.filter((position) => showClosedPositions || viva(position)).map((position) => <tr key={position.name} className={viva(position) ? undefined : 'bg-[#fafaf8] text-[#71807c]'}><td className="px-5 py-3"><p className="font-medium">{position.name}{!viva(position) && <span className="ml-2 rounded-full bg-black/6 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[#71807c]">{t('closed')}</span>}</p><p className="mt-0.5 text-xs text-[#87918e]">{position.assetClass} · {position.area}</p></td><td className="px-3 py-3 text-right tabular-nums">{position.units.toLocaleString(locale, { maximumFractionDigits: 4 })}</td><td className="px-3 py-3 text-right tabular-nums">{formatEuro(position.costBasis)}</td><td className="px-3 py-3 text-right font-semibold tabular-nums">{formatEuro(position.marketValue)}</td><td className={`px-3 py-3 text-right font-semibold tabular-nums ${position.totalGain >= 0 ? 'text-[#2d7b65]' : 'text-[#bd5e46]'}`}>{formatEuro(position.totalGain)}{position.returnRate !== null && <span className="ml-1 text-xs">({(position.returnRate * 100).toLocaleString(locale, { maximumFractionDigits: 1 })}%)</span>}</td><td className="px-3 py-3 text-right tabular-nums text-[#2d7b65]">{position.incomeReceived !== 0 ? formatEuro(position.incomeReceived) : '—'}</td><td className="px-3 py-3 text-right text-xs">{position.isOpen ? (position.hasQuote ? t('cachedQuote') : t('lastLedgerPrice')) : t('realizedResult')}</td><td className="px-5 py-3 text-right">{position.instrumentId ? <Button size="sm" variant="ghost" onClick={() => { setConfiguring(position); setError(''); }}><Pencil className="size-4" />{t('configure')}</Button> : '—'}</td></tr>)}</tbody></table></div>{/* I proventi si leggono in fondo, tutti insieme: sono la parte che il guadagno non mostra, perche' un dividendo non e' una plusvalenza. */}<div className="flex items-center justify-between border-t border-black/6 px-5 py-3"><span className="text-xs text-[#52615d]">{t('ledgerIncomeTotal')}</span><span className="font-semibold tabular-nums">{formatEuro(dashboard.positions.reduce((somma, position) => somma + position.incomeReceived, 0))}</span></div></CardContent></Card>
+      <RebalanceCard riordino={dashboard.rebalance} />
     </div>}
 
     {tab === 'ledger' && (
