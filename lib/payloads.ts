@@ -184,3 +184,13 @@ export function categorizationRulePayload(regola: {
     active: regola.active ?? true,
   };
 }
+
+/**
+ * Il lotto delle proposte spuntate: le stesse regole del modulo, una per riga.
+ * Una proposta non spuntata non entra qui - l'accettazione e' la spunta.
+ */
+export function categorizationBulkPayload(proposte: Array<{
+  pattern: string; category: string; transactionType?: 'Expenses' | 'Income' | null;
+}>) {
+  return { rules: proposte.map((proposta) => categorizationRulePayload(proposta)) };
+}

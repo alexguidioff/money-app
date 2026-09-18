@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from .calculation_engine import (account_balances_series, calculate_account_balance, debito_pianificato_al, effective_date, piano_ammortamento,
                                  normalized_name, stato_debito_registrato)
-from .categorization import applica, carica_regole, scartate
+from .categorization import PENDING_CATEGORY, applica, carica_regole, scartate
 from .core_routes import (CATEGORY_GROUPS, GOAL_KINDS, MAX_SELEZIONE_MASSA, display_currencies, fx_symbols,
                           movimenti_per_saldi, num, sync_savings_plan)
 from .database import Base, admin_engine, engine, get_session, set_default_user, current_user_id
@@ -57,8 +57,10 @@ logger = logging.getLogger("money.api")
 
 # Categoria segnaposto per i movimenti importati o creati senza categoria:
 # l'utente la riconosce nella lista e la sistema a mano. Coerente con la
-# stringa che il workbook usava nella stessa colonna.
-PENDING_CATEGORY = 'Da categorizzare'
+# stringa che il workbook usava nella stessa colonna. Il valore e' definito in
+# ``categorization`` perche' lo leggono anche le regole, ed e' importato qui
+# perche' e' da qui che lo prendono gli altri moduli.
+
 
 # Respiro fra due richieste consecutive alla fonte, per non farsi bloccare.
 SOURCE_REQUEST_PAUSE_SECONDS = 1.0

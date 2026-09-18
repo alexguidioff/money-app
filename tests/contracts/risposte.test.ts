@@ -53,6 +53,7 @@ const CONTRATTI: Array<{ risposta: string; tipo: string; da: string }> = [
   { risposta: 'balanceSheetSeries', tipo: 'BalanceSheetSeries', da: '@/components/money-dashboard' },
   { risposta: 'notes', tipo: '{ items: NoteData[] }', da: '@/components/money-dashboard' },
   { risposta: 'categorizationRules', tipo: 'CategorizationRulesData', da: '@/components/money-dashboard' },
+  { risposta: 'categorizationSuggestions', tipo: 'CategorizationSuggestionsData', da: '@/components/money-dashboard' },
   { risposta: 'recurring', tipo: 'RecurringTransactionData[]', da: '@/components/money-dashboard' },
   { risposta: 'notifications', tipo: '{ items: Notification[] }', da: '@/components/notifications-panel' },
   { risposta: 'backups', tipo: '{ items?: BackupItem[] }', da: '@/components/money-dashboard' },

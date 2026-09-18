@@ -95,7 +95,7 @@ const richieste = [
   // Il lotto sono le stesse regole del modulo, una per proposta spuntata.
   { endpoint: 'categorizationBulk', case: 'due proposte accettate', body: categorizationBulkPayload([
     { pattern: 'spesa lidl', category: 'Groceries', transactionType: 'Expenses' },
-    { pattern: 'bar', category: 'Eating out' }]) },
+    { pattern: 'affitto', category: 'Housing' }]) },
 ];
 
 it('i corpi delle richieste sono costruiti e scritti per il backend', () => {

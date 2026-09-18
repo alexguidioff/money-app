@@ -9,19 +9,21 @@ from __future__ import annotations
 
 import os
 import unittest
+from datetime import date
 from decimal import Decimal
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import Session
 
-from app.categorization import MAX_REGOLE, applica, carica_regole, normalizza, scartate
-from app.core_routes import (RuleOrderPayload, RulePayload, categorization_rules, create_categorization_rule,
+from app.categorization import MAX_REGOLE, applica, carica_regole, normalizza, scartate, suggest
+from app.core_routes import (RuleBulkPayload, RuleOrderPayload, RulePayload, categorization_rules,
+                             create_categorization_rule, create_categorization_rules,
                              delete_categorization_rule, reorder_categorization_rules, update_categorization_rule)
 from app.database import Base, reset_current_user, set_current_user
 from app.main import PENDING_CATEGORY, _resolve_category, statement_preview
-from app.models import CategorizationRule, LookupOption
+from app.models import CategorizationRule, LookupOption, Transaction
 
 
 class MotoreTests(unittest.TestCase):
@@ -197,6 +199,131 @@ class RotteTests(unittest.TestCase):
         self._crea()
         self.assertEqual(PENDING_CATEGORY, _resolve_category(None, "Expenses"))
         self.assertEqual("_", _resolve_category("Groceries", "Transfers"))
+
+
+class ApprendimentoTests(unittest.TestCase):
+    """Le regole ricavate dai movimenti gia' registrati."""
+
+    def setUp(self) -> None:
+        self.engine = create_engine("sqlite://")
+        Base.metadata.create_all(self.engine)
+        self.session = Session(self.engine)
+        self.session.add(LookupOption(option_group="categories_expenses", position=0, value="Groceries"))
+        self.session.commit()
+
+    def tearDown(self) -> None:
+        self.session.close()
+
+    def _movimenti(self, descrizione: str, categoria: str, quante: int, tipo: str = "Expenses") -> None:
+        self.session.add_all([Transaction(occurred_on=date(2026, 1, 1), effective_on=date(2026, 1, 1),
+                                          transaction_type=tipo, category=categoria, amount=Decimal("10.00"),
+                                          details=descrizione) for _ in range(quante)])
+        self.session.commit()
+
+    def test_un_gruppo_di_tre_righe_uguali_diventa_una_proposta_sicura(self) -> None:
+        self._movimenti("spesa lidl", "Groceries", 3)
+        proposte = suggest(self.session)["proposte"]
+        self.assertEqual(1, len(proposte))
+        self.assertEqual({"pattern": "spesa lidl", "category": "Groceries", "transactionType": "Expenses",
+                          "occorrenze": 3, "quota": 1.0, "fiducia": "sicura", "altre": []}, proposte[0])
+
+    def test_due_righe_sole_non_fanno_una_proposta(self) -> None:
+        # Sotto la soglia sono due righe capitate per caso, non un'abitudine.
+        self._movimenti("spesa lidl", "Groceries", 2)
+        self.assertEqual({"proposte": [], "incoerenti": []}, suggest(self.session))
+
+    def test_una_maggioranza_non_schiacciante_si_propone_ma_incerta(self) -> None:
+        self._movimenti("spesa lidl", "Groceries", 8)
+        self._movimenti("spesa lidl", "Other", 2)
+        proposta = suggest(self.session)["proposte"][0]
+        self.assertEqual("incerta", proposta["fiducia"])
+        self.assertEqual(0.8, proposta["quota"])
+        self.assertEqual([{"category": "Other", "count": 2}], proposta["altre"])
+
+    def test_un_gruppo_diviso_a_meta_finisce_fra_gli_incoerenti(self) -> None:
+        # 5 e 5: non si propone, si mostra. E' un problema da guardare, non da
+        # automatizzare: qualunque scelta sarebbe giusta a meta'.
+        self._movimenti("parcheggio", "Car", 5)
+        self._movimenti("parcheggio", "Leisure", 5)
+        risultato = suggest(self.session)
+        self.assertEqual([], risultato["proposte"])
+        self.assertEqual("parcheggio", risultato["incoerenti"][0]["pattern"])
+        self.assertEqual(10, risultato["incoerenti"][0]["occorrenze"])
+        self.assertEqual([{"category": "Car", "count": 5}, {"category": "Leisure", "count": 5}],
+                         risultato["incoerenti"][0]["categorie"])
+
+    def test_una_descrizione_gia_coperta_da_una_regola_non_si_ripropone(self) -> None:
+        self.session.add(CategorizationRule(pattern="spesa lidl", category="Groceries", active=True))
+        self.session.add(CategorizationRule(pattern="spesa coop", category="Groceries", active=False))
+        self.session.commit()
+        self._movimenti("spesa lidl", "Groceries", 4)
+        self._movimenti("spesa coop", "Groceries", 4)
+        # La prima e' gia' coperta; la seconda no, perche' la regola e' spenta.
+        self.assertEqual(["spesa coop"], [p["pattern"] for p in suggest(self.session)["proposte"]])
+
+    def test_suggerire_non_scrive_niente(self) -> None:
+        self._movimenti("spesa lidl", "Groceries", 5)
+        prima = self.session.scalar(select(func.count(CategorizationRule.id)))
+        suggest(self.session)
+        self.assertEqual(prima, self.session.scalar(select(func.count(CategorizationRule.id))))
+        self.assertEqual(0, prima)
+
+    def test_maiuscole_e_spazi_doppi_fanno_lo_stesso_gruppo(self) -> None:
+        self._movimenti("Spesa   Lidl", "Groceries", 2)
+        self._movimenti("spesa lidl ", "Groceries", 1)
+        proposte = suggest(self.session)["proposte"]
+        self.assertEqual(["spesa lidl"], [p["pattern"] for p in proposte])
+        self.assertEqual(3, proposte[0]["occorrenze"])
+
+    def test_i_movimenti_senza_descrizione_o_senza_categoria_non_entrano(self) -> None:
+        self._movimenti("", "Groceries", 5)
+        self._movimenti("spesa lidl", PENDING_CATEGORY, 5)
+        self._movimenti("spesa lidl ", "_", 5)
+        self.assertEqual({"proposte": [], "incoerenti": []}, suggest(self.session))
+
+    def test_un_gruppo_con_spese_ed_entrate_insieme_non_porta_il_tipo(self) -> None:
+        self._movimenti("giroconto mario", "Groceries", 3, tipo="Expenses")
+        self._movimenti("giroconto mario", "Groceries", 1, tipo="Income")
+        self.assertIsNone(suggest(self.session)["proposte"][0]["transactionType"])
+
+    def test_le_proposte_escono_dalla_piu_frequente_alla_meno(self) -> None:
+        self._movimenti("spesa lidl", "Groceries", 3)
+        self._movimenti("affitto", "Housing", 9)
+        self.assertEqual(["affitto", "spesa lidl"], [p["pattern"] for p in suggest(self.session)["proposte"]])
+
+    def test_il_lotto_scrive_le_regole_spuntate_in_coda_a_quelle_che_ci_sono(self) -> None:
+        self.session.add(CategorizationRule(position=4, pattern="altra", category="Groceries"))
+        self.session.commit()
+        create_categorization_rules(RuleBulkPayload(rules=[
+            RulePayload(pattern="spesa lidl", category="Groceries", transaction_type="Expenses"),
+            # Una proposta e' sempre testo contenuto: anche se arrivasse con
+            # is_regex acceso, la regola nascerebbe come testo.
+            RulePayload(pattern="affitto", category="Groceries", is_regex=True)]), self.session)
+        regole = categorization_rules(self.session)["items"]
+        self.assertEqual([("altra", 4), ("spesa lidl", 5), ("affitto", 6)],
+                         [(riga["pattern"], riga["position"]) for riga in regole])
+        self.assertEqual([False, False], [riga["isRegex"] for riga in regole[1:]])
+
+    def test_un_lotto_che_sfora_il_tetto_non_ne_scrive_nessuna(self) -> None:
+        self.session.add_all([CategorizationRule(pattern=f"regola {n}", category="Groceries")
+                              for n in range(MAX_REGOLE - 1)])
+        self.session.commit()
+        with self.assertRaises(HTTPException) as errore:
+            create_categorization_rules(RuleBulkPayload(rules=[
+                RulePayload(pattern="una", category="Groceries"),
+                RulePayload(pattern="due", category="Groceries")]), self.session)
+        self.assertEqual("ruleLimitReached", str(errore.exception.detail))
+        self.assertEqual(MAX_REGOLE - 1, self.session.scalar(select(func.count(CategorizationRule.id))))
+
+    def test_un_lotto_con_due_proposte_uguali_non_ne_scrive_mezza(self) -> None:
+        # Meta' lotto scritto e meta' no lascerebbe l'utente senza sapere quali
+        # regole sono passate.
+        with self.assertRaises(HTTPException) as errore:
+            create_categorization_rules(RuleBulkPayload(rules=[
+                RulePayload(pattern="spesa lidl", category="Groceries"),
+                RulePayload(pattern="spesa lidl", category="Groceries")]), self.session)
+        self.assertEqual("ruleDuplicate", str(errore.exception.detail))
+        self.assertEqual(0, self.session.scalar(select(func.count(CategorizationRule.id))))
 
 
 @unittest.skipUnless(os.getenv("MONEY_TEST_POSTGRES") == "1", "requires isolated PostgreSQL schema")

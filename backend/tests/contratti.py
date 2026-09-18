@@ -38,9 +38,10 @@ from sqlalchemy.orm import Session
 
 from app import backup
 from app.auth import OPZIONI_INIZIALI
-from app.core_routes import (RulePayload, accounts, analysis, balance_sheet_series, budget_annual, budget_dashboard,
+from app.categorization import suggest
+from app.core_routes import (RuleBulkPayload, RulePayload, accounts, analysis, balance_sheet_series, budget_annual, budget_dashboard,
                              budget_suggestions, budget_trends, budgets, calculations, categorization_rules,
-                             create_categorization_rule, goals, instrument_history,
+                             create_categorization_rule, create_categorization_rules, goals, instrument_history,
                              investments_allocation, investments_dashboard, investments_ledger, net_worth, notes,
                              settings, summary, summary_breakdown, transactions)
 from app.database import Base
@@ -122,6 +123,17 @@ def _semina(session: Session) -> None:
               account_name="Fido", debt_interest=25)
     movimento(occurred_on=f"{anno_scorso}-06-01", transaction_type="Investment", amount=2000, account_name="Banca",
               destination_name="Broker")
+    # Tre gruppi per l'apprendimento: uno deciso, uno con una minoranza e uno
+    # diviso a meta'. "Affitto" c'e' gia' sopra, quindi qui bastano gli altri
+    # due: con gli elenchi vuoti il contratto non verificherebbe niente.
+    for indice, (categoria, quante) in enumerate((("Groceries", 4), ("Other", 1))):
+        for mese in range(1, quante + 1):
+            movimento(occurred_on=f"{anno_scorso}-{mese:02d}-20", transaction_type="Expenses", category=categoria,
+                      amount=15 + indice, account_name="Banca", details="Bar")
+    for categoria in ("Car", "Leisure"):
+        for mese in range(1, 6):
+            movimento(occurred_on=f"{anno_scorso}-{mese:02d}-25", transaction_type="Expenses", category=categoria,
+                      amount=8, account_name="Banca", details="Parcheggio")
 
     salva_profilo(ProfiloPayload(birth_year=oggi.year - 30, country="CH", target_retirement_age=60, real_return=4,
                                  withdrawal_rate=4, withdrawal_tax_rate=10, expense_basis="average",
@@ -221,6 +233,7 @@ def risposte() -> dict[str, Any]:
                                                    "networth", None, None, session),
         "notes": notes(session),
         "categorizationRules": categorization_rules(session),
+        "categorizationSuggestions": suggest(session),
         "recurring": asyncio.run(list_recurring_transactions(session)),
         "notifications": notifiche(session),
         "backups": _backup_di_prova(),
@@ -285,6 +298,7 @@ def _gestori(session: Session) -> dict[str, tuple[type[BaseModel], Any]]:
             session.scalars(select(BudgetPlan.id).where(BudgetPlan.category == "Groceries")).first(), p, session)),
         "recurring": (RecurringTransactionCreate, lambda p: asyncio.run(create_recurring_transaction(p, session))),
         "categorizationRule": (RulePayload, lambda p: create_categorization_rule(p, session)),
+        "categorizationBulk": (RuleBulkPayload, lambda p: create_categorization_rules(p, session)),
         "split": (SplitPayload, lambda p: split_transaction(session.scalars(select(Transaction.id).where(
             Transaction.transaction_type == "Expenses", Transaction.category == "Housing")).first(), p, session)),
     }

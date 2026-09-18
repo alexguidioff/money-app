@@ -21,6 +21,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import BudgetPlan, CategorizationRule, LookupOption, Transaction
+from .transaction_rules import REAL_MOVEMENT
+
+# La categoria di chi non ne ha una. Sta qui e non in ``main`` perche' la usano
+# anche le regole, e ``main`` importa questo modulo: il contrario sarebbe un
+# giro tondo.
+PENDING_CATEGORY = 'Da categorizzare'
 
 # Sotto questa soglia una descrizione ripetuta non e' un'abitudine: sono due
 # righe capitate per caso, e una regola costruita su due righe sbaglia il
@@ -158,3 +164,85 @@ def applica(regole: list[RegolaCompilata], descrizione: str | None, tipo: str,
             continue
         return regola.categoria, regola.pattern
     return None
+
+
+def coperta(regole: list[RegolaCompilata], descrizione: str, tipi: list[str]) -> bool:
+    """Se una regola attiva darebbe gia' una categoria a questa descrizione.
+
+    Serve a non riproporre cio' che e' gia' coperto: accettare due volte la
+    stessa proposta scrive una regola che non decidera' mai niente, perche'
+    vince sempre quella davanti. L'importo non si guarda: la proposta vale per
+    il gruppo intero, e un confronto sull'importo la farebbe sparire appena una
+    riga del gruppo cade fuori dall'intervallo.
+    """
+    for regola in regole:
+        if regola.scartata or (regola.transaction_type is not None and regola.transaction_type not in tipi):
+            continue
+        if regola.is_regex:
+            if regola.pattern and regola.regex.search(descrizione) is not None:
+                return True
+        elif regola.chiave and regola.chiave in descrizione:
+            return True
+    return False
+
+
+def suggest(session: Session) -> dict[str, list[dict]]:
+    """Le regole che i movimenti gia' registrati suggeriscono, senza scrivere niente.
+
+    Raggruppa i movimenti per descrizione normalizzata e propone la categoria
+    che la maggioranza del gruppo ha gia'. Non tocca il database: quello che
+    esce e' da guardare e, se va bene, da spuntare.
+
+    ponytail: si raggruppa sulla descrizione intera normalizzata. Se un giorno
+    la banca ci attacca il numero di operazione, le ripetizioni spariscono:
+    allora si raggruppa sui primi N termini invece che sulla stringa intera.
+    """
+    righe = session.execute(
+        select(Transaction.transaction_type, Transaction.category, Transaction.details)
+        .where(REAL_MOVEMENT,
+               Transaction.transaction_type.in_(TIPI_CON_CATEGORIA),
+               Transaction.category.notin_((PENDING_CATEGORY, "_")),
+               Transaction.details.is_not(None), Transaction.details != "")
+    ).all()
+    # descrizione -> tipo -> categoria -> quante volte. Il tipo sta in mezzo
+    # perche' "spesa lidl" a spese e a entrate sono due gruppi diversi: la
+    # stessa descrizione con due versi e' un caso da guardare, non da
+    # automatizzare.
+    gruppi: dict[str, dict[str, dict[str, int]]] = {}
+    for tipo, categoria, descrizione in righe:
+        chiave = normalizza(descrizione)
+        gruppi.setdefault(chiave, {}).setdefault(tipo, {})
+        gruppi[chiave][tipo][categoria] = gruppi[chiave][tipo].get(categoria, 0) + 1
+
+    regole = carica_regole(session)
+    proposte, incoerenti = [], []
+    for descrizione, per_tipo in gruppi.items():
+        somma: dict[str, int] = {}
+        for categorie in per_tipo.values():
+            for categoria, quante in categorie.items():
+                somma[categoria] = somma.get(categoria, 0) + quante
+        totale = sum(somma.values())
+        if totale < MIN_OCCORRENZE:
+            continue
+        # A parita' di conteggio l'ordine e' alfabetico: due proposte con gli
+        # stessi numeri devono uscire nello stesso ordine a ogni chiamata.
+        classifica = sorted(somma.items(), key=lambda voce: (-voce[1], voce[0]))
+        categoria, quante = classifica[0]
+        quota = quante / totale
+        if quota < QUOTA_INCERTA:
+            # Non si propone: e' un problema da guardare, non da automatizzare.
+            incoerenti.append({"pattern": descrizione, "occorrenze": totale,
+                               "categorie": [{"category": nome, "count": numero} for nome, numero in classifica]})
+            continue
+        if coperta(regole, descrizione, list(per_tipo)):
+            continue
+        # Il tipo si porta solo se tutte le righe del gruppo ne hanno uno solo:
+        # altrimenti la regola vale per spese ed entrate, come se non ci fosse.
+        proposte.append({"pattern": descrizione, "category": categoria,
+                         "transactionType": next(iter(per_tipo)) if len(per_tipo) == 1 else None,
+                         "occorrenze": totale, "quota": round(quota, 2),
+                         "fiducia": "sicura" if quota >= QUOTA_SICURA else "incerta",
+                         "altre": [{"category": nome, "count": numero} for nome, numero in classifica[1:]]})
+    proposte.sort(key=lambda voce: (-voce["occorrenze"], voce["pattern"]))
+    incoerenti.sort(key=lambda voce: (-voce["occorrenze"], voce["pattern"]))
+    return {"proposte": proposte, "incoerenti": incoerenti}

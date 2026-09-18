@@ -24,7 +24,8 @@ class SemeDeiContrattiTests(unittest.TestCase):
                           "calculations", "budgetAnnual", "budgetDashboardMonth", "budgetDashboardYear",
                           "budgetTrends", "budgetSuggestions", "goals", "investmentsDashboard", "investmentsLedger",
                           "investmentsAllocation", "instrumentHistory", "balanceSheetSeries", "notes", "recurring",
-                          "categorizationRules", "notifications", "backups"}, set(self.risposte))
+                          "categorizationRules", "categorizationSuggestions", "notifications", "backups"},
+                         set(self.risposte))
 
     def test_gli_elenchi_non_sono_vuoti(self) -> None:
         r = self.risposte

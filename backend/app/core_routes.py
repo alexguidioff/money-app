@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from .calculation_engine import (account_balances_at, account_balances_series, account_reconciliation,
                                  investment_positions, normalized_name, savings_rate, source_effect)
-from .categorization import MAX_REGOLE, categorie_ammesse
+from .categorization import MAX_REGOLE, categorie_ammesse, suggest
 from .database import get_session
 from .models import (Account, AppSetting, BudgetPlan, CategorizationRule,
                      Goal, InvestmentInstrument, InvestmentTransaction,
@@ -2448,6 +2448,13 @@ class RuleOrderPayload(BaseModel):
     ids: list[int]
 
 
+class RuleBulkPayload(BaseModel):
+    # Le stesse regole del modulo di inserimento, una per proposta spuntata:
+    # passano dalla stessa validazione, quindi qui non entra niente che il
+    # modulo rifiuterebbe.
+    rules: list[RulePayload]
+
+
 def _regola_json(riga: CategorizationRule) -> dict[str, Any]:
     return {"id": riga.id, "position": riga.position, "pattern": riga.pattern, "isRegex": riga.is_regex,
             "category": riga.category, "transactionType": riga.transaction_type,
@@ -2532,6 +2539,51 @@ def reorder_categorization_rules(payload: RuleOrderPayload, session: Session = D
     for posizione, rule_id in enumerate(payload.ids):
         if rule_id in righe:
             righe[rule_id].position = posizione
+    session.commit()
+    return categorization_rules(session)
+
+
+@router.post("/api/categorization-rules/suggest")
+def suggest_categorization_rules(session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Le regole che si possono imparare dai movimenti gia' registrati.
+
+    Non scrive niente: le proposte diventano regole solo dopo la spunta.
+    """
+    return suggest(session)
+
+
+@router.post("/api/categorization-rules/bulk", status_code=201)
+def create_categorization_rules(payload: RuleBulkPayload,
+                                session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Crea le proposte spuntate, in coda alle regole che ci sono gia'.
+
+    Una proposta non spuntata non arriva qui: l'accettazione e' la spunta, non
+    il pulsante. Il tetto si controlla sul totale, non regola per regola: con
+    tre posti liberi un lotto da cinque passerebbe cinque volte il controllo e
+    scriverebbe due regole di troppo.
+    """
+    quante = session.scalar(select(func.count(CategorizationRule.id))) or 0
+    if quante + len(payload.rules) > MAX_REGOLE:
+        raise HTTPException(status_code=422, detail="ruleLimitReached")
+    posizione = session.scalar(select(func.max(CategorizationRule.position))) or 0
+    try:
+        for indice, regola in enumerate(payload.rules, start=1):
+            _valida_regola(regola, session)
+            riga = CategorizationRule(position=posizione + indice, pattern=regola.pattern.strip(),
+                                      is_regex=False, category=regola.category.strip(),
+                                      transaction_type=regola.transaction_type,
+                                      min_amount=_importo(regola.min_amount), max_amount=_importo(regola.max_amount),
+                                      active=regola.active)
+            session.add(riga)
+            # Senza questo, due proposte uguali dentro lo stesso lotto non si
+            # vedrebbero fra loro e passerebbero entrambe.
+            session.flush()
+    except HTTPException:
+        session.rollback()
+        raise
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(status_code=422, detail="ruleDuplicate") from error
     session.commit()
     return categorization_rules(session)
 

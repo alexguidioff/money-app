@@ -343,6 +343,29 @@ export type CategorizationRulesData = {
   items: CategorizationRuleData[];
 };
 
+export type RuleProposalData = {
+  pattern: string;
+  category: string;
+  transactionType: 'Expenses' | 'Income' | null;
+  occorrenze: number;
+  quota: number;
+  fiducia: 'sicura' | 'incerta';
+  altre: Array<{ category: string; count: number }>;
+};
+
+// Le descrizioni che nessuna categoria tiene insieme: si mostrano e basta,
+// non diventano proposte, perche' qualunque scelta sarebbe giusta a meta'.
+export type RuleIncoherentData = {
+  pattern: string;
+  occorrenze: number;
+  categorie: Array<{ category: string; count: number }>;
+};
+
+export type CategorizationSuggestionsData = {
+  proposte: RuleProposalData[];
+  incoerenti: RuleIncoherentData[];
+};
+
 type GoalData = {
   id: number;
   name: string;
