@@ -17,12 +17,15 @@ from datetime import date
 from decimal import Decimal
 
 from app.rendimenti import (
+    FLUSSI_SENZA_CAMBIO_DI_SEGNO,
+    NESSUN_FLUSSO,
     PREZZO_MANCANTE,
     STORIA_TROPPO_CORTA,
     Flusso,
     Rendimento,
     Valutazione,
     twr,
+    xirr,
 )
 
 GEN = date(2024, 1, 31)
@@ -98,6 +101,48 @@ class TwrTests(unittest.TestCase):
         self.assertEqual(Decimal("-0.0300"), twr([v(GEN, "100"), v(FEB, "97")]).valore)
         self.assertEqual(Decimal("0.0000"),
                          twr([v(GEN, "100"), v(FEB, "97")], [Flusso(FEB, Decimal("-3"))]).valore)
+
+
+class XirrTests(unittest.TestCase):
+    def test_mille_versati_che_diventano_milleduecento_in_un_anno(self) -> None:
+        # Un anno tondo: dal primo gennaio al trentuno dicembre del 2024 ci sono
+        # esattamente 365 giorni, quindi il tasso e' quello che si legge a mano,
+        # 1.100 / 1,1 = 1.000.
+        esito = xirr([Flusso(date(2024, 1, 1), Decimal("1000"))], Valutazione(date(2024, 12, 31), Decimal("1100")))
+        self.assertEqual(Decimal("0.1000"), esito.valore)
+
+    def test_due_versamenti_irregolari_danno_un_tasso_che_azzera_il_valore_attuale(self) -> None:
+        # Il tasso non si legge a mente - e' per questo che serve il solutore -
+        # quindi si controlla la definizione: al tasso trovato, il capitale
+        # finale riportato a oggi vale quanto i versamenti che l'hanno
+        # prodotto. La formula e' scritta qui a mano, non presa dal modulo.
+        versamenti = [Flusso(date(2024, 1, 1), Decimal("1000")), Flusso(date(2024, 7, 1), Decimal("1000"))]
+        finale = Valutazione(date(2025, 1, 1), Decimal("2100"))
+        tasso = float(xirr(versamenti, finale).valore)
+        base = date(2024, 1, 1)
+        scontati = sum(float(f.importo) / (1.0 + tasso) ** ((f.giorno - base).days / 365.0) for f in versamenti)
+        incassato = float(finale.valore) / (1.0 + tasso) ** ((finale.giorno - base).days / 365.0)
+        # Il tasso esce arrotondato al quarto decimale, quindi l'uguaglianza si
+        # controlla al centesimo di euro: il resto e' quell'arrotondamento.
+        self.assertAlmostEqual(incassato, scontati, delta=0.05)
+        self.assertGreater(tasso, 0.0)
+
+    def test_flussi_tutti_dello_stesso_verso_non_hanno_un_tasso(self) -> None:
+        # Solo prelievi e un valore finale: il denaro esce e rientra dalla stessa
+        # parte, e non c'e' nessun tasso che annulli il valore attuale.
+        esito = xirr([Flusso(date(2024, 1, 1), Decimal("-500"))], Valutazione(date(2024, 12, 31), Decimal("100")))
+        self.assertIsNone(esito.valore)
+        self.assertEqual(FLUSSI_SENZA_CAMBIO_DI_SEGNO, esito.motivo)
+
+    def test_senza_flussi_non_esiste_un_tasso(self) -> None:
+        esito = xirr([], Valutazione(date(2024, 12, 31), Decimal("1000")))
+        self.assertIsNone(esito.valore)
+        self.assertEqual(NESSUN_FLUSSO, esito.motivo)
+
+    def test_un_valore_finale_non_calcolabile_non_diventa_un_tasso(self) -> None:
+        esito = xirr([Flusso(date(2024, 1, 1), Decimal("1000"))], Valutazione(date(2024, 12, 31), None))
+        self.assertIsNone(esito.valore)
+        self.assertEqual(PREZZO_MANCANTE, esito.motivo)
 
 
 if __name__ == "__main__":

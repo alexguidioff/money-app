@@ -36,6 +36,22 @@ QUATTRO_DECIMALI = Decimal("0.0001")
 # falsa.
 PREZZO_MANCANTE = "prezzo_mancante"
 STORIA_TROPPO_CORTA = "storia_troppo_corta"
+NESSUN_FLUSSO = "nessun_flusso"
+FLUSSI_SENZA_CAMBIO_DI_SEGNO = "flussi_senza_cambio_di_segno"
+XIRR_NON_CONVERGE = "xirr_non_converge"
+
+# Dove si cerca il tasso: sotto -99% il valore attuale esplode, e sopra il 1000%
+# annuo non c'e' nessun investimento reale da descrivere.
+XIRR_MINIMO = -0.99
+XIRR_MASSIMO = 10.0
+# Cento dimezzamenti portano l'intervallo sotto qualunque tolleranza; il numero
+# e' un tetto, non un lavoro: il ciclo esce prima.
+XIRR_ITERAZIONI = 100
+XIRR_TOLLERANZA = 1e-7
+# I giorni divisi per 365, come fa il XIRR di un foglio di calcolo: e' la
+# convenzione che rende confrontabile questo numero con quello che l'utente
+# puo' essersi calcolato altrove.
+GIORNI_ANNO = 365.0
 
 
 @dataclass(frozen=True)
@@ -112,3 +128,62 @@ def twr(valutazioni: Sequence[Valutazione], flussi: Iterable[Flusso] = ()) -> Re
             continue
         catena *= UNO + (fine.valore - inizio.valore - totale) / denominatore
     return Rendimento(_quantizza(catena - UNO), None)
+
+
+def xirr(flussi: Sequence[Flusso], finale: Valutazione) -> Rendimento:
+    """Il tasso annuo che annulla il valore attuale dei flussi.
+
+    ``finale`` e' il valore del portafoglio all'ultima data, e va contato come
+    l'incasso di chi e' rimasto investito fino in fondo: senza, il tasso
+    descriverebbe un investimento che non ha mai restituito niente.
+
+    Il segno dei flussi si ribalta qui dentro: un versamento entra nel
+    portafoglio, quindi esce dalla tasca di chi investe. E' l'unico punto in cui
+    il segno conta davvero, perche' il tasso esiste solo se il denaro esce e
+    rientra almeno una volta.
+
+    ponytail: bisezione invece di Newton. Piu' iterazioni, nessuna derivata, e
+    soprattutto non diverge: su flussi irregolari Newton restituisce numeri
+    assurdi con l'aria di aver funzionato, e un tasso sbagliato e' peggio di un
+    motivo scritto per esteso.
+    """
+    if finale.valore is None:
+        return Rendimento(None, PREZZO_MANCANTE)
+    # Un flusso datato dopo la valutazione finale non fa parte di questo
+    # rendimento: il periodo finisce dove finisce l'ultima valutazione.
+    dentro = sorted((flusso for flusso in flussi if flusso.giorno <= finale.giorno),
+                    key=lambda flusso: flusso.giorno)
+    if not dentro:
+        return Rendimento(None, NESSUN_FLUSSO)
+    if not any(flusso.importo > ZERO for flusso in dentro) or finale.valore <= ZERO:
+        # Solo uscite, o nessun valore finale: il denaro esce e non rientra mai,
+        # e un tasso non esiste. Non e' un caso di scuola: e' un portafoglio
+        # svuotato, o una serie di prelievi senza piu' niente dentro.
+        return Rendimento(None, FLUSSI_SENZA_CAMBIO_DI_SEGNO)
+    # Da qui in poi `float`, contro la regola del progetto, per la stessa
+    # ragione per cui lo fa `fire_montecarlo`: cento iterazioni su decine di
+    # flussi con `Decimal` a quaranta cifre costano molto per un tasso che si
+    # mostra con quattro decimali, e la precisione in piu' non sposta la quarta
+    # cifra. Il `Decimal` torna in uscita, sul numero che finisce in pagina.
+    base = min(flusso.giorno for flusso in dentro + [finale])
+    periodi = [((flusso.giorno - base).days / GIORNI_ANNO, -float(flusso.importo)) for flusso in dentro]
+    periodi.append(((finale.giorno - base).days / GIORNI_ANNO, float(finale.valore)))
+
+    def valore_attuale(tasso: float) -> float:
+        return sum((importo / (1.0 + tasso) ** anni for anni, importo in periodi), 0.0)
+
+    basso, alto = XIRR_MINIMO, XIRR_MASSIMO
+    if valore_attuale(basso) * valore_attuale(alto) > 0.0:
+        # Nessun cambio di segno nell'intervallo: non c'e' una radice da
+        # trovare, e restituire l'estremo piu' vicino sarebbe un numero
+        # inventato con l'aria di essere la risposta.
+        return Rendimento(None, XIRR_NON_CONVERGE)
+    for _ in range(XIRR_ITERAZIONI):
+        mezzo = (basso + alto) / 2.0
+        if valore_attuale(mezzo) > 0.0:
+            basso = mezzo
+        else:
+            alto = mezzo
+        if alto - basso < XIRR_TOLLERANZA:
+            break
+    return Rendimento(_quantizza(Decimal(str((basso + alto) / 2.0))), None)
