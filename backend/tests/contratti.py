@@ -37,6 +37,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app import backup
+from app.auth import OPZIONI_INIZIALI
 from app.core_routes import (RulePayload, accounts, analysis, balance_sheet_series, budget_annual, budget_dashboard,
                              budget_suggestions, budget_trends, budgets, calculations, categorization_rules,
                              create_categorization_rule, goals, instrument_history,
@@ -82,7 +83,13 @@ def _semina(session: Session) -> None:
     for chiave, valore in {"header_color": "Blue", "late_income_shift": "Inactive", "late_income_day": "20",
                            "savings_default_category": "Savings", "net_worth_currencies": "CHF"}.items():
         session.add(AppSetting(key=chiave, label=chiave, value=valore))
-    for gruppo, valori in {"colors": ["Blue", "Yellow"], "years": [str(anno_scorso), str(oggi.year)]}.items():
+    # Il vocabolario di partenza e' quello di un account vero (`OPZIONI_INIZIALI`):
+    # senza, il database dei contratti non conosce le categorie che l'app offre a
+    # chiunque, e un contratto che ne usa una verrebbe rifiutato da un controllo
+    # che in produzione non rifiuterebbe niente. Colori e anni restano invece
+    # quelli brevi di qui: servono ai contratti, non a somigliare all'app.
+    for gruppo, valori in {**OPZIONI_INIZIALI, "colors": ["Blue", "Yellow"],
+                           "years": [str(anno_scorso), str(oggi.year)]}.items():
         session.add_all(LookupOption(option_group=gruppo, position=i, value=v) for i, v in enumerate(valori))
     session.commit()
     conto = {a.name: a.id for a in session.scalars(select(Account))}
