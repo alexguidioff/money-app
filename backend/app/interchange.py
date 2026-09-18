@@ -68,7 +68,7 @@ SHEETS: dict[str, tuple[Any, list[str]]] = {
     "Budget": (BudgetPlan, ["id", "period", "budget_type", "category_group", "category", "amount"]),
     "Obiettivi": (Goal, ["id", "name", "starting_amount", "target_amount", "start_date", "target_date", "completed_at", "kind", "target_account"]),
     "ProfiloPensione": (RetirementProfile, ["id", "birth_year", "country", "target_retirement_age",
-        "real_return", "withdrawal_rate", "withdrawal_tax_rate", "inflation", "expense_basis",
+        "real_return", "return_volatility", "withdrawal_rate", "withdrawal_tax_rate", "inflation", "expense_basis",
         "custom_annual_expenses", "lean_annual_expenses", "expense_rules", "notes"]),
     "FlussiPensione": (IncomeStream, ["id", "name", "kind", "amount", "start_age", "indexed",
         "country", "amount_if_stopping_now", "notes"]),

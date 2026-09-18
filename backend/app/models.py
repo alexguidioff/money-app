@@ -408,6 +408,10 @@ class RetirementProfile(Base):
     country: Mapped[str] = mapped_column(String(2), default="IT")
     target_retirement_age: Mapped[int] = mapped_column(Integer, default=60)
     real_return: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("4"))
+    # La larghezza della distribuzione dei rendimenti, non la sua media: serve
+    # solo alla simulazione. 15 e' la volatilita' storica di un portafoglio
+    # azionario globale; chi tiene molte obbligazioni sta piu' in basso.
+    return_volatility: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("15"))
     withdrawal_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("4"))
     withdrawal_tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"))
     # Serve solo alle rendite non indicizzate (tipico delle LPP svizzere), che

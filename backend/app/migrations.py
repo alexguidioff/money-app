@@ -104,6 +104,9 @@ def tracked_changes(engine: Engine) -> None:
             if "inflation" not in profilo_cols:
                 conn.execute(text("ALTER TABLE retirement_profiles "
                                   "ADD COLUMN inflation NUMERIC(5, 2) NOT NULL DEFAULT 2"))
+            if "return_volatility" not in profilo_cols:
+                conn.execute(text("ALTER TABLE retirement_profiles "
+                                  "ADD COLUMN return_volatility NUMERIC(5, 2) NOT NULL DEFAULT 15"))
         # Resti del workbook Excel che nessuna parte dell'app legge piu': elenchi
         # di opzioni (i conti veri stanno nella tabella dei conti, e quello era
         # un elenco di nomi fermo a un anno fa), un'impostazione senza effetto e
