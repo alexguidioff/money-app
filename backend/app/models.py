@@ -322,6 +322,11 @@ class Transaction(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, index=True, default=current_user_id)
     source_row: Mapped[int | None] = mapped_column(index=True)
+    # Da quale import viene questa riga. Senza, lo storico degli import sa
+    # quanti movimenti ha portato ma non quali, e "questo import" non e' una
+    # cosa che si puo' guardare. Vuoto per i movimenti scritti a mano e per
+    # quelli ripristinati da un backup: un ripristino non si annulla.
+    import_batch_id: Mapped[int | None] = mapped_column(index=True)
     occurred_on: Mapped[date] = mapped_column(Date, index=True)
     effective_on: Mapped[date] = mapped_column(Date, index=True)
     transaction_type: Mapped[str] = mapped_column(String(30), index=True)

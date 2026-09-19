@@ -22,6 +22,13 @@ ruff check --no-cache --select F821,F822,F823,F811,F841,F401 --output-format con
 echo "=== IMMAGINE API CANDIDATA (non ancora pubblicata) ==="
 docker compose build api > /tmp/apib.log 2>&1 || { echo "STOP build api"; tail -12 /tmp/apib.log; exit 1; }
 echo ok
+echo "=== SCHEMA ALLINEATO (le stesse migrazioni dell'avvio, sui dati veri) ==="
+# I test di parita' leggono il database vero: senza questo giro leggerebbero lo
+# schema di prima mentre il codice e' nuovo, e sarebbero rossi per un motivo che
+# non c'entra con quello che provano. Non pubblica niente - allinea lo schema e
+# basta, e l'avvio vero lo rifa' identico.
+"${CANDIDATA[@]}" python -c "from app.main import prepara_schema; prepara_schema()" || { echo "STOP schema"; exit 1; }
+echo ok
 echo "=== TEST FRONTEND ==="
 pnpm vitest run tests/unit tests/contracts/richieste.test.ts > /tmp/vitest.log 2>&1 || { echo "STOP test frontend"; tail -30 /tmp/vitest.log; exit 1; }; grep -E "Tests +[0-9]" /tmp/vitest.log
 echo "=== CONTRATTI: richieste del frontend ai gestori veri ==="

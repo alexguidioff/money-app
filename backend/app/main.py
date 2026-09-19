@@ -122,9 +122,15 @@ async def _backup_loop() -> None:
         await asyncio.sleep(BACKUP_CHECK_INTERVAL_SECONDS)
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    """Create any newly introduced tables without overwriting existing data."""
+def prepara_schema() -> None:
+    """Porta il database allo schema che l'app si aspetta, senza sovrascrivere niente.
+
+    E' una funzione e non quattro righe dentro l'avvio perche' la chiama anche
+    il gate, prima di eseguire i test: i test di parita' leggono il database
+    vero, e altrimenti leggerebbero uno schema vecchio mentre il codice e' gia'
+    nuovo - rossi per un motivo che non c'entra con quello che stanno provando.
+    Ripetibile: la seconda volta non trova piu' niente da fare.
+    """
     if str(engine.url).startswith("sqlite"):
         database_path = str(engine.url).removeprefix("sqlite:///")
         Path(database_path).parent.mkdir(parents=True, exist_ok=True)
@@ -139,6 +145,12 @@ async def lifespan(_: FastAPI):
         set_default_user(esito["utente"])
     if admin_engine is not engine:
         accendi_isolamento(admin_engine, password=os.getenv("MONEY_APP_DB_PASSWORD", "money-app-local"))
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Create any newly introduced tables without overwriting existing data."""
+    prepara_schema()
     backups = asyncio.create_task(_backup_loop())
     try:
         yield
@@ -460,7 +472,9 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
 
     ``source`` e' il nome del file da cui vengono le righe: e' facoltativo
     perche' un client che non lo manda deve continuare a funzionare come prima,
-    e serve solo a scrivere una riga leggibile nello storico degli import.
+    e serve solo a scrivere una riga leggibile nello storico degli import. Le
+    righe salvate ricordano da quale import vengono, cosi' lo storico sa anche
+    *quali* movimenti ha portato, non solo quanti.
 
     Una riga che l'anteprima non aveva segnato come doppione e che al momento
     di salvare corrisponde a un movimento gia' in archivio non si salva: fra le
@@ -476,6 +490,13 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
     # non devono entrare fra i candidati, altrimenti il secondo caffe' dello
     # stesso giorno verrebbe scartato come doppione del primo.
     doppioni = _Doppioni(session)
+    # Il lotto nasce prima delle righe perche' le righe lo citano: un movimento
+    # che rimanda a un import che non esiste ancora non si puo' scrivere. I
+    # numeri finali - accettate, scartate, motivi - si sanno solo dopo il ciclo,
+    # e si scrivono in fondo: qui nasce la riga, li' si completa.
+    lotto = ImportBatch(kind="statement", source_name=(source.strip()[:255] or "estratto-conto"))
+    session.add(lotto)
+    session.commit()
     for index, tx_data in enumerate(transactions):
         try:
             occurred = date.fromisoformat(str(tx_data.get('date') or ''))
@@ -504,6 +525,7 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
                 errors.append({"index": index, "code": "statementDuplicateRow"})
                 continue
             transaction = Transaction(
+                import_batch_id=lotto.id,
                 occurred_on=occurred,
                 effective_on=compute_effective_on(session, occurred, transaction_type),
                 transaction_type=transaction_type,
@@ -544,13 +566,9 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
     motivi: dict[str, int] = {}
     for errore in errors:
         motivi[errore["code"]] = motivi.get(errore["code"], 0) + 1
-    session.add(ImportBatch(
-        kind="statement",
-        source_name=(source.strip()[:255] or "estratto-conto"),
-        rows_accepted=saved_count,
-        rows_rejected=len(errors),
-        rejected_reasons=json.dumps(motivi) if motivi else None,
-    ))
+    lotto.rows_accepted = saved_count
+    lotto.rows_rejected = len(errors)
+    lotto.rejected_reasons = json.dumps(motivi) if motivi else None
     session.commit()
     return {"success": not errors, "saved": saved_count, "errors": errors}
 

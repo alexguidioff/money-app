@@ -34,6 +34,12 @@ def tracked_changes(engine: Engine) -> None:
         if "refund_of_id" not in tx_cols:
             conn.execute(text("ALTER TABLE transactions ADD COLUMN refund_of_id INTEGER"))
             conn.execute(text("CREATE INDEX ix_transactions_refund_of_id ON transactions (refund_of_id)"))
+        # I movimenti che c'erano prima restano senza lotto: nessuno li ha
+        # importati da un file, e indovinare quale import li abbia portati
+        # sarebbe una ricostruzione inventata. Vuoto e' la risposta giusta.
+        if "import_batch_id" not in tx_cols:
+            conn.execute(text("ALTER TABLE transactions ADD COLUMN import_batch_id INTEGER"))
+            conn.execute(text("CREATE INDEX ix_transactions_import_batch_id ON transactions (import_batch_id)"))
         # La migrazione gira anche su database parziali (i test ne creano una
         # tabella per volta): una tabella che non c'e' si salta, non esplode.
         goal_cols = ({c["name"] for c in inspect(conn).get_columns("goals")}

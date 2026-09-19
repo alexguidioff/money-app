@@ -28,7 +28,7 @@ from app.database import Base, reset_current_user, set_current_user
 from app.interchange import build_export
 from app.interchange_import import import_data
 from app.migrations import PER_UTENTE, tracked_changes
-from app.models import Account, ImportBatch, User
+from app.models import Account, ImportBatch, Transaction, User
 
 
 def _riga(**campi) -> dict:
@@ -179,6 +179,61 @@ class DoppioniAlSalvataggioTests(unittest.TestCase):
         self.assertEqual((2, []), (esito["saved"], esito["errors"]))
 
 
+class LegameColLottoTests(unittest.TestCase):
+    """Ogni riga importata dice da quale import viene.
+
+    Lo storico senza questo legame sa quanti movimenti ha portato un file, non
+    quali: "guarda questo import" non e' una cosa che si puo' fare, e nemmeno
+    "annullalo" il giorno in cui servira'.
+    """
+
+    def setUp(self) -> None:
+        self.engine = create_engine("sqlite://")
+        Base.metadata.create_all(self.engine)
+        self.session = Session(self.engine)
+        self.session.add(Account(name="Banca", source_group="bank", starting_balance=Decimal("1000")))
+        self.session.commit()
+
+    def tearDown(self) -> None:
+        self.session.close()
+        self.engine.dispose()
+
+    def salva(self, righe: list[dict], source: str = "estratto.csv") -> dict:
+        return asyncio.run(main.save_pdf_transactions(righe, source=source, session=self.session))
+
+    def movimenti(self) -> list[Transaction]:
+        return list(self.session.scalars(select(Transaction).order_by(Transaction.id)))
+
+    def test_ogni_riga_salvata_rimanda_al_suo_import(self) -> None:
+        self.salva([_riga()])
+        primo = self.session.scalar(select(ImportBatch).order_by(ImportBatch.id.desc()))
+
+        self.salva([_riga(description="Spesa", amount=50.0)])
+        secondo = self.session.scalar(select(ImportBatch).order_by(ImportBatch.id.desc()))
+
+        self.assertNotEqual(primo.id, secondo.id)
+        self.assertEqual([primo.id, secondo.id], [riga.import_batch_id for riga in self.movimenti()])
+
+    def test_un_import_scartato_non_lascia_righe_ma_lascia_il_lotto(self) -> None:
+        esito = self.salva([_riga(accountName="Conto che non esiste")])
+
+        self.assertEqual(0, esito["saved"])
+        self.assertEqual([], self.movimenti())
+        lotto = self.session.scalar(select(ImportBatch).order_by(ImportBatch.id.desc()))
+        self.assertEqual((0, 1), (lotto.rows_accepted, lotto.rows_rejected))
+
+    def test_la_riga_saltata_perche_gia_presente_non_porta_il_lotto(self) -> None:
+        # Vale per il legame: il movimento che c'e' gia' non diventa figlio di
+        # questo import, altrimenti lo storico direbbe che il file ha portato
+        # una cosa che non ha portato.
+        self.salva([_riga()])
+        prima = self.movimenti()[0]
+
+        self.salva([_riga()])
+
+        self.assertEqual([prima.import_batch_id], [riga.import_batch_id for riga in self.movimenti()])
+
+
 class MigrazioneStoricoTests(unittest.TestCase):
     def test_le_righe_gia_esistenti_diventano_ripristini(self) -> None:
         """Le righe che c'erano sono tutte ripristini di un backup.
@@ -200,6 +255,26 @@ class MigrazioneStoricoTests(unittest.TestCase):
             riga = conn.execute(text("SELECT source_name, kind, rows_accepted, rows_rejected, "
                                      "rejected_reasons FROM import_batches")).one()
         self.assertEqual(("backup.xlsx", "interchange", 0, 0, None), tuple(riga))
+        engine.dispose()
+
+    def test_i_movimenti_che_c_erano_restano_senza_lotto(self) -> None:
+        """Nessuno li ha importati da un file, e non si indovina.
+
+        Vuoto e' la risposta giusta: un lotto indovinato direbbe che un import
+        ha portato dei movimenti, e sarebbe falso.
+        """
+        engine = create_engine("sqlite://")
+        with engine.begin() as conn:
+            conn.execute(text("CREATE TABLE transactions (id INTEGER, amount NUMERIC)"))
+            conn.execute(text("CREATE TABLE accounts (name TEXT, status TEXT, counts_in_net_worth BOOLEAN)"))
+            conn.execute(text("INSERT INTO transactions (id, amount) VALUES (1, 42)"))
+        tracked_changes(engine)
+        # Ripetibile: al secondo giro la colonna c'e' gia'.
+        tracked_changes(engine)
+        with engine.connect() as conn:
+            righe = [tuple(riga) for riga in conn.execute(
+                text("SELECT id, amount, import_batch_id FROM transactions")).all()]
+        self.assertEqual([(1, 42, None)], righe)
         engine.dispose()
 
 

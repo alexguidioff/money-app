@@ -100,7 +100,10 @@ class CompleteExportTests(TestCase):
         # Una colonna nuova deve finire nell'export o in questo elenco, con il
         # motivo: non puo' restare fuori per dimenticanza.
         derivate_o_storiche = {
-            'Movimenti': {'source_row', 'effective_on'},   # riga Excel d'origine; ricalcolata dall'import
+            # riga Excel d'origine; ricalcolata dall'import. Il lotto non
+            # attraversa il file: un ripristino non si annulla, e dopo un
+            # ripristino quei movimenti non vengono da un import fatto li'.
+            'Movimenti': {'source_row', 'effective_on', 'import_batch_id'},
             'Obiettivi': {'source_row'},
             'LedgerInvestimenti': {'source_row'},
             'CollegamentiLedger': {'created_at'},          # data tecnica, rimessa alla reimportazione
