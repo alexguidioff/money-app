@@ -212,6 +212,24 @@ def tracked_changes(engine: Engine) -> None:
                                       "REFERENCES categories(id)"))
             _albero_delle_categorie(conn)
 
+            # Le colonne di testo hanno fatto il loro giro: i nomi sono
+            # diventati righe, i riferimenti puntano agli id, e l'app non le
+            # legge piu'. Una copia che invecchia e' peggio di nessuna copia -
+            # un nome cambiato solo di qua sembrerebbe ancora vero - e finche'
+            # restano, chi legge il database deve indovinare quale delle due
+            # colonne comanda.
+            #
+            # Il vincolo unico dei budget nominava ``category``: Postgres se lo
+            # porta via da solo con la colonna, e al suo posto c'e' quello su
+            # ``category_id`` messo qui sopra.
+            for tabella, colonne in (("transactions", ("category",)),
+                                     ("budget_plans", ("category", "category_group")),
+                                     ("categorization_rules", ("category",))):
+                presenti = _colonne_di(conn, tabella)
+                for colonna in colonne:
+                    if colonna in presenti:
+                        conn.execute(text(f"ALTER TABLE {tabella} DROP COLUMN {colonna}"))
+
 def _colonne_di(conn, tabella: str) -> set[str]:
     """Le colonne di una tabella, o niente se la tabella non c'e'.
 
@@ -347,9 +365,12 @@ CONDIVISE = ["market_prices", "instrument_profiles", "import_batches"]
 # questo, due persone non potrebbero avere entrambe un conto "Banca".
 VINCOLI = [
     ("accounts", "accounts_source_group_name_key", ["user_id", "source_group", "name"]),
-    ("budget_plans", "budget_plans_period_budget_type_category_key", ["user_id", "period", "budget_type", "category"]),
     ("lookup_options", "lookup_options_option_group_value_key", ["user_id", "option_group", "value"]),
 ]
+# Il terzo vincolo era quello dei budget, uno per categoria e periodo: nominava
+# la colonna di testo ``category``, che l'ultimo passo dell'albero toglie. Il
+# vincolo equivalente su ``category_id`` lo mette ``_albero_delle_categorie``,
+# e su un database nato dopo l'albero l'ha gia' messo ``create_all``.
 
 # Indici unici su singola colonna, da rifare includendo l'utente.
 INDICI_UNICI = [

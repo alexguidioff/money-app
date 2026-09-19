@@ -9,7 +9,7 @@ from decimal import Decimal
 from io import BytesIO
 
 from openpyxl import load_workbook
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import Session
 
 from app.database import Base
@@ -101,6 +101,20 @@ class MigrazioneCategorieTests(unittest.TestCase):
         for nome in ("Vitto", "Trasporti", "Salute"):
             self.assertIsNone(radici[nome].parent_id)
         self.assertEqual(len(self.session.scalars(select(Category)).all()), 5)
+
+    def test_16_le_colonne_di_testo_spariscono_dopo_il_collegamento(self):
+        # Una copia che invecchia e' peggio di nessuna copia, ma il nome serve
+        # finche' i riferimenti non sono collegati: si tolgono dopo, non prima.
+        tracked_changes(self.engine)
+        for tabella, attese in (("transactions", {"category"}),
+                                ("budget_plans", {"category", "category_group"}),
+                                ("categorization_rules", {"category"})):
+            with self.engine.begin() as conn:
+                presenti = {colonna["name"] for colonna in inspect(conn).get_columns(tabella)}
+            self.assertEqual(presenti & attese, set(), tabella)
+        self.session.expire_all()
+        self.assertEqual(self.session.scalar(select(CategorizationRule)).category_id,
+                         self.radici()["Vitto"].id)
 
 
 class ImportFileVecchiTests(unittest.TestCase):
