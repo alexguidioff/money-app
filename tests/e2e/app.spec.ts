@@ -40,10 +40,13 @@ test('ogni pagina del menu si apre senza errori', async ({ page }) => {
 test('FIRE: profilo salvato, flusso aggiunto, la pagina mostra il piano', async ({ page }) => {
   const errori = raccogliErrori(page);
   await avvia(page);
-  // Il profilo si compila nella seconda scheda della pagina del piano, non piu'
-  // in Impostazioni: gli ingressi stanno accanto all'uscita che producono.
+  // I dati del piano si compilano nella seconda scheda della pagina del piano,
+  // non piu' in Impostazioni: gli ingressi stanno accanto all'uscita che
+  // producono. La scheda si chiama "Profilo e flussi" perche' "Impostazioni" e'
+  // gia' la voce della barra laterale.
   await apri(page, 'Pensionamento e FIRE');
-  await page.getByRole('tab', { name: 'Impostazioni' }).click();
+  const schede = page.locator('#fire-tabs');
+  await schede.getByRole('button', { name: 'Profilo e flussi' }).click();
   await page.getByLabel('Anno di nascita').fill('1998');
   await page.getByRole('button', { name: 'Salva profilo' }).click();
   await expect(page.getByText('Profilo salvato.')).toBeVisible();
@@ -51,11 +54,11 @@ test('FIRE: profilo salvato, flusso aggiunto, la pagina mostra il piano', async 
   // Qui i flussi sono ancora zero, ed e' l'unico momento in cui la condizione
   // e' vera: l'eta' di ritiro non muove niente, e la pagina deve dirlo invece
   // di ripetere cinque volte lo stesso numero.
-  await page.getByRole('tab', { name: 'Piano' }).click();
+  await schede.getByRole('button', { name: 'Piano' }).click();
   await page.locator('#fire-lever').selectOption('retirementAge');
   await expect(page.getByText('Questa leva non muove il tuo piano')).toBeVisible();
 
-  await page.getByRole('tab', { name: 'Impostazioni' }).click();
+  await schede.getByRole('button', { name: 'Profilo e flussi' }).click();
   await page.getByRole('button', { name: 'Aggiungi flusso' }).click();
   await page.getByLabel('Nome', { exact: true }).fill('AVS');
   await page.getByLabel('Importo annuo').fill('20000');
@@ -65,7 +68,7 @@ test('FIRE: profilo salvato, flusso aggiunto, la pagina mostra il piano', async 
   // Tornando al piano i numeri sono quelli nuovi, non quelli di prima: la
   // pagina non si smonta piu' a ogni cambio di sezione, e il ricarico lo fa la
   // scheda.
-  await page.getByRole('tab', { name: 'Piano' }).click();
+  await schede.getByRole('button', { name: 'Piano' }).click();
   await expect(page.getByText('Capitale necessario').first()).toBeVisible();
   expect(errori).toEqual([]);
 });

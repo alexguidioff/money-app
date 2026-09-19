@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { Flame } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useI18n } from '@/lib/i18n-context';
 import { FireChart, type FireChartPoint } from '@/components/fire-chart';
 import { MilestonesCard } from '@/components/fire/milestones-card';
@@ -32,10 +31,15 @@ import { FireSettingsSection } from '@/components/settings/fire-settings-section
  * qualunque eta': e' il caso che la tabella delle leve dichiara invece di
  * disegnarlo come se fosse una risposta.
  *
- * Due schede: il piano, e le impostazioni che lo producono. Stanno insieme
- * perche' sono la stessa domanda vista dai due lati - chi cambia il profilo
- * vuole vedere subito cosa succede al numero grande, e chi guarda il numero
- * vuole poterlo correggere dove e' nato.
+ * Due schede: il piano, e i dati che lo producono. Stanno insieme perche' sono
+ * la stessa domanda vista dai due lati - chi cambia il profilo vuole vedere
+ * subito cosa succede al numero grande, e chi guarda il numero vuole poterlo
+ * correggere dove e' nato.
+ *
+ * La seconda scheda non si chiama "Impostazioni": quel nome ce l'ha gia' la
+ * voce della barra laterale, e due cose diverse con lo stesso nome in due punti
+ * dello schermo si cercano nel posto sbagliato. Si chiama come quello che c'e'
+ * dentro, e il riquadro "non configurato" manda li'.
  */
 
 type Milestone = { capitalNeeded: number | null; reached: boolean | null };
@@ -78,8 +82,8 @@ const ETICHETTE_FASE: Record<string, string> = {
   accumulo: 'firePhaseAccumulation', ponte: 'firePhaseBridge', pensione: 'firePhasePension',
 };
 
-/** Le due schede: il piano, e quello che lo produce. */
-type Scheda = 'piano' | 'impostazioni';
+/** Le due schede: il piano, e i dati che lo producono. */
+type Scheda = 'piano' | 'profilo';
 
 export function FirePage({ apiUrl }: { apiUrl: string }) {
   const { t, formatEuro, formatCompactEuro, formatNumber } = useI18n();
@@ -106,12 +110,12 @@ export function FirePage({ apiUrl }: { apiUrl: string }) {
     if (!dati) return <p className="py-16 text-center text-sm text-[#87918e]">{t('loading')}</p>;
 
     // Senza profilo non si mostra un piano costruito su ipotesi che nessuno ha
-    // dichiarato: si chiede di configurarlo, e le impostazioni sono qui accanto.
+    // dichiarato: si chiede di compilarlo, e i dati si compilano qui accanto.
     if (!dati.configured || !dati.plan) {
       return <Card className="border-black/6 bg-white shadow-sm"><CardContent className="py-14 text-center">
         <Flame className="mx-auto mb-3 size-8 text-[#87918e]" />
         <p className="text-sm text-[#173b33]">{t('fireNotConfigured')}</p>
-        <Button className="mt-4 bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]" onClick={() => setScheda('impostazioni')}>{t('fireGoToSettings')}</Button>
+        <Button className="mt-4 bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]" onClick={() => setScheda('profilo')}>{t('fireGoToSettings')}</Button>
       </CardContent></Card>;
     }
 
@@ -211,15 +215,17 @@ export function FirePage({ apiUrl }: { apiUrl: string }) {
     </div>;
   }
 
-  return <Tabs value={scheda} onValueChange={(valore) => setScheda(valore as Scheda)}>
-    {/* La striscia e' quella dei Movimenti: stesso bordo, stesso fondo, stesso
-        pulsante acceso. Il piano e le sue impostazioni sono due schede della
-        stessa pagina, non due pagine. */}
-    <TabsList className="h-auto flex-wrap rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-      <TabsTrigger value="piano" className="rounded-lg px-3.5 py-2 text-sm font-medium text-[#52615d] data-active:bg-[var(--money-deep)] data-active:text-white">{t('fireTabPlan')}</TabsTrigger>
-      <TabsTrigger value="impostazioni" className="rounded-lg px-3.5 py-2 text-sm font-medium text-[#52615d] data-active:bg-[var(--money-deep)] data-active:text-white">{t('fireTabSettings')}</TabsTrigger>
-    </TabsList>
-    <TabsContent value="piano">{contenutoPiano()}</TabsContent>
-    <TabsContent value="impostazioni"><FireSettingsSection apiUrl={apiUrl} /></TabsContent>
-  </Tabs>;
+  return <div className="space-y-5">
+    {/* La striscia e' la stessa dei Movimenti e del Budget: un contorno, un
+        fondo, un pulsante acceso. Il piano e i dati che lo producono sono due
+        viste della stessa pagina, non due pagine. */}
+    <div id="fire-tabs" className="flex flex-wrap gap-2 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
+      {([['piano', t('fireTabPlan')], ['profilo', t('fireTabSettings')]] as const).map(([valore, etichetta]) =>
+        <button key={valore} type="button" aria-pressed={scheda === valore} onClick={() => setScheda(valore)}
+                className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${scheda === valore ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>{etichetta}</button>)}
+    </div>
+    {/* La scheda nascosta non si tiene montata: le impostazioni si rileggono
+        ogni volta che ci si entra, e i flussi salvati prima ci sono. */}
+    {scheda === 'piano' ? contenutoPiano() : <FireSettingsSection apiUrl={apiUrl} />}
+  </div>;
 }
