@@ -31,7 +31,10 @@ class SemeDeiContrattiTests(unittest.TestCase):
     def test_gli_elenchi_non_sono_vuoti(self) -> None:
         r = self.risposte
         for nome, elenco in {
-            "serie del piano": r["fire"]["plan"]["series"], "leva": r["fire"]["plan"]["leverage"],
+            "serie del piano": r["fire"]["plan"]["series"],
+            # Le righe di tutte e quattro le leve: la risposta le porta gia'
+            # calcolate, ed e' quello che il browser disegna.
+            "leve": [riga for leva in r["fire"]["plan"]["leverage"] for riga in leva["rows"]],
             "fasi con pensione": [f for f in r["fire"]["plan"]["phases"] if f["kind"] == "pensione"],
             "flussi": r["fireStreams"]["streams"], "categorie in pensione": r["fireExpenseRules"]["categories"],
             "prestiti": [i for i in r["liabilities"]["items"] if i["kind"] == "term_loan"],

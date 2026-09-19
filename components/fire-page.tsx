@@ -8,7 +8,7 @@ import { useI18n } from '@/lib/i18n-context';
 import { FireChart, type FireChartPoint } from '@/components/fire-chart';
 import { MilestonesCard } from '@/components/fire/milestones-card';
 import { MonteCarloCard, type MonteCarloPayload } from '@/components/fire/montecarlo-card';
-import { LeverageTable, type LeverageRow } from '@/components/fire/leverage-table';
+import { LeverageTable, type Leverage } from '@/components/fire/leverage-table';
 import { AgeShiftSlider } from '@/components/fire/age-shift-slider';
 
 /**
@@ -38,7 +38,7 @@ export type FirePlan = {
   reachedInYear: number | null;
   yearsLeft: number | null;
   depletedAtAge: number | null;
-  leverage: LeverageRow[];
+  leverage: Leverage[];
   leanCapped: boolean;
   series: SeriePunto[];
   history: Array<{ year: number; capital: number }>;
@@ -177,7 +177,7 @@ export function FirePage({ apiUrl, onOpenSettings }: { apiUrl: string; onOpenSet
                         lean: formatEuro(dati.profile?.leanAnnualExpenses ?? 0),
                         expenses: formatEuro(dati.expensesUsed ?? 0) }) : undefined} />
       <MonteCarloCard dati={piano.monteCarlo} />
-      {piano.leverage.length > 0 && <LeverageTable rows={piano.leverage} />}
+      {piano.leverage.length > 0 && <LeverageTable rows={piano.leverage[0].rows} />}
       <AgeShiftSlider apiUrl={apiUrl} />
     </div>
 

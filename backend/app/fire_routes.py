@@ -280,8 +280,7 @@ def fire(session: Session = Depends(get_session)) -> dict[str, Any]:
         leve = _leve(c, piano)
     except ValueError as errore:
         raise _errore_motore(errore) from errore
-    return _risposta(c, piano, esito, scenari, _storico_patrimonio(session, c.oggi),
-                     _leva_del_risparmio(leve[0]))
+    return _risposta(c, piano, esito, scenari, _storico_patrimonio(session, c.oggi), leve)
 
 
 def _piano(c: _Contesto, versamenti: Decimal | None = None, rendimento: Decimal | None = None,
@@ -444,18 +443,6 @@ def _leve(c: _Contesto, piano: PianoFire) -> list[dict[str, Any]]:
     return leve
 
 
-def _leva_del_risparmio(leva: dict[str, Any]) -> list[dict[str, Any]]:
-    """La leva del risparmio con i nomi che la risposta usa oggi.
-
-    Le altre tre, e `value` al posto di `savingsRate`, arrivano al passo dopo:
-    il contratto col browser cambia una volta sola, quando la pagina sa
-    leggere tutte e quattro.
-    """
-    return [{"savingsRate": riga["value"], "current": riga["current"],
-             "annualSavings": riga["annualSavings"], "yearsLeft": riga["yearsLeft"]}
-            for riga in leva["rows"]]
-
-
 def _storico_patrimonio(session: Session, oggi: date) -> list[dict[str, Any]]:
     """Il patrimonio come e' andato davvero, da disegnare dietro la proiezione.
 
@@ -476,7 +463,7 @@ def _storico_patrimonio(session: Session, oggi: date) -> list[dict[str, Any]]:
     return [{"year": anno, "capital": valore} for anno, valore in sorted(per_anno.items())]
 
 
-def _risposta(c: _Contesto, piano, esito: EsitoMonteCarlo, scenari, storico, leva) -> dict[str, Any]:
+def _risposta(c: _Contesto, piano, esito: EsitoMonteCarlo, scenari, storico, leve) -> dict[str, Any]:
     # I percentili non portano l'anno: le eta' sono le stesse della serie
     # centrale, quindi l'anno e' quello che il motore ha gia' scritto per
     # quell'eta', non un secondo calendario calcolato qui.
@@ -540,7 +527,11 @@ def _risposta(c: _Contesto, piano, esito: EsitoMonteCarlo, scenari, storico, lev
             "leanCapped": c.profilo.lean_annual_expenses is not None
                           and Decimal(c.profilo.lean_annual_expenses) > c.spese_pensione,
             "history": storico,
-            "leverage": leva,
+            # Tutte e quattro le leve, gia' calcolate: il selettore vive nel
+            # browser e cambiare leva non costa una seconda chiamata, che su un
+            # motore gia' chiamato una dozzina di volte per gli scenari sarebbe
+            # l'unica parte visibile della sua lentezza.
+            "leverage": leve,
             "scenarios": {nome: [{"age": p.eta, "year": anni.get(p.eta), "capital": float(p.capitale)}
                                  for p in serie if p.eta <= ETA_FINE_GRAFICO]
                           for nome, serie in scenari.items()},

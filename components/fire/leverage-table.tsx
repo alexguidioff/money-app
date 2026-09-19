@@ -3,14 +3,21 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useI18n } from '@/lib/i18n-context';
 
-// La leva: quanti anni al piano al variare del tasso di risparmio. Le righe le
-// calcola il motore sul server, con lo stesso piano del resto della pagina:
-// una formula a parte qui diceva 24 anni dove il piano ne diceva 29.
+// Le leve: quanti anni al piano, e quanto capitale servirebbe, al variare di
+// una cosa sola. Le righe le calcola il motore sul server, con lo stesso piano
+// del resto della pagina: una formula a parte qui diceva 24 anni dove il piano
+// ne diceva 29.
 export type LeverageRow = {
-  savingsRate: number;          // 0-100
-  annualSavings: number;        // risparmio annuo a quel tasso, spese invariate
-  yearsLeft: number | null;     // null: non raggiunto nell'orizzonte
+  value: number;                    // il valore della leva: tasso, eta' o spese
+  annualSavings: number | null;     // risparmio annuo: solo la leva del risparmio lo muove
+  capitalNeeded: number;            // il capitale che servirebbe a quella riga
+  yearsLeft: number | null;         // null: non raggiunto nell'orizzonte
   current: boolean;
+};
+
+export type Leverage = {
+  key: 'savingsRate' | 'return' | 'retirementAge' | 'retirementExpenses';
+  rows: LeverageRow[];
 };
 
 export function LeverageTable({ rows }: { rows: readonly LeverageRow[] }) {
@@ -32,12 +39,14 @@ export function LeverageTable({ rows }: { rows: readonly LeverageRow[] }) {
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.savingsRate} className={row.current ? 'bg-[#e5f3ed]' : 'border-t border-black/5'}>
+              <tr key={row.value} className={row.current ? 'bg-[#e5f3ed]' : 'border-t border-black/5'}>
                 <td className="py-2 pr-3 font-semibold tabular-nums">
-                  {formatNumber(row.savingsRate, { maximumFractionDigits: 1 })}% {row.current && <span className="ml-1 text-[10px] text-[#2d7b65]">· {t('fireLeverageYourRow')}</span>}
+                  {formatNumber(row.value, { maximumFractionDigits: 1 })}% {row.current && <span className="ml-1 text-[10px] text-[#2d7b65]">· {t('fireLeverageYourRow')}</span>}
                 </td>
                 <td className="py-2 text-right tabular-nums">{row.yearsLeft ?? '∞'}</td>
-                <td className="py-2 text-right text-xs text-[#87918e] tabular-nums">{formatEuro(row.annualSavings)}</td>
+                <td className="py-2 text-right text-xs text-[#87918e] tabular-nums">
+                  {row.annualSavings === null ? '' : formatEuro(row.annualSavings)}
+                </td>
               </tr>
             ))}
           </tbody>

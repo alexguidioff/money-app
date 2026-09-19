@@ -254,9 +254,10 @@ class RisparmiEProiezioneTests(unittest.TestCase):
 
     def test_la_riga_della_leva_dice_gli_stessi_anni_del_piano(self) -> None:
         esito = self._fire({2024: 30.0, 2025: 40.0})
-        tua = [r for r in esito["plan"]["leverage"] if r["current"]]
+        risparmio = next(leva for leva in esito["plan"]["leverage"] if leva["key"] == "savingsRate")
+        tua = [r for r in risparmio["rows"] if r["current"]]
         self.assertEqual(1, len(tua))
-        self.assertEqual(35.0, tua[0]["savingsRate"])
+        self.assertEqual(35.0, tua[0]["value"])
         self.assertEqual(esito["plan"]["yearsLeft"], tua[0]["yearsLeft"])
         self.assertEqual(esito["annualSavings"], tua[0]["annualSavings"])
 
