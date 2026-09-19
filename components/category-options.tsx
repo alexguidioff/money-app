@@ -10,15 +10,17 @@ export type CategoryNode = { name: string; children: string[] };
  * Le voci di un elenco a tendina di categorie, con i figli indentati sotto il
  * padre.
  *
- * Una radice che ha figli non e' una scelta: se hai spaccato Alimentari in
- * Supermercato e Mensa, un movimento sta in uno dei due, non nel contenitore.
- * Resta nell'elenco, spenta, perche' e' l'unico modo di dire a cosa
- * appartengono le due righe sotto. Una radice senza figli invece si sceglie
- * come qualunque altra categoria.
+ * Una radice con figli si sceglie come qualunque altra categoria: e' dove
+ * stanno i movimenti che nessuno ha ancora spostato nei figli, e spegnerla
+ * vorrebbe dire non poter spaccare una categoria senza prima svuotarla - che e'
+ * il contrario di come si fa: prima si spacca, poi si sposta quello che c'era.
+ * Resta anche il titolo che dice a cosa appartengono le righe sotto.
  *
- * `names` e' quello che il server accetta per questo tipo di movimento. Una
- * categoria che l'albero non conosce - il vocabolario di partenza puo' averne
- * una - resta in fondo, dov'era, invece di sparire dall'elenco.
+ * `names` e' quello che il server accetta per questo tipo di movimento, e da
+ * solo decide cosa si vede: una categoria di entrate non compare in una tendina
+ * di spese, e viceversa. Una categoria che l'albero non conosce - il vocabolario
+ * di partenza puo' averne una - resta in fondo, dov'era, invece di sparire
+ * dall'elenco.
  */
 export function CategoryOptions({ names, tree }: { names: string[]; tree: CategoryNode[] }) {
   const { t } = useI18n();
@@ -27,12 +29,15 @@ export function CategoryOptions({ names, tree }: { names: string[]; tree: Catego
   const mostrati = new Set<string>();
   for (const radice of tree) {
     const figli = radice.children.filter((figlio) => ammessi.has(figlio));
-    if (figli.length) {
+    const sceglibile = ammessi.has(radice.name);
+    if (figli.length || sceglibile) {
       mostrati.add(radice.name);
       voci.push(
-        // Spenta e con la spiegazione nel titolo: da sola non direbbe perche'
-        // non si puo' scegliere.
-        <option key={`padre-${radice.name}`} value={radice.name} disabled title={t('catChooseChild', { name: radice.name })}>
+        // Spenta solo se il server non la offre qui - un padre messo via, o
+        // l'albero dell'altro verso - con la spiegazione nel titolo: da sola
+        // non direbbe perche' non si puo' scegliere.
+        <option key={`padre-${radice.name}`} value={radice.name} disabled={!sceglibile}
+                title={sceglibile ? undefined : t('catChooseChild', { name: radice.name })}>
           {radice.name}
         </option>,
         // Spazi fissi e non normali: in una tendina gli spazi normali vengono
@@ -42,9 +47,6 @@ export function CategoryOptions({ names, tree }: { names: string[]; tree: Catego
           return <option key={`${radice.name}/${figlio}`} value={figlio}>{`   ${figlio}`}</option>;
         }),
       );
-    } else if (radice.children.length === 0 && ammessi.has(radice.name)) {
-      mostrati.add(radice.name);
-      voci.push(<option key={`radice-${radice.name}`} value={radice.name}>{radice.name}</option>);
     }
   }
   for (const nome of names) {

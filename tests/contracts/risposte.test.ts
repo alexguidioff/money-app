@@ -31,6 +31,9 @@ const CONTRATTI: Array<{ risposta: string; tipo: string; da: string }> = [
   { risposta: 'firePensionShift', tipo: 'PensionShiftData', da: '@/components/fire/age-shift-slider' },
   { risposta: 'liabilities', tipo: 'LiabilityData', da: '@/components/money-dashboard' },
   { risposta: 'settings', tipo: 'SettingsData', da: '@/components/money-dashboard' },
+  // Le categorie dell'albero, con il verso e il bisogno/piacere: la card che le
+  // gestisce nel Budget legge proprio questi campi.
+  { risposta: 'categories', tipo: '{ items: CategoryRow[] }', da: '@/components/settings/category-tree' },
   { risposta: 'netWorth', tipo: 'NetWorthData', da: '@/components/money-dashboard' },
   { risposta: 'accounts', tipo: 'AccountsResponse', da: '@/components/money-dashboard' },
   { risposta: 'transactions', tipo: 'TransactionsPage', da: '@/components/money-dashboard' },

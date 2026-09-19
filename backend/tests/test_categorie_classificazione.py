@@ -8,6 +8,8 @@ I nomi sono inventati e tondi: questo repository e' pubblico e i valori veri di
 chi usa l'app non ci entrano.
 """
 import unittest
+from datetime import date
+from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -15,8 +17,9 @@ from sqlalchemy.orm import Session
 
 from app.categorie import (CategoryGroupPayload, classifica_categoria, essenziale_di_categoria,
                            gruppo_di_categoria)
+from app.core_routes import settings
 from app.database import Base
-from app.models import Category
+from app.models import Category, Transaction
 
 
 class ClassificazioneTests(unittest.TestCase):
@@ -99,3 +102,38 @@ class ClassificazioneTests(unittest.TestCase):
         self.assertEqual(casa.essenziale, "needs")
         self.classifica(casa, "Other")
         self.assertIsNone(casa.essenziale)
+
+    def test_6_una_radice_con_figli_resta_sceglibile(self):
+        """Una radice che ha figli tiene i suoi movimenti e si puo' scegliere.
+
+        Spaccare una categoria e' una decisione che si prende mentre la si usa:
+        se la radice sparisse dall'elenco appena le nasce un figlio, per
+        spaccarla bisognerebbe prima svuotarla, cioe' fare il lavoro al
+        contrario. E i movimenti che ha gia' non si spostano da soli.
+        """
+        casa = self.crea("Casa")
+        affitto = self.crea("Affitto", padre=casa)
+        self.session.add(Transaction(occurred_on=date(2026, 1, 5), effective_on=date(2026, 1, 5),
+                                     transaction_type="Expenses", category_id=casa.id,
+                                     amount=Decimal("400"), details="Spesa"))
+        self.session.commit()
+        spese = settings(self.session)["categoriesByType"]["Expenses"]
+        self.assertIn("Casa", spese)
+        self.assertIn("Affitto", spese)
+        self.assertEqual(affitto.parent_id, casa.id)
+
+    def test_7_le_tendine_non_mescolano_i_due_versi(self):
+        """Una spesa non si sceglie fra le entrate: sono domande diverse.
+
+        E' la ragione per cui il verso esiste come attributo: senza, una
+        categoria vale per tutto, e la stessa voce compare in due tendine che
+        chiedono cose diverse.
+        """
+        self.crea("Casa", scope="expense")
+        self.crea("Stipendio", scope="income")
+        tipi = settings(self.session)["categoriesByType"]
+        self.assertEqual(tipi["Expenses"], ["Casa"])
+        self.assertEqual(tipi["Income"], ["Stipendio"])
+        # I trasferimenti spostano denaro fra conti: non c'e' niente da
+        # categorizzare, e la tendina resta vuota apposta.
+        self.assertEqual(tipi["Transfers"], [])

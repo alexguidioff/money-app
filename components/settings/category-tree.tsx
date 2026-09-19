@@ -8,7 +8,15 @@ import { Input } from '@/components/ui/input';
 import { useI18n } from '@/lib/i18n-context';
 import type { TranslationKey } from '@/lib/translations';
 
-/** Una categoria come la manda l'API: dov'e' nell'albero, e chi la usa. */
+/**
+ * Una categoria come la manda l'API: dov'e' nell'albero, e chi la usa.
+ *
+ * `scope` dice il verso - una categoria di spesa non compare fra le entrate - e
+ * `essential` e' bisogno/piacere/nullo solo sulle spese: sulle entrate la
+ * domanda non si pone. `essentialEffective` e' quello che vale davvero, cioe' il
+ * dichiarato o quello del padre, e serve a mostrare in grigio l'ereditato senza
+ * farlo sembrare una scelta di chi guarda.
+ */
 export type CategoryRow = {
   id: number;
   name: string;
@@ -19,6 +27,9 @@ export type CategoryRow = {
   budgets: number;
   rules: number;
   children: number;
+  scope: 'expense' | 'income';
+  essential: 'needs' | 'wants' | null;
+  essentialEffective: 'needs' | 'wants' | null;
 };
 
 type Dettaglio = string | { code?: string; movements?: number; budgets?: number; rules?: number } | null;

@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 
 from app import backup
 from app.auth import OPZIONI_INIZIALI
+from app.categorie import elenco_categorie
 from app.categorization import suggest
 from app.core_routes import (EventPayload, RuleBulkPayload, RulePayload, TransactionEventPayload, accounts, analysis,
                              balance_sheet_series, budget_annual, budget_dashboard,
@@ -54,8 +55,8 @@ from app.main import (AccountPayload, BudgetCreatePayload, BudgetUpdatePayload, 
                       create_account, create_budget, create_goal, create_investment_tx, create_note,
                       create_recurring_transaction, create_transaction, liabilities, list_backups_endpoint,
                       list_recurring_transactions, save_liability, split_transaction, update_budget, update_setting)
-from app.models import (Account, AccountValuation, AppSetting, BudgetPlan, CategorizationRule, Event, Goal, IncomeStream,
-                        InvestmentInstrument,
+from app.models import (Account, AccountValuation, AppSetting, BudgetPlan, CategorizationRule, Category, Event, Goal,
+                        IncomeStream, InvestmentInstrument,
                         LiabilityProfile, LookupOption, MarketPrice, Note, RetirementProfile, Transaction, TransactionLedgerLink)
 from app.notifications import elenco as notifiche
 from tests.categorie_fixture import categoria
@@ -103,6 +104,15 @@ def _semina(session: Session) -> None:
     for gruppo, valori in {**OPZIONI_INIZIALI, "colors": ["Blue", "Yellow"],
                            "years": [str(anno_scorso), str(oggi.year)]}.items():
         session.add_all(LookupOption(option_group=gruppo, position=i, value=v) for i, v in enumerate(valori))
+    session.commit()
+    # Una categoria con un padre e una classificazione: le due colonne nuove -
+    # il verso e il bisogno/piacere - hanno un valore vero nel file delle
+    # risposte, invece di un vuoto che sarebbe compatibile con qualunque tipo e
+    # non controllerebbe niente.
+    casa = session.get(Category, categoria(session, "Housing"))
+    casa.essenziale = "needs"
+    session.add_all([Category(name="Rent/Mortgage", parent_id=casa.id, scope="expense"),
+                     Category(name="Salary", parent_id=None, scope="income")])
     session.commit()
     conto = {a.name: a.id for a in session.scalars(select(Account))}
     session.add(AccountValuation(account_id=conto["Casa"], observed_on=date(anno_scorso, 6, 1),
@@ -237,6 +247,7 @@ def risposte() -> dict[str, Any]:
         "firePensionShift": spostamento_pensioni(session),
         "liabilities": liabilities(session),
         "settings": settings(session),
+        "categories": elenco_categorie(session),
         "netWorth": net_worth(oggi.year, oggi.month, 12, session),
         "accounts": accounts(None, session),
         "transactions": transactions(100, session, offset=0),

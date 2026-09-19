@@ -1300,37 +1300,29 @@ def settings(session: Session = Depends(get_session)) -> dict[str, Any]:
     # id, e l'interfaccia di oggi conosce ancora i nomi.
     nomi = nomi_categorie(session)
     options["categories"] = sorted((nome for nome in nomi.values() if nome), key=str.casefold)
-    # Le categorie appartengono a un tipo: una spesa non puo' essere "Stipendio".
-    # L'elenco unisce quelle gia' usate nei movimenti e quelle pianificate a
-    # budget, altrimenti una categoria appena creata nel budget non sarebbe
-    # selezionabile su nessun movimento e quindi non potrebbe mai essere usata.
+    # Le categorie appartengono a un verso: una spesa non puo' essere "Stipendio".
+    # Il verso e' un attributo della categoria e non si ricava da come e' stata
+    # usata finora: cosi' una categoria appena creata - che nessun movimento e
+    # nessun budget nomina ancora - e' sceglibile subito, che e' il motivo per
+    # cui la si e' creata. Quello che non si sceglie e' una categoria di spesa
+    # in una tendina di entrate: sono domande diverse.
+    #
+    # Una radice che ha figli resta sceglibile: e' dove stanno i movimenti non
+    # ancora spostati nei figli, e nasconderla vorrebbe dire non poter spaccare
+    # una categoria senza prima spostare tutto quello che c'e' dentro.
     by_type: dict[str, set[str]] = {kind: set() for kind in ("Income", "Expenses", "Savings")}
-    for kind, category_id in session.execute(select(Transaction.transaction_type, Transaction.category_id).distinct().where(REAL_MOVEMENT)).all():
-        if kind in by_type and nomi.get(category_id):
-            by_type[kind].add(nomi[category_id])
-    for kind, category_id in session.execute(select(BudgetPlan.budget_type, BudgetPlan.category_id).distinct()).all():
-        if kind in by_type and nomi.get(category_id):
-            by_type[kind].add(nomi[category_id])
-    # Il vocabolario di partenza di ogni account: senza, chi comincia da zero
-    # non troverebbe nessuna categoria da scegliere sul primo movimento.
-    for kind, gruppo in (("Expenses", "categories_expenses"), ("Income", "categories_income"),
-                         ("Savings", "categories_savings")):
-        by_type[kind].update(options.get(gruppo, []))
-    # Una categoria appena creata non ha ancora un tipo: nessun movimento e
-    # nessun budget la nomina, e i tipi qui sopra si ricavano proprio da li'.
-    # Nasconderla la renderebbe inutilizzabile appena creata - la si crea per
-    # usarla - quindi si offre a tutti e tre, e il primo movimento che la usa
-    # decide dove sta. Una categoria spenta invece non si sceglie piu': resta
-    # nell'albero e nella storia dei movimenti che l'hanno gia' usata.
-    spente = {riga.name for riga in session.scalars(select(Category)).all() if not riga.active}
-    for nome in set(nomi.values()):
-        if nome and nome not in spente and not any(nome in valori for valori in by_type.values()):
-            for kind in by_type:
-                by_type[kind].add(nome)
+    for riga in session.scalars(select(Category)).all():
+        if riga.active and riga.name:
+            by_type["Income" if riga.scope == "income" else "Expenses"].add(riga.name)
+    # Il risparmio non e' un verso: e' quello che resta, e va a finire su una
+    # categoria di spesa che l'utente ha scelto fra quelle che ha. La tendina
+    # del risparmio continua a offrire quella, se c'e'.
+    if savings_category(session) in by_type["Expenses"]:
+        by_type["Savings"].add(savings_category(session))
     # I trasferimenti spostano denaro fra conti: non c'e' niente da categorizzare.
     # Spostare denaro fra conti non e' una categoria da scegliere: ne' un
     # giroconto ne' un versamento su un broker hanno qualcosa da categorizzare.
-    categories_by_type = ({kind: sorted(values - spente, key=str.casefold) for kind, values in by_type.items()}
+    categories_by_type = ({kind: sorted(values, key=str.casefold) for kind, values in by_type.items()}
                           | {"Transfers": [], "Investment": [], "Debt": []})
     # Panoramica non deve offrire l'elenco anni "infinito" copiato dal dropdown Excel
     # (options["years"], usato altrove per pianificazione futura): si ferma all'ultimo
