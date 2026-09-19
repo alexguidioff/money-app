@@ -225,6 +225,17 @@ export type EventDetailData = {
 /** Quello che basta alla pastiglia e alle tendine: senza importi. */
 export type EventSummary = { id: number; name: string; closed: boolean };
 
+/* Le colonne di un estratto conto in CSV, lette prima di importarlo: le
+   intestazioni, le prime righe da mostrare e la mappatura che l'euristica
+   propone - correggibile. Gli indici valgono nel taglio indicato da
+   `delimiter`, ed e' per questo che viaggia con loro. */
+export type StatementColumns = {
+  headers: string[];
+  sample: Record<string, string>[];
+  mapping: Record<string, number>;
+  delimiter: string;
+};
+
 export type Transaction = {
   countsInBudget?: boolean;
   refundOfId?: number | null;

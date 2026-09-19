@@ -81,6 +81,19 @@ async def read_upload(file: UploadFile, extension: str) -> bytes:
     return payload
 
 
+def testo_csv(content: bytes) -> str:
+    """Il testo di un CSV, provando le codifiche che escono dai fogli di calcolo.
+
+    Latin-1 non fallisce mai: e' l'ultima prova, non una scelta.
+    """
+    for encoding in ('utf-8-sig', 'cp1252', 'latin1'):
+        try:
+            return content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise HTTPException(422, detail="statementParseFailed")
+
+
 def require_backup_admin(session: Session = Depends(get_session)) -> None:
     allowed = session.scalar(select(User.id).order_by(User.id).limit(1)) == current_user_id()
     # Rilascia il lock di lettura su users prima che pg_restore la ricrei.
@@ -363,7 +376,7 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
         else:
             categoria = _resolve_category(tx.get("category"), tipo)
             categoria_id = id_di_nome.get(categoria.casefold())
-        rows.append({
+        riga = {
             "id": None, "date": occurred, "description": description,
             "details": description,
             "category": categoria,
@@ -380,7 +393,14 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
                             "amount": float(sum(abs(item.amount) for item in coppia) if coppia else match.amount),
                             "description": " + ".join(filter(None, (item.details for item in coppia))) if coppia
                             else match.details} if match else None,
-        })
+        }
+        # Una riga che non si e' potuta leggere dal file porta il suo motivo: e'
+        # lo stesso campo con cui l'anteprima segnala le righe scartate al
+        # salvataggio, cosi' si legge un vocabolario solo. Assente quando la
+        # riga e' a posto, perche' "nessun motivo" non e' un motivo.
+        if tx.get("errorCode"):
+            riga["errorCode"] = tx["errorCode"]
+        rows.append(riga)
     # Le regole che non si sono potute compilare: l'interfaccia le segnala,
     # perche' altrimenti sarebbero regole che non fanno niente e non lo dicono.
     return {"success": True, "transactions": rows, "count": len(rows), "rulesDiscarded": scartate(regole)}
@@ -3505,17 +3525,69 @@ def query_market_data_cache(payload: MarketDataCacheQuery, session: Session = De
     }
 
 
+# Le colonne che una mappatura puo' nominare: sono quelle che l'euristica cerca,
+# ed e' l'unico vocabolario che il parser conosce.
+COLONNE_ESTRATTO = ("date_cols", "desc_cols", "amount_cols", "debit_cols", "credit_cols", "balance_cols")
+
+
+def mappatura_colonne(grezza: str) -> dict[str, int] | None:
+    """La mappatura scelta a mano, validata; None se non ce n'e' una.
+
+    Gli indici arrivano dall'esterno: una chiave inventata o un indice che non
+    e' un indice valgono come mappatura assente, perche' leggere la colonna
+    sbagliata senza dirlo e' peggio che comportarsi come oggi.
+    """
+    if not isinstance(grezza, str) or not grezza.strip():
+        return None
+    try:
+        scelta = json.loads(grezza)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise HTTPException(422, detail="statementMappingInvalid") from error
+    if not isinstance(scelta, dict):
+        raise HTTPException(422, detail="statementMappingInvalid")
+    mappatura = {chiave: indice for chiave, indice in scelta.items()
+                 if chiave in COLONNE_ESTRATTO and isinstance(indice, int) and not isinstance(indice, bool) and indice >= 0}
+    if len(mappatura) != len(scelta):
+        raise HTTPException(422, detail="statementMappingInvalid")
+    return mappatura or None
+
+
+def delimitatore_colonne(valore: str) -> str | None:
+    """Il taglio su cui sono stati contati gli indici, se e' uno di quelli noti.
+
+    Uno sconosciuto vale come assente: si prova come al solito, invece di
+    leggere un taglio che nessuno ha scelto.
+    """
+    return valore if isinstance(valore, str) and valore in CSVStatementParser.DELIMITATORI else None
+
+
+@app.post("/api/import/csv/columns")
+async def import_csv_columns(file: UploadFile = File(...)):
+    """Quali colonne ha il file, e quale mappatura propone l'euristica.
+
+    E' il passo prima dell'anteprima: l'automatismo non sparisce, diventa un
+    suggerimento che si puo' correggere. Un file che l'euristica non riconosce
+    torna comunque con le sue intestazioni e senza proposta: e' proprio quello
+    il caso che si deve poter sistemare a mano.
+    """
+    return CSVStatementParser.colonne(testo_csv(await read_upload(file, '.csv')))
+
+
 @app.post("/api/import/csv")
-async def import_csv_statement(file: UploadFile = File(...), session: Session = Depends(get_session)):
+async def import_csv_statement(file: UploadFile = File(...), session: Session = Depends(get_session),
+                               mapping: str = Form(""), delimiter: str = Form("")):
+    """Le righe di un estratto conto in CSV, con i doppioni gia' segnati.
+
+    ``mapping`` e' facoltativa: chi la manda ha scelto le colonne a mano e
+    vince sull'euristica, chi non la manda continua a comportarsi come sempre.
+    ``delimiter`` viaggia con lei, perche' gli indici valgono nel taglio da cui
+    sono stati scelti.
+    """
     content = await read_upload(file, '.csv')
     try:
-        for encoding in ('utf-8-sig', 'cp1252', 'latin1'):
-            try:
-                text_content = content.decode(encoding)
-                break
-            except UnicodeDecodeError:
-                continue
-        rows = await asyncio.to_thread(CSVStatementParser.extract_transactions_from_csv, text_content)
+        rows = await asyncio.to_thread(CSVStatementParser.extract_transactions_from_csv, testo_csv(content),
+                                       mapping=mappatura_colonne(mapping),
+                                       delimiter=delimitatore_colonne(delimiter))
         return statement_preview(rows, session)
     except HTTPException:
         raise

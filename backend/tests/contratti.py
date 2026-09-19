@@ -26,11 +26,12 @@ import sys
 import tempfile
 import typing
 from datetime import date, datetime
+from io import BytesIO
 from pathlib import Path
 from decimal import Decimal
 from typing import Any
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 from sqlalchemy import create_engine, select
@@ -55,7 +56,8 @@ from app.fire_routes import (FlussoPayload, ProfiloPayload, RegolePayload, crea_
 from app.main import (AccountPayload, BudgetCreatePayload, BudgetUpdatePayload, GoalPayload, InvestmentTxPayload,
                       LiabilityPayload, NotePayload, RecurringTransactionCreate, SettingValueUpdate, SplitPayload, TransactionPayload,
                       create_account, create_budget, create_goal, create_investment_tx, create_note,
-                      create_recurring_transaction, create_transaction, import_batches, liabilities, list_backups_endpoint,
+                      create_recurring_transaction, create_transaction, import_batches, import_csv_columns,
+                      liabilities, list_backups_endpoint,
                       list_recurring_transactions, save_liability, split_transaction, update_budget, update_setting)
 from app.models import (Account, AccountValuation, AppSetting, BudgetPlan, CategorizationRule, Category, Event, Goal,
                         GoalMilestone, ImportBatch, IncomeStream, InvestmentInstrument,
@@ -257,6 +259,19 @@ def _semina(session: Session) -> None:
     assert vendita
 
 
+def _colonne_di_prova() -> dict[str, Any]:
+    """Le colonne lette da un CSV scritto qui: numeri tondi e inventati.
+
+    E' la risposta che la pagina dell'import legge per riempire i selettori,
+    quindi passa dal contratto come le altre: un campo rinominato qui vorrebbe
+    dire selettori vuoti, e nessun test del backend se ne accorgerebbe.
+    """
+    contenuto = ("Data;Descrizione;Importo\n"
+                 "01/02/2026;Stipendio;1.000,00\n"
+                 "02/02/2026;Spesa;-25,00\n").encode()
+    return asyncio.run(import_csv_columns(UploadFile(filename="estratto.csv", file=BytesIO(contenuto))))
+
+
 def risposte() -> dict[str, Any]:
     session = _sessione()
     _semina(session)
@@ -298,6 +313,7 @@ def risposte() -> dict[str, Any]:
         "eventDetail": event_detail(session.scalar(select(Event.id).order_by(Event.id)), session),
         "recurring": asyncio.run(list_recurring_transactions(session)),
         "importBatches": import_batches(20, session),
+        "statementColumns": _colonne_di_prova(),
         "notifications": notifiche(session),
         "backups": _backup_di_prova(),
     }

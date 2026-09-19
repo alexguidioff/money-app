@@ -62,6 +62,8 @@ const CONTRATTI: Array<{ risposta: string; tipo: string; da: string }> = [
   { risposta: 'recurring', tipo: 'RecurringTransactionData[]', da: '@/components/money-dashboard' },
   { risposta: 'notifications', tipo: '{ items: Notification[] }', da: '@/components/notifications-panel' },
   { risposta: 'importBatches', tipo: '{ items: ImportBatchRow[] }', da: '@/components/import-history-card' },
+  // Le colonne che la pagina dell'import legge per riempire i selettori.
+  { risposta: 'statementColumns', tipo: 'StatementColumns', da: '@/components/money-dashboard' },
   { risposta: 'backups', tipo: '{ items?: BackupItem[] }', da: '@/components/money-dashboard' },
 ];
 
