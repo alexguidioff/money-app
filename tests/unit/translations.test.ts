@@ -90,7 +90,9 @@ describe('testi senza uso', () => {
     const backend = sorgenti('backend/app', /\.py$/).map((file) => readFileSync(file, 'utf-8')).join('\n');
     // Codici che il server manda e che `responseError` o l'anteprima dell'import
     // traducono cercandoli fra le chiavi: non compaiono come stringa nel frontend.
-    const codiciServer = new Set([...backend.matchAll(/(?:detail=|"code":\s*|ValueError\()"(\w+)"/g)].map((m) => m[1]));
+    // Due forme: quelli che si alzano, e quelli che la lettura di un CSV attacca
+    // a una riga sola invece di far fallire tutto l'import.
+    const codiciServer = new Set([...backend.matchAll(/(?:detail=|"code":\s*|ValueError\(|motivo = )["'](\w+)["']/g)].map((m) => m[1]));
     // Chiavi composte a runtime: `t(\`debtIssue_${motivo}\`)`.
     const prefissiDinamici = ['debtIssue_'];
     const orfane = Object.keys(italiano).filter((chiave) =>

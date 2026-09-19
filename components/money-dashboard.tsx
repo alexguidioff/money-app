@@ -1036,6 +1036,10 @@ function MoneyDashboardInner() {
   // domanda. Vive qui e non nell'anteprima perche' l'anteprima non sa da dove
   // sono arrivate le righe.
   const [statementSource, setStatementSource] = useState('');
+  // Il file CSV e le sue colonne restano qui finche' l'anteprima e' aperta:
+  // correggere una colonna vuol dire rileggere il file, e l'anteprima non ce l'ha.
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvColonne, setCsvColonne] = useState<StatementColumns | null>(null);
   const [settingSaving, setSettingSaving] = useState('');
   const [settingError, setSettingError] = useState('');
   const [auth, setAuth] = useState<{ user: AccountSummary & { sharesTotals: boolean } | null; users: AccountSummary[]; loginRequired: boolean; canManageBackups: boolean } | null>(null);
@@ -2123,6 +2127,49 @@ function MoneyDashboardInner() {
     }
   }
 
+  async function anteprimaPdf(file: File) {
+    const body = new FormData();
+    body.append('file', file);
+    const response = await fetch(`${apiUrl}/api/import/pdf`, { method: 'POST', body });
+    if (!response.ok) throw new Error(await responseError(response, t));
+    return await response.json() as { transactions: PDFTransaction[]; rulesDiscarded?: string[] };
+  }
+
+  /** Le intestazioni del CSV e la mappatura proposta dall'euristica. */
+  async function colonneDelCsv(file: File): Promise<StatementColumns> {
+    const body = new FormData();
+    body.append('file', file);
+    const response = await fetch(`${apiUrl}/api/import/csv/columns`, { method: 'POST', body });
+    if (!response.ok) throw new Error(await responseError(response, t));
+    return await response.json() as StatementColumns;
+  }
+
+  /** Le righe del CSV lette con quelle colonne: e' la rotta che sa leggerle. */
+  async function anteprimaCsv(file: File, mappatura: Record<string, number>, delimitatore: string) {
+    const body = new FormData();
+    body.append('file', file);
+    body.append('mapping', JSON.stringify(mappatura));
+    body.append('delimiter', delimitatore);
+    const response = await fetch(`${apiUrl}/api/import/csv`, { method: 'POST', body });
+    if (!response.ok) throw new Error(await responseError(response, t));
+    return await response.json() as { transactions: PDFTransaction[]; rulesDiscarded?: string[] };
+  }
+
+  /** Correggere una colonna rifa' l'anteprima: e' l'unico modo di vedere se la
+   *  scelta e' quella giusta. Le righe che non si leggono arrivano segnate. */
+  async function ricaricaCsv(mappatura: Record<string, number>) {
+    if (!csvFile || !csvColonne) return;
+    setPdfImporting(true);
+    setImportFeedback(null);
+    try {
+      const result = await anteprimaCsv(csvFile, mappatura, csvColonne.delimiter);
+      setCsvColonne({ ...csvColonne, mapping: mappatura });
+      setPdfPreviewTransactions(result.transactions);
+    } catch (error) {
+      setImportFeedback({ ok: false, message: error instanceof Error ? error.message : t('statementParseFailed') });
+    } finally { setPdfImporting(false); }
+  }
+
   async function importStatement(kind: 'pdf' | 'csv') {
     const input = document.createElement('input');
     input.type = 'file';
@@ -2136,13 +2183,16 @@ function MoneyDashboardInner() {
       setPdfImporting(true);
       setImportFeedback(null);
       try {
-        const body = new FormData();
-        body.append('file', file);
-        const response = await fetch(`${apiUrl}/api/import/${kind}`, { method: 'POST', body });
-        if (!response.ok) throw new Error(await responseError(response, t));
-        const result = await response.json() as { transactions: PDFTransaction[]; rulesDiscarded?: string[] };
-        if (!result.transactions.length) throw new Error(t('statementEmpty'));
         setStatementSource(file.name);
+        // Un CSV si legge in due passi: prima le colonne - che si possono
+        // correggere - poi le righe. Da un PDF non c'e' niente da scegliere.
+        const colonne = kind === 'csv' ? await colonneDelCsv(file) : null;
+        setCsvFile(kind === 'csv' ? file : null);
+        setCsvColonne(colonne);
+        const result = kind === 'csv'
+          ? await anteprimaCsv(file, colonne!.mapping, colonne!.delimiter)
+          : await anteprimaPdf(file);
+        if (!result.transactions.length) throw new Error(t('statementEmpty'));
         setPdfPreviewTransactions(result.transactions);
         // Regole scartate perche' non compilabili: senza dirle resterebbero
         // regole che non fanno niente, in silenzio.
@@ -2178,6 +2228,8 @@ function MoneyDashboardInner() {
       } else {
         setShowPdfPreview(false);
         setPdfPreviewTransactions([]);
+        setCsvFile(null);
+        setCsvColonne(null);
       }
       await loadData(undefined, ['ledger', 'overview', 'budget', 'goals']);
       setMovimentiVersione(versione => versione + 1);
@@ -2684,7 +2736,11 @@ function MoneyDashboardInner() {
               onPdfImportCancel={() => {
                 setShowPdfPreview(false);
                 setPdfPreviewTransactions([]);
+                setCsvFile(null);
+                setCsvColonne(null);
               }}
+              colonne={csvColonne}
+              onCambiaColonne={(mappatura) => void ricaricaCsv(mappatura)}
               connected={connected}
               trendYearsAvailable={trendYearsAvailable}
               trendYears={trendYears}
@@ -3265,6 +3321,8 @@ function SectionView({
   pdfPreviewTransactions,
   onPdfImportConfirm,
   onPdfImportCancel,
+  colonne,
+  onCambiaColonne,
   connected,
   trendYearsAvailable,
   trendYears,
@@ -3359,6 +3417,9 @@ function SectionView({
   pdfPreviewTransactions: PDFTransaction[];
   onPdfImportConfirm: (transactions: PDFTransaction[]) => Promise<void>;
   onPdfImportCancel: () => void;
+  /** Le colonne del CSV in anteprima. Niente per un PDF: li' non si sceglie. */
+  colonne: StatementColumns | null;
+  onCambiaColonne: (mapping: Record<string, number>) => void;
   connected: boolean;
   trendYearsAvailable: number[];
   trendYears: number[];
@@ -3643,6 +3704,7 @@ function SectionView({
       <Dialog open={showPdfPreview} onOpenChange={open => { if (!open && !pdfImporting) onPdfImportCancel(); }}>
         {showPdfPreview && <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-[95vw]" showCloseButton={false}>
           <PDFImportPreview transactions={pdfPreviewTransactions} accounts={accounts.filter(a => a.isActive !== false)} categoriesByType={settingsData.categoriesByType} categoryTree={settingsData.categoryTree} feedback={importFeedback}
+            colonne={colonne ?? undefined} onCambiaColonne={onCambiaColonne}
             onConfirm={onPdfImportConfirm} onCancel={onPdfImportCancel} />
         </DialogContent>}
       </Dialog>

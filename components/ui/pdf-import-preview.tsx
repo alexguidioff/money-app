@@ -40,7 +40,78 @@ type TipoMovimento = (typeof TIPI)[number][0];
 // Spostano denaro fra due conti: vogliono una destinazione e non hanno categoria.
 const SPOSTAMENTI: readonly TipoMovimento[] = ['Transfers', 'Investment', 'Debt'];
 
-export function PDFImportPreview({ transactions, accounts, categoriesByType, categoryTree, onConfirm, onCancel, feedback }: {
+/** Una colonna del file: la sua intestazione, o nessuna. */
+function Colonna({ etichetta, valore, headers, disabled, onChange }: {
+  etichetta: string;
+  valore: number | undefined;
+  headers: string[];
+  disabled: boolean;
+  onChange: (indice: number | undefined) => void;
+}) {
+  const { t } = useI18n();
+  return <label className="space-y-1 text-xs font-medium text-[#52615d]">{etichetta}
+    <select aria-label={etichetta} disabled={disabled} value={valore ?? ''} className="block h-9 w-full min-w-36 rounded-lg border border-input bg-white px-2 text-sm"
+      onChange={(event) => onChange(event.target.value === '' ? undefined : Number(event.target.value))}>
+      <option value="">{t('csvColumnNone')}</option>
+      {headers.map((header, indice) => <option key={`${indice}-${header}`} value={indice}>{header}</option>)}
+    </select>
+  </label>;
+}
+
+/**
+ * Quale colonna del file e' cosa.
+ *
+ * I selettori arrivano gia' pieni con quello che l'euristica ha proposto: non
+ * si sceglie da zero, si corregge. Cambiare una colonna rifa' l'anteprima,
+ * perche' e' l'unico modo di vedere se la scelta e' quella giusta - e le righe
+ * che non si leggono arrivano segnate, non spariscono.
+ */
+function ColonneDelFile({ headers, mapping, onChange, disabled }: {
+  headers: string[];
+  mapping: Record<string, number>;
+  onChange: (mapping: Record<string, number>) => void;
+  disabled: boolean;
+}) {
+  const { t } = useI18n();
+  // Un importo solo (col segno) o uscita ed entrata in due colonne: sono due
+  // modi di scrivere la stessa cosa, e la proposta dice gia' quale usa il file.
+  const separato = mapping.debit_cols !== undefined || mapping.credit_cols !== undefined;
+  const aggiorna = (patch: Record<string, number | undefined>) => {
+    const unita = { ...mapping, ...patch };
+    // Una colonna lasciata vuota non si manda: un indice assente non e' zero.
+    onChange(Object.fromEntries(Object.entries(unita).filter(([, indice]) => indice !== undefined)) as Record<string, number>);
+  };
+  const cambiaModo = (due: boolean) => aggiorna(due
+    ? { amount_cols: undefined, debit_cols: mapping.debit_cols ?? 0, credit_cols: mapping.credit_cols ?? 0 }
+    : { debit_cols: undefined, credit_cols: undefined, amount_cols: mapping.amount_cols ?? 0 });
+
+  return <div className="rounded-lg border border-black/8 bg-[#fafaf8] p-3">
+    <p className="text-xs font-medium text-[#52615d]">{t('csvColumnsTitle')}</p>
+    <div className="mt-2 flex flex-wrap items-end gap-3">
+      <Colonna etichetta={t('csvColumnDate')} valore={mapping.date_cols} headers={headers} disabled={disabled}
+        onChange={(indice) => aggiorna({ date_cols: indice })} />
+      <Colonna etichetta={t('csvColumnDescription')} valore={mapping.desc_cols} headers={headers} disabled={disabled}
+        onChange={(indice) => aggiorna({ desc_cols: indice })} />
+      <div className="w-fit rounded-lg border border-black/6 bg-[#f4f5f1] p-1 text-xs">
+        {([['single', t('csvAmountSingle')], ['split', t('csvAmountSplit')]] as const).map(([nome, etichetta]) => (
+          <button key={nome} type="button" disabled={disabled} onClick={() => cambiaModo(nome === 'split')}
+            className={`rounded-md px-2.5 py-1 font-medium transition ${separato === (nome === 'split') ? 'bg-white text-[#173b33] shadow-sm' : 'text-[#71807c] hover:text-[#173b33]'}`}>
+            {etichetta}
+          </button>
+        ))}
+      </div>
+      {separato ? <>
+        <Colonna etichetta={t('csvColumnDebit')} valore={mapping.debit_cols} headers={headers} disabled={disabled}
+          onChange={(indice) => aggiorna({ debit_cols: indice })} />
+        <Colonna etichetta={t('csvColumnCredit')} valore={mapping.credit_cols} headers={headers} disabled={disabled}
+          onChange={(indice) => aggiorna({ credit_cols: indice })} />
+      </> : <Colonna etichetta={t('csvColumnAmount')} valore={mapping.amount_cols} headers={headers} disabled={disabled}
+        onChange={(indice) => aggiorna({ amount_cols: indice })} />}
+    </div>
+  </div>;
+}
+
+export function PDFImportPreview({ transactions, accounts, categoriesByType, categoryTree, onConfirm, onCancel, feedback, colonne, onCambiaColonne }: {
   transactions: PDFTransaction[];
   accounts: { name: string }[];
   categoriesByType: Record<string, string[]>;
@@ -48,6 +119,12 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, cat
   onConfirm: (approvedTransactions: PDFTransaction[]) => Promise<void>;
   onCancel: () => void;
   feedback: { ok: boolean; message: string } | null;
+  /** Le colonne del file da cui vengono le righe: solo per un CSV, dove la
+   *  lettura si puo' ancora correggere. Da un PDF non c'e' niente da scegliere. */
+  colonne?: { headers: string[]; mapping: Record<string, number> };
+  /** Cambiata una colonna, le righe si rileggono dal file: chi tiene il file lo
+   *  sa, qui si dice solo cosa e' cambiato. */
+  onCambiaColonne?: (mapping: Record<string, number>) => void;
 }) {
   const { t, formatEuro, formatDate } = useI18n();
   // La chiave resta con la riga anche quando se ne inseriscono altre: con
@@ -100,6 +177,7 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, cat
   return <div className="flex min-h-0 flex-col gap-4">
     <DialogTitle>{t('statementPreview')}</DialogTitle>
     <DialogDescription>{t('statementPreviewHint', { count: rows.length })}</DialogDescription>
+    {colonne && onCambiaColonne && <ColonneDelFile headers={colonne.headers} mapping={colonne.mapping} onChange={onCambiaColonne} disabled={isSaving} />}
     <p className="text-sm">{t('duplicateSummary', { count: rows.length, duplicates: rows.filter(row => row.duplicate).length })}</p>
     <label className="text-sm">{t('statementAccountAll')}
       <select aria-label={t('statementAccountAll')} disabled={isSaving} value={allAccount} className="ml-3 rounded border p-2"

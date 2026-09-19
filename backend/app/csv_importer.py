@@ -290,8 +290,14 @@ class CSVStatementParser:
                 # domanda a cui risponde il salvataggio quando rifiuta una riga.
                 # Si dice solo con una mappatura scelta a mano: senza, il
                 # comportamento resta quello di sempre, anche nei suoi silenzi.
-                motivo = ('statementDateInvalid' if not transaction.get('occurredOn')
-                          else 'statementAmountInvalid' if amount == 0 else None) if segnala_scarti else None
+                # La data viene per ultima perche' vince: una riga senza data non
+                # si sistema scrivendo l'importo.
+                motivo = None
+                if segnala_scarti:
+                    if amount == 0:
+                        motivo = 'statementAmountInvalid'
+                    if not transaction.get('occurredOn'):
+                        motivo = 'statementDateInvalid'
 
                 if amount == 0 and not segnala_scarti:
                     continue
