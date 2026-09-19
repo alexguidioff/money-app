@@ -52,6 +52,33 @@ async function sporgenze(page: Page): Promise<string[]> {
   });
 }
 
+/*
+ * L'app si installa dal telefono: il manifest e' quello che il sistema legge per
+ * mettere l'icona nella schermata iniziale e riaprire la pagina a schermo
+ * intero. Passa da nginx, come lo chiedera' il telefono.
+ */
+test('il manifest e le icone arrivano, con il tipo giusto', async ({ page }) => {
+  const manifest = await page.request.get('/manifest.webmanifest');
+  expect(manifest.status()).toBe(200);
+  expect(manifest.headers()['content-type']).toContain('application/manifest+json');
+  const dati = await manifest.json() as { display: string; start_url: string; name: string; icons: { src: string; sizes: string }[] };
+  expect(dati.display).toBe('standalone');
+  expect(dati.start_url).toBe('/');
+  expect(dati.name).not.toBe('');
+  // Le due misure che il sistema chiede per l'icona: senza, non si installa.
+  expect(dati.icons.map((icona) => icona.sizes)).toEqual(['192x192', '512x512']);
+  // iOS l'icona non la prende dal manifest: la vuole dichiarata nella pagina.
+  const pagina = await page.request.get('/');
+  const html = await pagina.text();
+  expect(html).toContain('apple-touch-icon.png');
+  expect(html).toContain('theme-color');
+  for (const icona of [...dati.icons.map((i) => i.src), '/apple-touch-icon.png']) {
+    const risposta = await page.request.get(icona);
+    expect(risposta.status(), icona).toBe(200);
+    expect(risposta.headers()['content-type'], icona).toBe('image/png');
+  }
+});
+
 test('a 390 px nessuna pagina scorre in orizzontale e nessun controllo resta tagliato', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Dati aggiornati').first()).toBeAttached();
