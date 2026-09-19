@@ -5,7 +5,7 @@ import { previewEffectiveDate } from '@/lib/effective-date';
 import { LEDGER_SENZA_QUOTE, nettoOperazioni } from '@/lib/ledger-preview';
 import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, eventAttachPayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
 import { messaggioErroreRegola } from '@/lib/rule-errors';
-import { SyntheticEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, SyntheticEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Flame,
   AlertCircle,
   ArrowDownRight,
@@ -3229,6 +3229,15 @@ function SectionView({
   onTrendYearsChange: (years: number[]) => void;
 }) {
   const { t, lang, locale, formatEuro, monthNames } = useI18n();
+  // Chi sta sotto chi, per nome: serve a mostrare il padre accanto a una
+  // sottocategoria, in modo che "Utilities" non sia ambigua fra casa e bollette.
+  const padreDiCategoria = useMemo(() => {
+    const mappa: Record<string, string> = {};
+    for (const radice of settingsData.categoryTree) {
+      for (const figlia of radice.children) mappa[figlia.trim().toLowerCase()] = radice.name;
+    }
+    return mappa;
+  }, [settingsData.categoryTree]);
   const [transactionTypeFilter, setTransactionTypeFilter] = useState('all');
   const [incompleteOnly, setIncompleteOnly] = useState(false);
   const [selection, setSelection] = useState<Set<string>>(new Set());
@@ -3456,7 +3465,7 @@ function SectionView({
           {period.scope === 'month' ? <>
             <BudgetPlanMonthTotals data={budgetData} budgetType={budgetType} calculations={calculationData} year={selectedYear} month={selectedMonth} />
             {budgetType === 'Savings' ? <BudgetBalanceCard balance={budgetData.balance} scope="month" /> : <BudgetEditor data={budgetData} canEdit={canEditBudgetYear} editableYears={editableBudgetYears} budgetType={budgetType} suggestions={budgetSuggestions} onUpdate={onBudgetUpdate} onCreate={onBudgetCreate} onDelete={onBudgetDelete} onCopy={onBudgetCopy} categorieDelVerso={settingsData.categoriesByType[budgetType] ?? []} />}
-          </> : budgetType === 'Savings' ? <BudgetBalanceCard balance={annualBudgetData.balance} scope="year" /> : <AnnualBudgetEditor data={annualBudgetData} onApply={onAnnualBudgetApply} />}
+          </> : budgetType === 'Savings' ? <BudgetBalanceCard balance={annualBudgetData.balance} scope="year" /> : <AnnualBudgetEditor data={annualBudgetData} padreDi={padreDiCategoria} onApply={onAnnualBudgetApply} />}
         </div>}
         </>}
         {/* L'albero delle categorie sta qui e non fra le preferenze: si spacca
@@ -3658,7 +3667,7 @@ function BudgetTrendsView({ data, budgetType, loading }: { data: BudgetTrendsDat
   </div>;
 }
 
-function AnnualBudgetEditor({ data, onApply }: { data: AnnualBudgetData; onApply: (category: string, months: number[], amount: number, categoryGroup?: string | null) => Promise<void> }) {
+function AnnualBudgetEditor({ data, padreDi, onApply }: { data: AnnualBudgetData; padreDi: Record<string, string>; onApply: (category: string, months: number[], amount: number, categoryGroup?: string | null) => Promise<void> }) {
   const { t, formatEuro, formatCompactEuro, monthNamesShort } = useI18n();
   const [category, setCategory] = useState('');
   const [amount, setAmount] = useState('');
@@ -3666,6 +3675,20 @@ function AnnualBudgetEditor({ data, onApply }: { data: AnnualBudgetData; onApply
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const effectiveCategory = category || data.items[0]?.category || '';
+  const padreDiVoce = (nome: string) => padreDi[nome.trim().toLowerCase()] ?? null;
+  // Le righe si raggruppano per padre tenendo l'ordine in cui arrivano: la
+  // tabella ripete cosi' la gerarchia della vista Categorie, invece di essere
+  // cinquanta righe tutte uguali.
+  const gruppi = useMemo(() => {
+    const ordine: Array<{ padre: string | null; voci: AnnualBudgetData['items'] }> = [];
+    for (const voce of data.items) {
+      const padre = padreDiVoce(voce.category);
+      const ultimo = ordine.at(-1);
+      if (ultimo && ultimo.padre === padre) ultimo.voci.push(voce);
+      else ordine.push({ padre, voci: [voce] });
+    }
+    return ordine;
+  }, [data.items, padreDi]);
   const selectedCategory = data.items.find((item) => item.category === effectiveCategory);
 
   async function applyMany(event: SyntheticEvent<HTMLFormElement>) {
@@ -3711,9 +3734,9 @@ function AnnualBudgetEditor({ data, onApply }: { data: AnnualBudgetData; onApply
   }
 
   return <div className="space-y-5">
-    <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('applySameValueToMultipleMonths')}</CardTitle><p className="text-xs text-[#7b8784]">{t('applySameValueToMultipleMonthsSubtitle')}</p></CardHeader><CardContent><form onSubmit={applyMany} className="space-y-4"><div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px_auto]"><select aria-label={t('category')} value={effectiveCategory} onChange={(event) => setCategory(event.target.value)} className="h-10 rounded-lg border border-input bg-white px-3 text-sm">{data.items.map((item) => <option key={item.category} value={item.category}>{item.categoryLabel}</option>)}</select><Input required min="0" step="0.01" type="number" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={t('monthlyAmountPlaceholder')} /><Button type="submit" disabled={busy || !months.length} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Save className="size-4" />{busy ? t('savingEllipsis') : t('applyToMonths', { count: months.length || 0 })}</Button></div><div className="flex flex-wrap gap-2">{monthNamesShort.map((name, index) => { const month = index + 1; const selected = months.includes(month); return <button key={name} type="button" onClick={() => setMonths((current) => selected ? current.filter((value) => value !== month) : [...current, month].sort((a, b) => a - b))} className={`rounded-lg border px-3 py-2 text-xs font-medium ${selected ? 'border-[var(--money-deep)] bg-[var(--money-deep)] text-white' : 'border-black/8 bg-[#fafaf8] text-[#61706c]'}`}>{name}</button>; })}<button type="button" onClick={() => setMonths(months.length === 12 ? [] : Array.from({ length: 12 }, (_, index) => index + 1))} className="rounded-lg px-3 py-2 text-xs font-semibold text-[#397867]">{months.length === 12 ? t('deselectAll') : t('wholeYearAction')}</button></div></form></CardContent></Card>
+    <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('applySameValueToMultipleMonths')}</CardTitle><p className="text-xs text-[#7b8784]">{t('applySameValueToMultipleMonthsSubtitle')}</p></CardHeader><CardContent><form onSubmit={applyMany} className="space-y-4"><div className="flex flex-wrap items-start gap-3"><select aria-label={t('category')} value={effectiveCategory} onChange={(event) => setCategory(event.target.value)} className="h-10 rounded-lg border border-input bg-white px-3 text-sm">{data.items.map((item) => <option key={item.category} value={item.category}>{item.categoryLabel}</option>)}</select>{padreDiVoce(effectiveCategory) && <span className="self-center rounded-full bg-[#f2f5f3] px-2.5 py-1 text-[11px] text-[#5b6b66]">{t('budgetInsideParent', { parent: padreDiVoce(effectiveCategory) ?? '' })}</span>}<Input required min="0" step="0.01" type="number" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={t('monthlyAmountPlaceholder')} /><Button type="submit" disabled={busy || !months.length} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Save className="size-4" />{busy ? t('savingEllipsis') : t('applyToMonths', { count: months.length || 0 })}</Button></div><div className="flex flex-wrap gap-2">{monthNamesShort.map((name, index) => { const month = index + 1; const selected = months.includes(month); return <button key={name} type="button" onClick={() => setMonths((current) => selected ? current.filter((value) => value !== month) : [...current, month].sort((a, b) => a - b))} className={`rounded-lg border px-3 py-2 text-xs font-medium ${selected ? 'border-[var(--money-deep)] bg-[var(--money-deep)] text-white' : 'border-black/8 bg-[#fafaf8] text-[#61706c]'}`}>{name}</button>; })}<button type="button" onClick={() => setMonths(months.length === 12 ? [] : Array.from({ length: 12 }, (_, index) => index + 1))} className="rounded-lg px-3 py-2 text-xs font-semibold text-[#397867]">{months.length === 12 ? t('deselectAll') : t('wholeYearAction')}</button></div></form></CardContent></Card>
     {error && <p className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}
-    <Card className="overflow-hidden border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('annualPlan', { year: data.year })}</CardTitle><p className="text-xs text-[#7b8784]">{t('annualPlanSubtitle')}</p></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1320px] w-full text-xs"><thead className="sticky top-0 bg-[#f4f5f1] text-[#52615d]"><tr><th className="sticky left-0 z-10 bg-[#f4f5f1] px-4 py-3 text-left">{t('category')}</th>{monthNamesShort.map((month) => <th key={month} className="px-2 py-3 text-right">{month}</th>)}<th className="px-4 py-3 text-right">{t('total')}</th></tr></thead><tbody className="divide-y divide-black/5">{data.items.map((item) => <tr key={item.category}><td className="sticky left-0 z-10 bg-white px-4 py-2 font-medium">{item.categoryLabel}</td>{item.months.map((month) => <td key={month.month} className="px-1.5 py-1.5"><input key={`${data.year}-${item.category}-${month.month}`} aria-label={`${item.categoryLabel} ${monthNamesShort[month.month - 1]}`} type="number" min="0" step="0.01" defaultValue={month.amount.toFixed(2)} onBlur={(event) => void applyCell(event, item.category, month.month, month.amount, item.categoryGroup)} className="h-8 w-full rounded-md border border-transparent bg-[#fafaf8] px-2 text-right tabular-nums outline-none hover:border-black/10 focus:border-[#5c8f82]" /></td>)}<td className="px-4 py-2 text-right font-semibold">{formatEuro(item.plannedTotal)}</td></tr>)}</tbody><tfoot className="border-t border-black/8 bg-[#f4f5f1] font-semibold"><tr><td className="sticky left-0 bg-[#f4f5f1] px-4 py-3">{t('total')}</td>{data.monthTotals.map((month) => <td key={month.month} className="px-2 py-3 text-right">{formatCompactEuro(month.planned)}</td>)}<td className="px-4 py-3 text-right">{formatEuro(data.monthTotals.reduce((total, month) => total + month.planned, 0))}</td></tr></tfoot></table></div></CardContent></Card>
+    <Card className="overflow-hidden border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('annualPlan', { year: data.year })}</CardTitle><p className="text-xs text-[#7b8784]">{t('annualPlanSubtitle')}</p></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1320px] w-full text-xs"><thead className="sticky top-0 bg-[#f4f5f1] text-[#52615d]"><tr><th className="sticky left-0 z-10 bg-[#f4f5f1] px-4 py-3 text-left">{t('category')}</th>{monthNamesShort.map((month) => <th key={month} className="px-2 py-3 text-right">{month}</th>)}<th className="px-4 py-3 text-right">{t('total')}</th></tr></thead><tbody className="divide-y divide-black/5">{gruppi.map(({ padre, voci }) => <Fragment key={padre ?? "(radici)"}>{padre && <tr className="bg-[#f6f8f6]"><td className="sticky left-0 z-10 bg-[#f6f8f6] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#5b6b66]" colSpan={14}>{padre}</td></tr>}{voci.map((item) => <tr key={item.category}><td className="sticky left-0 z-10 bg-white px-4 py-2 font-medium">{padre && <span aria-hidden className="mr-2 inline-block h-3 w-px translate-y-0.5 bg-[#dfe4e1]" />}{item.categoryLabel}</td>{item.months.map((month) => <td key={month.month} className="px-1.5 py-1.5"><input key={`${data.year}-${item.category}-${month.month}`} aria-label={`${item.categoryLabel} ${monthNamesShort[month.month - 1]}`} type="number" min="0" step="0.01" defaultValue={month.amount.toFixed(2)} onBlur={(event) => void applyCell(event, item.category, month.month, month.amount, item.categoryGroup)} className="h-8 w-full rounded-md border border-transparent bg-[#fafaf8] px-2 text-right tabular-nums outline-none hover:border-black/10 focus:border-[#5c8f82]" /></td>)}<td className="px-4 py-2 text-right font-semibold">{formatEuro(item.plannedTotal)}</td></tr>)}</Fragment>)}</tbody><tfoot className="border-t border-black/8 bg-[#f4f5f1] font-semibold"><tr><td className="sticky left-0 bg-[#f4f5f1] px-4 py-3">{t('total')}</td>{data.monthTotals.map((month) => <td key={month.month} className="px-2 py-3 text-right">{formatCompactEuro(month.planned)}</td>)}<td className="px-4 py-3 text-right">{formatEuro(data.monthTotals.reduce((total, month) => total + month.planned, 0))}</td></tr></tfoot></table></div></CardContent></Card>
   </div>;
 }
 
