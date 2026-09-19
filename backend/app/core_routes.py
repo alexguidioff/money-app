@@ -2113,6 +2113,10 @@ def portfolio_timeline(session: Session, solo: set[int] | None = None) -> list[d
                 # valore crollerebbe per un'operazione che non ha spostato un
                 # euro.
                 holding["units"] *= units
+                # Il prezzo segue le quote, come dice la riga sopra: senza, uno
+                # strumento senza quotazione raddoppia di valore e il rendimento
+                # se lo porta dietro.
+                holding["last_price"] /= units
                 continue
             if azione in {"buy", "acquisto"}:
                 holding["units"] += units

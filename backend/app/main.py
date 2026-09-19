@@ -2228,6 +2228,10 @@ class LinkedLedgerRow(BaseModel):
     transaction_type: str
     units: float
     price: float
+    # Le righe senza quote (dividendo, commissione) portano il loro importo: per
+    # loro quote per prezzo fa zero, e senza questo campo l'importo digitato si
+    # perdeva in silenzio - Pydantic scarta i campi che non conosce.
+    amount: float | None = None
     currency: str = "EUR"
     fee: float = 0
     notes: str | None = None
@@ -2255,7 +2259,8 @@ def _materialize_linked_ledger(session: Session, tx: Transaction, rows: list[Lin
             occurred_on=tx.occurred_on,
             name=row.name.strip(),
             transaction_type=row.transaction_type,
-            amount=Decimal(str(row.units)) * Decimal(str(row.price)),
+            amount=(Decimal(str(row.amount)) if row.amount is not None
+                    else Decimal(str(row.units)) * Decimal(str(row.price))),
             units=Decimal(str(row.units)),
             price=Decimal(str(row.price)),
             currency=(row.currency or "EUR").strip() or "EUR",

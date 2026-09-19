@@ -4508,6 +4508,17 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
   // Lo split non si paga - l'importo e' zero - e quello che si digita e' il
   // rapporto, che sta nelle quote. Gli altri movimenti di solo contante non
   // hanno quote: chiedergliele vorrebbe dire far inventare un numero.
+  // Cambiare tipo azzera i campi che il tipo nuovo non usa. Senza, le 10 quote
+  // di un acquisto restavano nel campo che per lo split si chiama "Rapporto", e
+  // salvando moltiplicavano la posizione per dieci.
+  function cambiaTipoLedger(tipo: LedgerOperationType) {
+    const eraSenzaQuote = tipo === 'Split' || SOLO_CONTANTE_DA_MOVIMENTO.includes(tipo);
+    if (eraSenzaQuote !== (ledgerTypeInput === 'Split' || SOLO_CONTANTE_DA_MOVIMENTO.includes(ledgerTypeInput))
+        || tipo === 'Split' || ledgerTypeInput === 'Split') setUnitsInput('');
+    if (tipo === 'Split') setAmountInput('');
+    setLedgerTypeInput(tipo);
+  }
+
   const tipoSplit = ledgerTypeInput === 'Split';
   const tipoContante = tipoSplit || SOLO_CONTANTE_DA_MOVIMENTO.includes(ledgerTypeInput);
   // Il prezzo non si digita: e' importo diviso quantita', cosi' le tre cifre
@@ -4620,7 +4631,10 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
               occurred_on: String(form.get('tx_occurred_on') || form.get('occurred_on')),
               transaction_type: ledgerPayload.transaction_type === 'Sell' || ledgerPayload.transaction_type === 'Dividend' ? 'Income' : 'Expenses',
               category: String(form.get('tx_category') || 'Investimenti'),
-              amount: ledgerPayload.transaction_type === 'Sell' ? Math.abs(ledgerPayload.amount) : -Math.abs(ledgerPayload.amount),
+              // L'importo di un movimento e' sempre positivo: il verso lo dice il
+              // tipo. Un negativo qui veniva rifiutato con 422, e il rifiuto
+              // annullava anche la riga di ledger gia' creata.
+              amount: Math.abs(ledgerPayload.amount),
               account_name: String(form.get('tx_account_name') || '') || null,
               destination_name: null,
               goal: null,
@@ -4967,7 +4981,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
       </DialogContent>
     </Dialog>
 
-    <Dialog open={editing !== undefined} onOpenChange={(open) => { if (!open) setEditing(undefined); }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{editing ? t('editOperation') : t('newInvestmentOperation')}</DialogTitle><DialogDescription>{t('investmentDialogDesc')}</DialogDescription></DialogHeader><form key={editing?.id ?? 'new-investment'} onSubmit={saveLedger} className="space-y-4"><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('date')}<Input required name="occurred_on" type="date" defaultValue={editing?.occurredOn ?? new Date().toISOString().slice(0, 10)} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('operation')}<select required name="transaction_type" value={ledgerTypeInput} onChange={(event) => setLedgerTypeInput(event.target.value as LedgerOperationType)} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm">{(Object.keys(LEDGER_TYPE_LABEL) as LedgerOperationType[]).map((tipo) => <option key={tipo} value={tipo}>{t(LEDGER_TYPE_LABEL[tipo])}</option>)}</select></label></div><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('instrument')}<div className="relative">
+    <Dialog open={editing !== undefined} onOpenChange={(open) => { if (!open) setEditing(undefined); }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{editing ? t('editOperation') : t('newInvestmentOperation')}</DialogTitle><DialogDescription>{t('investmentDialogDesc')}</DialogDescription></DialogHeader><form key={editing?.id ?? 'new-investment'} onSubmit={saveLedger} className="space-y-4"><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('date')}<Input required name="occurred_on" type="date" defaultValue={editing?.occurredOn ?? new Date().toISOString().slice(0, 10)} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('operation')}<select required name="transaction_type" value={ledgerTypeInput} onChange={(event) => cambiaTipoLedger(event.target.value as LedgerOperationType)} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm">{(Object.keys(LEDGER_TYPE_LABEL) as LedgerOperationType[]).map((tipo) => <option key={tipo} value={tipo}>{t(LEDGER_TYPE_LABEL[tipo])}</option>)}</select></label></div><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('instrument')}<div className="relative">
       <Input required name="name" autoComplete="off" value={instrumentQuery}
         onChange={(event) => { setInstrumentQuery(event.target.value); setSuggestionsOpen(true); }}
         onFocus={() => setSuggestionsOpen(true)}

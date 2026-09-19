@@ -405,6 +405,12 @@ def investment_positions(
             if units <= ZERO:
                 continue
             position["units"] *= units
+            # Anche il prezzo di ripiego si divide. Per uno strumento quotato non
+            # cambia niente (il mercato il frazionamento lo ha gia' nel prezzo),
+            # ma per uno senza quotazione il prezzo resterebbe quello di prima e
+            # il valore raddoppierebbe: una plusvalenza del 100% inventata da
+            # un'operazione che non ha spostato un euro.
+            position["last_trade_price"] /= units
         else:
             continue
         position["name"] = name
