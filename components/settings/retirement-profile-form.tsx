@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useI18n } from '@/lib/i18n-context';
-import { COUNTRIES, countryByCode } from '@/lib/data/countries';
+import { COUNTRIES, countryByCode, countryLabel } from '@/lib/data/countries';
 import { messaggioErroreFire } from '@/lib/fire-errors';
 
 // Il payload del backend parla con il motore in reali; sul modulo i tassi
@@ -143,7 +143,9 @@ export function RetirementProfileForm({ apiUrl, onSaved }: { apiUrl: string; onS
   }
 
   const country = countryByCode(profile.country);
-  const countryName = country ? country[`name${lang.charAt(0).toUpperCase() + lang.slice(1)}` as keyof typeof country] : '';
+  // Il nome del paese si chiede a un posto solo: scritto a mano in quattro
+  // schermate, bastava una lingua in piu' perche' tre lo dicessero e una no.
+  const countryName = countryLabel(profile.country, lang);
 
   return (
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
@@ -162,7 +164,7 @@ export function RetirementProfileForm({ apiUrl, onSaved }: { apiUrl: string; onS
               <select value={profile.country} onChange={(e) => onCountryChange(e.target.value)}
                 className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring">
                 {COUNTRIES.map((c) => (
-                  <option key={c.code} value={c.code}>{c[`name${lang.charAt(0).toUpperCase() + lang.slice(1)}` as keyof typeof c]}</option>
+                  <option key={c.code} value={c.code}>{countryLabel(c.code, lang)}</option>
                 ))}
               </select>
               {country && (

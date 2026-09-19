@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useI18n } from '@/lib/i18n-context';
-import { COUNTRIES } from '@/lib/data/countries';
+import { COUNTRIES, countryLabel } from '@/lib/data/countries';
 import { messaggioErroreFire } from '@/lib/fire-errors';
 import { incomeStreamPayload } from '@/lib/payloads';
 
@@ -203,7 +203,7 @@ function StreamEditor({ t, lang, initial, busy, onCancel, onSave }: {
             className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring">
             <option value="">—</option>
             {COUNTRIES.map((c) => (
-              <option key={c.code} value={c.code}>{c[`name${lang.charAt(0).toUpperCase() + lang.slice(1)}` as keyof typeof c]}</option>
+              <option key={c.code} value={c.code}>{countryLabel(c.code, lang)}</option>
             ))}
           </select>
         </label>

@@ -24,7 +24,7 @@ export function FireTaxNotes({ profileCountry }: { profileCountry: string }) {
         <select value={country} onChange={(e) => setCountry(e.target.value)}
           className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring">
           {COUNTRIES.map((c) => (
-            <option key={c.code} value={c.code}>{c[`name${lang.charAt(0).toUpperCase() + lang.slice(1)}` as keyof typeof c]}</option>
+            <option key={c.code} value={c.code}>{countryLabel(c.code, lang)}</option>
           ))}
         </select>
         {note ? (
