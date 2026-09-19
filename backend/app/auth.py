@@ -279,12 +279,17 @@ def prepara_account(user_id: int) -> None:
         "late_income_day": "20",
         "savings_default_category": "Savings",
         "net_worth_currencies": "USD,CHF,BTC",
+        # La riga c'e' dal primo giorno col valore di sempre: senza, la pagina
+        # delle preferenze mostrerebbe un selettore vuoto finche' non lo si
+        # tocca, e "vuoto" non vuol dire "media".
+        "cost_basis_method": "media",
     }
     etichette = {
         "header_color": "Colore principale",
         "late_income_shift": "Shift entrate tardive", "late_income_day": "Giorno dello shift",
         "savings_default_category": "Categoria di default del risparmio",
         "net_worth_currencies": "Valute nel patrimonio",
+        "cost_basis_method": "Metodo di carico",
     }
     gettone = set_current_user(user_id)
     try:

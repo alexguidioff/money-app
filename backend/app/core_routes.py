@@ -18,8 +18,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 
-from .calculation_engine import (account_balances_at, account_balances_series, account_reconciliation,
-                                 investment_positions, normalized_name, savings_rate, source_effect)
+from .calculation_engine import (METODI_COSTO, account_balances_at, account_balances_series,
+                                 account_reconciliation, investment_positions, normalized_name,
+                                 savings_rate, source_effect)
 from .categorization import MAX_REGOLE, categoria_da_nome, suggest
 from .categorie import (GRUPPI, con_i_figli, gruppo_di_categoria, nome_di, nomi as nomi_categorie, padri,
                         radici_con_figli)
@@ -3098,6 +3099,25 @@ def portfolio_state_at(timeline: list[dict[str, Any]], cutoff: date) -> dict[str
     return chosen
 
 
+METODO_COSTO_KEY = "cost_basis_method"
+
+
+def metodo_costo(session: Session) -> str:
+    """Il metodo di carico scelto, o quello predefinito.
+
+    Sta in `app_settings` come il simbolo dell'indice, e per lo stesso motivo:
+    una colonna nuova per un valore che si cambia dalla pagina sarebbe una
+    migrazione per niente. Il predefinito e' `media`, cioe' il numero che l'app
+    calcolava prima di poterlo scegliere: nessun costo si muove da solo.
+
+    Il valore si valida qui anche se il motore lo rivalida: `PUT
+    /api/settings/{key}` accetta qualunque stringa per qualunque chiave, quindi
+    una riga scritta male deve leggersi come "non ha scelto niente".
+    """
+    valore = str(session.scalar(select(AppSetting.value).where(AppSetting.key == METODO_COSTO_KEY)) or "").strip().lower()
+    return valore if valore in METODI_COSTO else "media"
+
+
 def _open_positions(session: Session, include_closed: bool = False) -> list[dict[str, Any]]:
     """Posizioni con units > 0, con market value dal prezzo quotato in cache
     se disponibile, altrimenti dall'ultimo prezzo di transazione (fallback
@@ -3107,6 +3127,11 @@ def _open_positions(session: Session, include_closed: bool = False) -> list[dict
     realizzato di questa pagina ignoravano fee che il libro movimenti mostra, e
     lo stesso strumento aveva due costi a seconda di dove lo si guardava. Una
     lettura sola per tutte le righe, non una per riga.
+
+    Il metodo di carico e' letto qui e non passato da fuori: e' l'unico punto in
+    cui si guardano le posizioni per davvero, e finche' non esiste un'anteprima
+    "con FIFO" un parametro in piu' sarebbe solo un secondo posto dove
+    dimenticarselo.
     """
     rows = session.scalars(select(InvestmentTransaction)).all()
     fees_by_tx = dict(session.execute(select(InvestmentTransactionDetail.transaction_id,
@@ -3117,7 +3142,8 @@ def _open_positions(session: Session, include_closed: bool = False) -> list[dict
         for row in session.scalars(select(InvestmentInstrument)).all()
         if (row.provider_symbol or "").strip()
     }
-    positions = investment_positions(rows, fees_by_transaction=fees_by_tx, prices_by_name=prices, tickers_by_name=tickers)
+    positions = investment_positions(rows, fees_by_transaction=fees_by_tx, prices_by_name=prices,
+                                     tickers_by_name=tickers, cost_basis_method=metodo_costo(session))
     return positions if include_closed else [p for p in positions if p["units"] > 0]
 
 

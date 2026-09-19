@@ -298,18 +298,72 @@ def period_metrics(
     }
 
 
+# I metodi di carico che il motore sa applicare. `media` e' il primo perche' e'
+# quello predefinito: e' il numero che l'app calcolava prima di poterlo
+# scegliere, e nessun numero si muove finche' non lo si cambia.
+METODI_COSTO = ("media", "fifo", "lifo")
+
+
+def _consuma_lotti(lotti: list[list[Decimal]], quote: Decimal, metodo: str) -> Decimal:
+    """Il costo delle quote vendute, consumando i lotti secondo il metodo.
+
+    `fifo` prende i piu' vecchi, `lifo` i piu' recenti. Un lotto consumato per
+    intero non si divide: si prende il suo costo cosi' com'e'. `3 * (100 / 3)`
+    a 28 cifre lascia un residuo da 1e-26 che non se ne va piu', e il costo di
+    un lotto intero lo si conosce gia'.
+    """
+    costo = ZERO
+    rimaste = quote
+    while rimaste > ZERO and lotti:
+        indice = 0 if metodo == "fifo" else len(lotti) - 1
+        lotto = lotti[indice]
+        # Irraggiungibile: la guardia sulle quote a zero sta all'acquisto. Ma un
+        # lotto da zero quote qui sarebbe un ciclo infinito, e una difesa che
+        # costa una riga vale piu' di un cruscotto che non risponde.
+        if lotto[0] <= ZERO:
+            lotti.pop(indice)
+            continue
+        if lotto[0] <= rimaste:
+            costo += lotto[1]
+            rimaste -= lotto[0]
+            lotti.pop(indice)
+        else:
+            porzione = lotto[1] * (rimaste / lotto[0])
+            costo += porzione
+            lotto[0] -= rimaste
+            lotto[1] -= porzione
+            rimaste = ZERO
+    return costo
+
+
 def investment_positions(
     transactions: Iterable[Any],
     fees_by_transaction: dict[int, Any] | None = None,
     prices_by_name: dict[str, Any] | None = None,
     tickers_by_name: dict[str, str] | None = None,
+    *,
+    cost_basis_method: str = "media",
 ) -> list[dict[str, Any]]:
-    """Average-cost portfolio ledger, independent of Excel table formulas.
+    """Portfolio ledger at average cost, or at the cost of the lots sold.
 
     Buys increase units and cost basis. Sales reduce the basis at its average
     cost and recognize the difference as realized P/L.  This is deliberately
     kept separate from quotation retrieval, so stale/offline market data can
     never alter the transaction ledger.
+
+    Con ``cost_basis_method`` a ``fifo`` o ``lifo`` una vendita consuma invece i
+    lotti: i piu' vecchi, o i piu' recenti. La media non e' un'opinione diversa
+    sulla stessa storia, e' la sola risposta che si puo' dare senza sapere quali
+    quote sono state vendute - e resta il ramo di codice di prima, riga per riga,
+    perche' chi non sceglie non deve vedere un numero diverso. I lotti si
+    **derivano** dalla lista ordinata che il motore gia' riceve: nessuna tabella
+    nuova, e niente da invalidare quando una riga viene modificata o
+    retrodatata.
+
+    Il metodo arriva da un'impostazione che l'utente puo' scrivere a mano, quindi
+    la stringa si valida qui: la funzione pura e' anche il punto di ingresso, e
+    una stringa spazzatura deve cadere sulla media invece di far esplodere il
+    cruscotto.
 
     Le posizioni sono raggruppate per ticker quando lo strumento ne ha uno: il
     nome nel ledger puo' cambiare nel tempo (uno strumento rinominato a meta'
@@ -322,6 +376,9 @@ def investment_positions(
     muove ``net_contributed``, che e' il denaro versato e non il valore
     dell'investimento.
     """
+    metodo = str(cost_basis_method or "").strip().lower()
+    if metodo not in METODI_COSTO:
+        metodo = "media"
     fee_map = fees_by_transaction or {}
     ticker_map = {normalized_name(key): value.strip().upper() for key, value in (tickers_by_name or {}).items() if value and value.strip()}
     price_map = {}
@@ -368,6 +425,9 @@ def investment_positions(
                 "fees_paid": ZERO,
                 "last_trade_price": ZERO,
                 "currency": _value(row, "currency") or "EUR",
+                # I lotti aperti, dal piu' vecchio: `[quote, costo]`. Sotto
+                # `media` restano vuoti e nessuno li legge.
+                "lots": [],
             }
         if action in {"buy", "acquisto"}:
             # Il controllo sulle quote sta qui dentro e non prima: un movimento
@@ -378,12 +438,20 @@ def investment_positions(
             position["units"] += units
             position["cost_basis"] += amount + fee
             position["net_contributed"] += amount + fee
+            # Il lotto nasce dopo la guardia sulle quote a zero: un lotto da
+            # zero quote non si consuma mai, e la prima vendita lo dividerebbe
+            # invece di saltarlo.
+            if metodo != "media":
+                position["lots"].append([units, amount + fee])
         elif action in {"sell", "vendita"}:
             if units == ZERO:
                 continue
             sold_units = min(units, position["units"])
-            average_cost = position["cost_basis"] / position["units"] if position["units"] else ZERO
-            disposed_cost = average_cost * sold_units
+            if metodo == "media":
+                average_cost = position["cost_basis"] / position["units"] if position["units"] else ZERO
+                disposed_cost = average_cost * sold_units
+            else:
+                disposed_cost = _consuma_lotti(position["lots"], sold_units, metodo)
             proceeds = max(amount - fee, ZERO)
             position["units"] -= sold_units
             position["cost_basis"] -= disposed_cost
@@ -405,6 +473,13 @@ def investment_positions(
             if units <= ZERO:
                 continue
             position["units"] *= units
+            # I lotti si riscalano insieme alla posizione: dimenticarli e' l'unico
+            # modo in cui questo disegno muore in silenzio, perche' la prossima
+            # vendita consumerebbe quantita' sbagliate senza alzare niente. Il
+            # costo del lotto non si tocca: dopo un frazionamento 2 a 1 le quote
+            # sono il doppio e sono costate lo stesso denaro.
+            for lotto in position["lots"]:
+                lotto[0] *= units
             # Anche il prezzo di ripiego si divide. Per uno strumento quotato non
             # cambia niente (il mercato il frazionamento lo ha gia' nel prezzo),
             # ma per uno senza quotazione il prezzo resterebbe quello di prima e

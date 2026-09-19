@@ -2345,6 +2345,12 @@ function MoneyDashboardInner() {
         const aggiornato = await handleMarketRefresh().catch(() => null);
         if (!aggiornato) await loadData(undefined, ['investments']);
       }
+      // Il metodo di carico si legge sul server a ogni lettura delle posizioni:
+      // i numeri che ha gia' in pagina sono quelli del metodo di prima, e
+      // resterebbero li' fino al prossimo aggiornamento.
+      if (key === 'cost_basis_method') {
+        await loadData(undefined, ['investments']);
+      }
     } catch {
       // L'app e' connessa: il salvataggio di questa singola preferenza non
       // ha funzionato. Mostriamo un errore circoscritto invece di far credere
@@ -3753,6 +3759,10 @@ function SectionView({
             <SettingSelect label={t('shiftLateIncome')} value={settingsData.settings.late_income_shift} options={uniqueOptions(settingsData.settings.late_income_shift, ['Active', 'Inactive'])} saving={settingSaving === 'late_income_shift'} hint={t('shiftLateIncomeHint')} labels={{ Active: t('toggleActive'), Inactive: t('toggleInactive') }} onChange={(value) => void onSettingChange('late_income_shift', value)} />
             <SettingSelect label={t('fromDay')} value={settingsData.settings.late_income_day} options={Array.from({ length: 28 }, (_, index) => String(index + 1))} saving={settingSaving === 'late_income_day'} disabled={settingsData.settings.late_income_shift !== 'Active'} hint={settingsData.settings.late_income_shift === 'Active' ? t('fromDayHintActive') : t('fromDayHintInactive')} onChange={(value) => void onSettingChange('late_income_day', value)} />
             <SettingText label={t('benchmarkSymbol')} value={settingsData.settings.benchmark_symbol ?? ''} saving={settingSaving === 'benchmark_symbol'} placeholder="es. ^GSPC" hint={t('benchmarkSymbolHint')} onChange={(value) => void onSettingChange('benchmark_symbol', value)} />
+            {/* Il metodo di carico. Raggruppato, "media", che e' quello che
+                l'app ha sempre calcolato: chi non sceglie non vede un numero
+                muoversi, e la nota dice cosa cambia a chi sceglie. */}
+            <SettingSelect label={t('costBasisMethod')} value={settingsData.settings.cost_basis_method ?? 'media'} options={['media', 'fifo', 'lifo']} saving={settingSaving === 'cost_basis_method'} hint={t('costBasisMethodHint')} labels={{ media: t('costBasisMedia'), fifo: t('costBasisFifo'), lifo: t('costBasisLifo') }} onChange={(value) => void onSettingChange('cost_basis_method', value)} />
           </CardContent></Card>
           </div>
         </div>
