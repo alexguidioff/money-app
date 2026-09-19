@@ -56,7 +56,7 @@ class RisparmioDerivatoTests(unittest.TestCase):
     def _analisi(self) -> dict:
         # Il "budget contro tracciato" dell'anno vive solo in Andamento annuale:
         # la copia in Panoramica e' stata tolta, la regola si controlla qui.
-        return analysis(2026, "Expenses", None, self.session)
+        return analysis(2026, "year", "Expenses", None, self.session)
 
     def test_il_tracciato_e_entrate_meno_spese(self) -> None:
         self.assertEqual(800.0, self._analisi()["savingsByMonth"][0]["amount"])
@@ -72,7 +72,7 @@ class RisparmioDerivatoTests(unittest.TestCase):
         """L'altro grafico mensile ("Budget vs tracked by month") sommava anche
         lui i movimenti di tipo Savings: `inBudget` restava a zero e la barra
         era tutta grigia, cioe' "budget non ancora usato" per dodici mesi."""
-        gennaio = analysis(2026, "Expenses", None, self.session)["monthlyBudget"]["savings"][0]
+        gennaio = analysis(2026, "year", "Expenses", None, self.session)["monthlyBudget"]["savings"][0]
         # 800 risparmiati contro 500 pianificati: 500 dentro il budget, 300 oltre.
         self.assertEqual(500.0, gennaio["inBudget"])
         self.assertEqual(0, gennaio["remaining"])
@@ -80,7 +80,7 @@ class RisparmioDerivatoTests(unittest.TestCase):
 
     def test_entrate_e_spese_nel_grafico_impilato_restano_somme(self) -> None:
         # La deroga vale solo per il risparmio: gli altri due tipi si sommano.
-        mesi = analysis(2026, "Expenses", None, self.session)["monthlyBudget"]
+        mesi = analysis(2026, "year", "Expenses", None, self.session)["monthlyBudget"]
         self.assertEqual(1200.0, mesi["expenses"][0]["inBudget"] + mesi["expenses"][0]["excess"])
         self.assertEqual(2000.0, mesi["income"][0]["inBudget"] + mesi["income"][0]["excess"])
 

@@ -263,7 +263,7 @@ def risposte() -> dict[str, Any]:
         "summary": summary(anno_scorso := oggi.year - 1, 9, "prior_year", session),
         "summaryBreakdownMonth": summary_breakdown(anno_scorso, 9, session),
         "summaryBreakdownYear": summary_breakdown(anno_scorso, None, session),
-        "analysis": analysis(anno_scorso, "Expenses", "Housing", session),
+        "analysis": analysis(anno_scorso, "last12", "Expenses", "Housing", session),
         "budgets": budgets(anno_scorso, 9, "Expenses", session),
         "calculations": calculations(anno_scorso, 9, session),
         "budgetAnnual": budget_annual(anno_scorso, "Expenses", session),

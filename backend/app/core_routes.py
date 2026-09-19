@@ -734,14 +734,36 @@ def _invested_by_month(session: Session, year: int) -> list[dict[str, Any]]:
     return [{"month": MONTHS[i], "amount": round(monthly[i], 2)} for i in range(12)]
 
 
+def _finestra_periodo(scope: str, year: int, oggi: date) -> tuple[date, date]:
+    """Il primo e l'ultimo giorno del periodo su cui la pagina racconta.
+
+    "Ultimi 12 mesi" e' il predefinito perche' a settembre l'anno solare sono
+    nove mesi incompleti, e confrontarli con un anno intero direbbe che si spende
+    molto meno: non e' vero, e' il calendario. La finestra chiude con il mese di
+    oggi e conta dodici mesi compresi, quindi comincia undici mesi prima - a
+    settembre, ottobre dell'anno scorso.
+
+    L'anno solare resta per chi lo sceglie, e li' il periodo e' l'anno: le due
+    scelte esistono perche' dicono cose diverse, non per abitudine.
+    """
+    if scope == "last12":
+        mese, anno = oggi.month - 11, oggi.year
+        if mese <= 0:
+            mese, anno = mese + 12, anno - 1
+        ultimo_giorno = calendar.monthrange(oggi.year, oggi.month)[1]
+        return date(anno, mese, 1), date(oggi.year, oggi.month, ultimo_giorno)
+    return date(year, 1, 1), date(year, 12, 31)
+
+
 @router.get("/api/analysis")
 def analysis(
     year: int = Query(ge=2000, le=2100),
+    scope: Literal["last12", "year"] = Query("last12", description="last12: gli ultimi dodici mesi; year: l'anno solare"),
     category_type: str = Query("Expenses", description="Income, Expenses o Savings, per Category Analysis"),
     category: str | None = Query(None, description="Categoria per Category Analysis; se omessa nessuna transazione viene restituita"),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    """Vista 'Andamento annuale': sempre sull'anno intero.
+    """Vista 'Andamento annuale': quattro blocchi sull'anno solare, e il periodo dichiarato accanto.
     - monthlyBudget: per Income/Expenses/Savings, 12 mesi x {inBudget, remaining, excess},
       con isCurrentMonth per evidenziare il mese in corso (Budget Dashboard AF52:AN72).
     - topExpenseCategories: le 10 categorie di spesa maggiori dell'anno, per un treemap
@@ -749,6 +771,9 @@ def analysis(
     - savingsByMonth: risparmio netto per ciascuno dei 12 mesi (Budget Trends, 'Savings by month').
     - categoryTransactions: le 10 transazioni di importo piu' alto per category_type/category
       nell'anno (Budget Trends, 'Category Analysis' + 'Top 10 Transactions').
+    - period: su quale finestra la pagina racconta, date comprese. I quattro blocchi
+      qui sopra restano annuali; i numeri nuovi no, e chi li legge deve sapere su
+      cosa sono calcolati: un report che non lo dice costringe a fidarsi.
     """
     types = ("Income", "Expenses", "Savings")
     today = date.today()
@@ -812,8 +837,11 @@ def analysis(
             extract("year", Transaction.effective_on) == year, Transaction.transaction_type == category_type,
             BUDGET_MOVEMENT).distinct()) if nomi.get(categoria_id)}, key=str.casefold)
 
+    inizio, fine = _finestra_periodo(scope, year, today)
+
     return {
         "year": year,
+        "period": {"scope": scope, "from": inizio.isoformat(), "to": fine.isoformat()},
         "monthlyBudget": monthly_budget,
         "topExpenseCategories": top_expense_categories,
         "savingsByMonth": savings_by_month,

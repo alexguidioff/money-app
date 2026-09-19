@@ -146,6 +146,10 @@ type MonthlyBudgetPoint = { month: string; inBudget: number; remaining: number; 
 
 export type AnalysisData = {
   year: number;
+  /* Su quale finestra la pagina racconta. `scope` dice come e' stata scelta -
+     gli ultimi dodici mesi o un anno solare - e le due date la chiudono: senza,
+     un numero non si sa su cosa e' calcolato. */
+  period: { scope: 'last12' | 'year'; from: string; to: string };
   monthlyBudget: { income: MonthlyBudgetPoint[]; expenses: MonthlyBudgetPoint[]; savings: MonthlyBudgetPoint[] };
   topExpenseCategories: Array<{ name: string; value: number; color: string }>;
   savingsByMonth: Array<{ month: string; amount: number }>;

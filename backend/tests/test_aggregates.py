@@ -245,6 +245,6 @@ class CategorieSenzaPianoTests(unittest.TestCase):
 
     def test_andamento_annuale_la_mette_fra_le_piu_pesanti_e_fra_le_scelte(self) -> None:
         from app.core_routes import analysis
-        esito = analysis(2025, "Expenses", None, self.session)
+        esito = analysis(2025, "year", "Expenses", None, self.session)
         self.assertEqual("Viaggi", esito["topExpenseCategories"][0]["name"])
         self.assertEqual(["Housing", "Viaggi"], esito["categoryOptions"])
