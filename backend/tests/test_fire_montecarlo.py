@@ -134,6 +134,52 @@ class EsaurimentoTests(unittest.TestCase):
         self.assertEqual(Decimal(0).quantize(Decimal("0.01")), esito.percentili[50][-1].capitale)
 
 
+class SorrTests(unittest.TestCase):
+    """La sequenza dei primi anni di ritiro, non la media di tutti.
+
+    E' il numero che i percentili non possono dare: mescolano i piani che
+    iniziano bene con quelli che iniziano male.
+    """
+
+    def test_a_volatilita_zero_i_percorsi_sono_tutti_lo_stesso(self) -> None:
+        # Senza volatilita' non esiste una partenza sfortunata: il quartile
+        # peggiore e' il campione intero, e il rischio di sequenza coincide con
+        # il tasso di successo.
+        esito = esegui(volatilita=0.0)
+        self.assertEqual(esito.successo, esito.sorr.valore)
+        self.assertIsNone(esito.sorr.motivo)
+
+    def test_un_inizio_che_puo_andare_male_abbassa_il_numero(self) -> None:
+        # E' la distanza fra i due numeri: la media dice quanto margine c'e', la
+        # sequenza dice cosa ne resta se i primi anni vanno male.
+        senza = esegui(volatilita=0.0).sorr.valore
+        con = esegui(volatilita=0.15).sorr.valore
+        self.assertEqual(Decimal(1), senza)
+        self.assertLess(con, senza)
+
+    def test_il_quartile_peggiore_non_sta_meglio_della_media(self) -> None:
+        esito = esegui()
+        self.assertLessEqual(esito.sorr.valore, esito.successo)
+
+    def test_un_piano_senza_speranza_non_e_salvato_dall_inizio(self) -> None:
+        # Capitale minuscolo: non regge nessun percorso, quale che sia il primo
+        # anno. E' il caso in cui "aspetta a partire male" non ha niente da dire.
+        esito = esegui(capitale=1000.0, spese_annue=50000.0, versamenti_annui=0.0,
+                       entrate_per_eta={}, eta_ritiro=ETA_OGGI)
+        self.assertEqual(Decimal(0), esito.successo)
+        self.assertEqual(Decimal(0), esito.sorr.valore)
+
+    def test_un_ritiro_piu_corto_della_finestra_non_ha_una_sequenza(self) -> None:
+        # Sei anni di ritiro non hanno "i primi dieci": il numero non c'e', e al
+        # suo posto c'e' il motivo. Uno zero direbbe un'altra cosa - che non
+        # regge - ed e' la differenza fra "non lo so" e "no".
+        esito = esegui(eta_ritiro=85, eta_fine=90)
+        self.assertIsNone(esito.sorr.valore)
+        self.assertEqual("shortHorizon", esito.sorr.motivo)
+        # La simulazione c'e' tutta: manca solo il numero della sequenza.
+        self.assertEqual(list(range(ETA_OGGI, ETA_FINE + 1)), [p.eta for p in esito.percentili[50]])
+
+
 class ValidazioneTests(unittest.TestCase):
     def test_volatilita_fuori_intervallo(self) -> None:
         for valore in (-0.01, 1.01):

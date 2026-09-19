@@ -13,6 +13,11 @@ export type MonteCarloPayload = {
   volatility: number;
   medianDepletionAge: number | null;
   atHorizon: { age: number; p10: number; p50: number; p90: number } | null;
+  // Il rischio di sequenza: quanto regge il piano fra i percorsi che iniziano
+  // peggio, sui primi `window` anni di ritiro. `value` e' null quando quel
+  // ritiro e' piu' corto della finestra, e allora c'e' il motivo al posto del
+  // numero - "valore o motivo", come i rendimenti.
+  sorr: { value: number | null; reason: string | null; window: number };
 };
 
 export function MonteCarloCard({ dati }: { dati: MonteCarloPayload }) {
@@ -24,6 +29,11 @@ export function MonteCarloCard({ dati }: { dati: MonteCarloPayload }) {
   // due righe non possono piu' contraddirsi.
   const suCento = Math.floor(dati.successRate * 100);
   const colore = suCento >= 90 ? '#2d7b65' : suCento >= 75 ? '#9a7b2f' : '#bd5e46';
+  // Il rischio di sequenza si legge con la stessa scala del successo: e' la
+  // stessa domanda ("quanto e' stretto il margine") posta ai soli percorsi che
+  // iniziano male. Arrotondato per difetto anche questo, per lo stesso motivo.
+  const sorrSuCento = dati.sorr.value === null ? null : Math.floor(dati.sorr.value * 100);
+  const coloreSorr = sorrSuCento === null ? '#7b8784' : sorrSuCento >= 90 ? '#2d7b65' : sorrSuCento >= 75 ? '#9a7b2f' : '#bd5e46';
   return (
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
       <CardContent className="p-5">
@@ -37,6 +47,16 @@ export function MonteCarloCard({ dati }: { dati: MonteCarloPayload }) {
         {dati.medianDepletionAge !== null && (
           <p className="mt-2 text-xs text-[#bd5e46]">{t('fireDepletionMedian', { age: dati.medianDepletionAge })}</p>
         )}
+        {/* La media dei rendimenti nasconde proprio il rischio che conta: due
+            piani con la stessa media finiscono lontanissimi se i primi anni di
+            prelievo vanno male. Questo numero guarda solo il quartile che
+            inizia peggio, e la finestra la dice il testo - "SORR" da solo non
+            direbbe di che anni si sta parlando. */}
+        <p className="mt-2 text-xs" style={{ color: coloreSorr }}>
+          {sorrSuCento !== null
+            ? t('fireSorr', { years: dati.sorr.window, count: sorrSuCento })
+            : t('fireSorrMissing', { years: dati.sorr.window })}
+        </p>
         {/* Dove si arriva, nei tre casi. La percentuale dice quanti piani
             reggono ma non con quale margine: fra restare a galla e chiudere con
             venti volte il necessario c'e' una differenza che il solo "99 su

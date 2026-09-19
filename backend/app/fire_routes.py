@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 from .core_routes import _net_worth_breakdown, _summary_core, budget_actual_year, net_worth_series, nomi_categorie
 from .database import get_session
 from .fire_engine import ETA_FINE_PROIEZIONE, Flusso, PianoFire, piano_fire
-from .fire_montecarlo import EsitoMonteCarlo, simula
+from .fire_montecarlo import SORR_ANNI, EsitoMonteCarlo, simula
 from .models import IncomeStream, RetirementProfile
 
 router = APIRouter()
@@ -520,6 +520,19 @@ def _risposta(c: _Contesto, piano, esito: EsitoMonteCarlo, scenari, storico, lev
                 "paths": esito.percorsi,
                 "volatility": float(c.profilo.return_volatility) / 100,
                 "medianDepletionAge": esito.eta_esaurimento_mediana,
+                # La sequenza dei primi anni di ritiro, non la media di tutti:
+                # due piani con lo stesso rendimento medio finiscono lontanissimi
+                # se a partire male e' proprio l'inizio. "SORR" da solo sarebbe
+                # una sigla, quindi il numero porta con se' la sua finestra.
+                "sorr": {
+                    "value": float(esito.sorr.valore) if esito.sorr.valore is not None else None,
+                    # Per ora il motivo e' uno solo (ritiro piu' corto della
+                    # finestra): c'e' perche' un giorno ce ne sara' un altro, e
+                    # perche' un campo nullo senza spiegazione non si distingue
+                    # da un errore di calcolo.
+                    "reason": esito.sorr.motivo,
+                    "window": SORR_ANNI,
+                },
                 # Dove si arriva, nei tre casi, all'ultimo anno disegnato. La
                 # banda del grafico li mostra gia' ma solo a occhio: qui sono
                 # numeri. Il p50 non sta fra le curve perche' le linee del

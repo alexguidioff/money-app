@@ -62,12 +62,38 @@ class PuntoMC:
     capitale: Decimal
 
 
+# I primi anni di ritiro sono quelli che decidono: una perdita all'inizio
+# lascia meno capitale a lavorare per tutti gli anni dopo, e i versamenti non ci
+# sono piu' a rifonderla. Piu' avanti un inizio sfortunato e' gia' stato
+# assorbito, ed e' il motivo per cui questa finestra non copre tutto il ritiro.
+SORR_ANNI = 10
+
+
+@dataclass(frozen=True)
+class Sorr:
+    """Il rischio di sequenza: non la media dei rendimenti, la loro *sequenza*.
+
+    I percentili non lo dicono, perche' mescolano i piani che iniziano bene con
+    quelli che iniziano male: due piani con lo stesso rendimento medio possono
+    finire lontanissimi. Questo numero guarda solo il quartile che inizia
+    peggio, e la finestra sono i primi `SORR_ANNI` anni di ritiro.
+
+    `valore` e' la quota di quei percorsi che reggono; `motivo` dice perche' non
+    c'e', quando non c'e' - un ritiro piu' corto della finestra non ha un inizio
+    di dieci anni da guardare, e li' non si inventa un numero.
+    """
+
+    valore: Decimal | None
+    motivo: str | None
+
+
 @dataclass(frozen=True)
 class EsitoMonteCarlo:
     successo: Decimal          # quota di percorsi che reggono, fra 0 e 1
     percorsi: int
     percentili: dict[int, tuple[PuntoMC, ...]]   # {10: serie, 50: serie, 90: serie}
     eta_esaurimento_mediana: int | None          # fra i percorsi falliti, None se nessuno fallisce
+    sorr: Sorr
 
 
 def _seme(capitale: float, spese_annue: float, versamenti_annui: float,
@@ -136,10 +162,18 @@ def simula(capitale: float, spese_annue: float, versamenti_annui: float,
                               eta_ritiro, eta_fine, rendimento_medio, volatilita, seme))
     saldi: list[list[float]] = []
     esaurimenti: list[int] = []
+    # Il rendimento composto dei primi anni di ritiro, con l'esito del percorso.
+    # Si tengono queste due cose e non i percorsi interi: 5.000 percorsi da 63
+    # anni sono 315.000 saldi, e per la sequenza non servono.
+    finestre: list[tuple[float, bool]] = []
+    # Un ritiro piu' corto della finestra non ha un inizio da guardare: meglio
+    # dirlo che misurarlo su tre anni e chiamarlo rischio di sequenza.
+    conta_sorr = eta_fine - eta_ritiro + 1 >= SORR_ANNI
     successi = 0
     for _ in range(percorsi):
         saldo = capitale
         percorso: list[float] = []
+        finestra = 1.0
         esaurito = False
         for eta in range(eta_oggi, eta_fine + 1):
             # ponytail: rendimenti estratti indipendenti da una gaussiana.
@@ -147,6 +181,8 @@ def simula(capitale: float, spese_annue: float, versamenti_annui: float,
             # Se un giorno c'e' una serie storica di rendimenti in archivio, si
             # passa al bootstrap storico e cambia solo questa riga.
             r = max(rnd.gauss(rendimento_medio, volatilita), RENDIMENTO_MINIMO)
+            if conta_sorr and eta_ritiro <= eta < eta_ritiro + SORR_ANNI:
+                finestra *= 1.0 + r
             rendite = entrate_per_eta.get(eta, 0.0)
             spesa = spese_annue if eta >= eta_ritiro else 0.0
             versato = versamenti_annui if eta < eta_ritiro else 0.0
@@ -159,6 +195,8 @@ def simula(capitale: float, spese_annue: float, versamenti_annui: float,
                 esaurimenti.append(eta)
             saldo = max(0.0, disponibile - prelievo) * (1.0 + r)
         saldi.append(percorso)
+        if conta_sorr:
+            finestre.append((finestra, esaurito))
         if not esaurito:
             successi += 1
 
@@ -177,4 +215,19 @@ def simula(capitale: float, spese_annue: float, versamenti_annui: float,
         percorsi=percorsi,
         percentili={quota: tuple(serie) for quota, serie in percentili.items()},
         eta_esaurimento_mediana=median_low(esaurimenti) if esaurimenti else None,
+        sorr=_sorr(finestre) if conta_sorr else Sorr(valore=None, motivo="shortHorizon"),
     )
+
+
+def _sorr(finestre: list[tuple[float, bool]]) -> Sorr:
+    """Il quartile che inizia peggio, e quanto regge.
+
+    La soglia si sceglie **dopo** aver simulato - prima non si sa quali percorsi
+    iniziano male - ed e' un quartile del campione, non un numero di rendimento:
+    "i dieci anni peggiori fra quelli estratti", non "sotto il 4% annuo".
+    """
+    ordinate = sorted(finestre)
+    quanti = max(1, len(ordinate) // 4)
+    peggiori = ordinate[:quanti]
+    return Sorr(valore=Decimal(sum(1 for _, esaurito in peggiori if not esaurito)) / Decimal(quanti),
+                motivo=None)
