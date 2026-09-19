@@ -21,7 +21,8 @@ from sqlalchemy.orm import Session
 
 from app.core_routes import investments_dashboard
 from app.database import Base
-from app.models import AppSetting, InvestmentInstrument, InvestmentTransaction, MarketPrice
+from app.models import (AppSetting, InvestmentInstrument, InvestmentTransaction,
+                        InvestmentTransactionDetail, MarketPrice)
 from app.rendimenti import (
     FLUSSI_SENZA_CAMBIO_DI_SEGNO,
     NESSUN_FLUSSO,
@@ -192,7 +193,11 @@ class XirrTests(unittest.TestCase):
 
 
 TABELLE = [AppSetting.__table__, InvestmentInstrument.__table__, InvestmentTransaction.__table__,
-           MarketPrice.__table__]
+           MarketPrice.__table__,
+           # Le fee: il cruscotto le legge per riga (prima non le leggeva
+           # affatto), quindi senza questa tabella il minimo schema che serve
+           # non e' piu' quello di prima.
+           InvestmentTransactionDetail.__table__]
 
 
 class RendimentoDelCruscotto(unittest.TestCase):

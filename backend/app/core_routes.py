@@ -3101,11 +3101,16 @@ def portfolio_state_at(timeline: list[dict[str, Any]], cutoff: date) -> dict[str
 def _open_positions(session: Session, include_closed: bool = False) -> list[dict[str, Any]]:
     """Posizioni con units > 0, con market value dal prezzo quotato in cache
     se disponibile, altrimenti dall'ultimo prezzo di transazione (fallback
-    dichiarato via has_quote=False). Fee per transazione non ancora tracciate
-    a livello di riga nel dettaglio investimenti: 0 di default.
+    dichiarato via has_quote=False).
+
+    Le commissioni scritte sulle righe arrivano al motore: senza, il costo e il
+    realizzato di questa pagina ignoravano fee che il libro movimenti mostra, e
+    lo stesso strumento aveva due costi a seconda di dove lo si guardava. Una
+    lettura sola per tutte le righe, non una per riga.
     """
     rows = session.scalars(select(InvestmentTransaction)).all()
-    fees_by_tx = {row.id: 0 for row in rows}
+    fees_by_tx = dict(session.execute(select(InvestmentTransactionDetail.transaction_id,
+                                             InvestmentTransactionDetail.fee)).all())
     prices, _ = quoted_prices_by_instrument(session)
     tickers = {
         row.name: row.provider_symbol

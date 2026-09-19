@@ -16,10 +16,11 @@ from decimal import Decimal
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.core_routes import budget_actual, budget_actual_year, period_total, portfolio_timeline
+from app.core_routes import (_open_positions, budget_actual, budget_actual_year, period_total,
+                             portfolio_timeline)
 from app.database import Base
 from app.models import (Account, BudgetPlan, InvestmentInstrument, InvestmentTransaction,
-                        MarketPrice, Transaction)
+                        InvestmentTransactionDetail, MarketPrice, Transaction)
 from tests.categorie_fixture import categoria
 
 
@@ -114,6 +115,54 @@ class InvestedCapitalTests(unittest.TestCase):
         march = next(point for point in timeline if point["period"].startswith("2026-03"))
         # Solo le 10 quote di A, valorizzate a 110.
         self.assertAlmostEqual(march["marketValue"], 1100.0, places=2)
+
+
+class CommissioniDelCruscottoTests(unittest.TestCase):
+    """La fee scritta sulla riga arriva al costo, non solo al libro movimenti.
+
+    Il cruscotto passava al motore una commissione di zero per ogni operazione:
+    il costo e il realizzato ignoravano fee che la riga mostrava, e lo stesso
+    strumento aveva due costi a seconda di dove lo si guardava.
+    """
+
+    def setUp(self) -> None:
+        self.engine = create_engine("sqlite://")
+        Base.metadata.create_all(self.engine)
+        self.session = Session(self.engine)
+        self.session.add(InvestmentInstrument(name="Fondo A", provider_symbol="AAA.MI", currency="EUR"))
+        acquisto = InvestmentTransaction(occurred_on=date(2026, 1, 15), ticker="AAA.MI", name="Fondo A",
+                                         transaction_type="Buy", amount=Decimal("1000.00"),
+                                         units=Decimal("10"), price=Decimal("100"), currency="EUR")
+        self.session.add(acquisto)
+        self.session.flush()
+        self.session.add(InvestmentTransactionDetail(transaction_id=acquisto.id, fee=Decimal("5.00")))
+        self.session.commit()
+
+    def tearDown(self) -> None:
+        self.session.close()
+
+    def posizione(self) -> dict:
+        return next(p for p in _open_positions(self.session) if p["name"] == "Fondo A")
+
+    def test_la_commissione_dell_acquisto_entra_nel_costo(self) -> None:
+        # 1000 di acquisto piu' 5 di commissione: il costo e' quello che hai
+        # speso davvero, non il prezzo del titolo.
+        self.assertEqual(Decimal("1005.00"), self.posizione()["cost_basis"])
+
+    def test_la_commissione_della_vendita_riduce_il_realizzato(self) -> None:
+        vendita = InvestmentTransaction(occurred_on=date(2026, 3, 10), ticker="AAA.MI", name="Fondo A",
+                                        transaction_type="Sell", amount=Decimal("1200.00"),
+                                        units=Decimal("5"), price=Decimal("240"), currency="EUR")
+        self.session.add(vendita)
+        self.session.flush()
+        self.session.add(InvestmentTransactionDetail(transaction_id=vendita.id, fee=Decimal("3.00")))
+        self.session.commit()
+
+        posizione = self.posizione()
+        # 1197 incassati (1200 meno 3) contro 502,50 di costo medio delle cinque
+        # quote vendute: senza la commissione il realizzato sarebbe 697,50.
+        self.assertEqual(Decimal("694.50"), posizione["realized_gain"])
+        self.assertEqual(Decimal("502.50"), posizione["cost_basis"])
 
 
 class AccountBalanceSignTests(unittest.TestCase):
