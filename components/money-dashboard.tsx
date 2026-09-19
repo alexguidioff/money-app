@@ -3464,7 +3464,7 @@ function SectionView({
         {budgetView === 'plan' && <div className="space-y-5">
           {period.scope === 'month' ? <>
             <BudgetPlanMonthTotals data={budgetData} budgetType={budgetType} calculations={calculationData} year={selectedYear} month={selectedMonth} />
-            {budgetType === 'Savings' ? <BudgetBalanceCard balance={budgetData.balance} scope="month" /> : <BudgetEditor data={budgetData} canEdit={canEditBudgetYear} editableYears={editableBudgetYears} budgetType={budgetType} suggestions={budgetSuggestions} onUpdate={onBudgetUpdate} onCreate={onBudgetCreate} onDelete={onBudgetDelete} onCopy={onBudgetCopy} categorieDelVerso={settingsData.categoriesByType[budgetType] ?? []} />}
+            {budgetType === 'Savings' ? <BudgetBalanceCard balance={budgetData.balance} scope="month" /> : <BudgetEditor data={budgetData} canEdit={canEditBudgetYear} editableYears={editableBudgetYears} budgetType={budgetType} suggestions={budgetSuggestions} onUpdate={onBudgetUpdate} onCreate={onBudgetCreate} onDelete={onBudgetDelete} onCopy={onBudgetCopy} categorieDelVerso={settingsData.categoriesByType[budgetType] ?? []} padreDi={padreDiCategoria} />}
           </> : budgetType === 'Savings' ? <BudgetBalanceCard balance={annualBudgetData.balance} scope="year" /> : <AnnualBudgetEditor data={annualBudgetData} padreDi={padreDiCategoria} onApply={onAnnualBudgetApply} />}
         </div>}
         </>}
@@ -5333,13 +5333,14 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
   </div>;
 }
 
-function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, categorieDelVerso, onUpdate, onCreate, onDelete, onCopy }: {
+function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, categorieDelVerso, padreDi, onUpdate, onCreate, onDelete, onCopy }: {
   data: BudgetData;
   canEdit: boolean;
   editableYears: number[];
   budgetType: 'Expenses' | 'Income';
   suggestions: BudgetSuggestion[];
   categorieDelVerso: string[];
+  padreDi: Record<string, string>;
   onUpdate: (id: number, payload: { category?: string; amount?: number }) => Promise<void>;
   onCreate: (category: string, amount: number) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
@@ -5350,6 +5351,21 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
   // creano nella vista Categorie. Un campo libero ne faceva nascere una nuova a
   // ogni errore di battitura, ed e' il motivo per cui l'elenco era arrivato a
   // ventisette voci piatte.
+  const padreDiVoce = (nome: string) => padreDi[nome.trim().toLowerCase()] ?? null;
+  // Raggruppate per padre tenendo l'ordine d'arrivo, come nella vista annuale e
+  // nella vista Categorie: la stessa gerarchia disegnata allo stesso modo nelle
+  // tre schede.
+  const gruppi = useMemo(() => {
+    const ordine: Array<{ padre: string | null; voci: BudgetItem[] }> = [];
+    for (const voce of data.items) {
+      const padre = padreDi[voce.category.trim().toLowerCase()] ?? null;
+      const ultimo = ordine.at(-1);
+      if (ultimo && ultimo.padre === padre) ultimo.voci.push(voce);
+      else ordine.push({ padre, voci: [voce] });
+    }
+    return ordine;
+  }, [data.items, padreDi]);
+
   const categorieDisponibili = useMemo(() => {
     const gia = new Set(data.items.map((riga) => riga.category.trim().toLowerCase()));
     return categorieDelVerso.filter((nome) => !gia.has(nome.trim().toLowerCase())).sort();
@@ -5437,7 +5453,9 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
         <span className="text-right">{actualLabel}</span>
         <span className="w-[72px]" />
       </div>
-      <div className="divide-y divide-black/5">{data.items.map((item) => {
+      <div className="divide-y divide-black/5">{gruppi.flatMap(({ padre, voci }) => [
+        ...(padre ? [<p key={`gruppo-${padre}`} className="bg-[#f6f8f6] px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#5b6b66]">{padre}</p>] : []),
+        ...voci.map((item) => {
         const draft = drafts[item.id] ?? { category: item.category, amount: item.amount.toFixed(2) };
         const changed = draft.category !== item.category || Number(draft.amount) !== item.amount;
         const suggestion = suggestionFor(draft.category);
@@ -5445,11 +5463,14 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
         // niente li' dentro: non e' un suggerimento, e' rumore.
         const usefulSuggestion = suggestion && suggestion.median > 0 ? suggestion : undefined;
         return <div key={item.id} className="grid gap-2 py-3 sm:items-start sm:grid-cols-[minmax(170px,1fr)_130px_120px_130px_auto]">
-          <div className="min-w-0">
+          <div className="flex min-w-0 items-start gap-1.5">
+            {padre && <span aria-hidden className="mt-3.5 h-3 w-px shrink-0 bg-[#dfe4e1]" />}
+            <div className="min-w-0 flex-1">
             <Input aria-label={`${t('category')} ${item.categoryLabel}`} disabled={!canEdit} value={draft.category} onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: { ...draft, category: event.target.value } }))} className="h-9 bg-[#fafaf8]" />
             {usefulSuggestion && <button type="button" disabled={!canEdit} title={t('budgetSuggestionTitle', { average: formatEuro(usefulSuggestion.average), max: formatEuro(usefulSuggestion.max) })} onClick={() => setDrafts((current) => ({ ...current, [item.id]: { ...draft, amount: usefulSuggestion.median.toFixed(2) } }))} className="mt-1 text-left text-[11px] leading-4 text-[#397867] hover:underline disabled:cursor-default disabled:text-[#9aa5a2] disabled:no-underline">
               {t('budgetSuggestion', { amount: formatEuro(usefulSuggestion.median), months: usefulSuggestion.monthsWithSpending, total: usefulSuggestion.monthsConsidered })}
             </button>}
+            </div>
           </div>
           <Input aria-label={`${t('budget')} ${item.categoryLabel}`} disabled={!canEdit} min="0" step="0.01" type="number" value={draft.amount} onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: { ...draft, amount: event.target.value } }))} className="h-9 bg-[#fafaf8]" />
           <div className="text-right text-xs leading-4 text-[#71807c] sm:pt-2">
@@ -5461,7 +5482,7 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
             <Button type="button" size="icon" variant="ghost" aria-label={`${t('delete')} ${item.categoryLabel}`} disabled={!canEdit || Boolean(busy)} onClick={() => void remove(item)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button>
           </div>
         </div>;
-      })}</div>
+      })])}</div>
       {canEdit && <form onSubmit={create} className="mt-4 grid gap-2 rounded-xl bg-[#f4f5f1] p-3 sm:grid-cols-[1fr_150px_auto]"><select required value={newCategory} onChange={(event) => setNewCategory(event.target.value)} className="h-10 rounded-md border border-input bg-white px-2 text-sm"><option value="">{t('budgetPickCategory')}</option>{categorieDisponibili.map((nome) => <option key={nome} value={nome}>{nome}</option>)}</select><Input required min="0" step="0.01" type="number" value={newAmount} onChange={(event) => setNewAmount(event.target.value)} placeholder={t('budgetPlaceholder')} className="h-10 bg-white" /><Button type="submit" disabled={Boolean(busy)} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('add')}</Button></form>}
     </CardContent>
   </Card>;
