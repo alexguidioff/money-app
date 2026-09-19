@@ -20,7 +20,7 @@ l'interfaccia nella lingua scelta.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -28,7 +28,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .categorie import nomi as nomi_categorie
-from .core_routes import budget_actual, conti_con_valore_di_mercato, quoted_prices_by_instrument
+from .core_routes import (budget_actual, conti_con_valore_di_mercato, quoted_prices_by_instrument,
+                          stato_valutazione)
 from .database import get_session
 from .models import (Account, AccountValuation, BudgetPlan, DismissedNotification,
                      InvestmentInstrument, InvestmentTransaction, Transaction)
@@ -190,26 +191,22 @@ def _backup(oggi: date) -> list[dict[str, Any]]:
     }]
 
 
-# Sopra questa eta' una valutazione manuale non descrive piu' il presente: una
-# casa o un'auto si rivedono una volta l'anno, non piu' spesso.
-GIORNI_VALUTAZIONE = 365
-
-
 def _valutazioni_scadute(session: Session, oggi: date) -> list[dict[str, Any]]:
     """Conti da valutare a mano la cui stima e' vecchia, o che non ne hanno.
 
     Non e' un promemoria generico su tutti i conti: per gli altri il saldo si
-    calcola da solo e non c'e' niente da ricordare.
+    calcola da solo e non c'e' niente da ricordare. Quanto vecchia sia "vecchia"
+    e chi abbia diritto a una stima lo decide `stato_valutazione`, che e' la
+    stessa regola con cui il Patrimonio scrive la riga sotto il conto.
     """
     ultime = dict(session.execute(
         select(AccountValuation.account_id, func.max(AccountValuation.observed_on))
         .group_by(AccountValuation.account_id)).all())
-    limite = oggi - timedelta(days=GIORNI_VALUTAZIONE)
     avvisi = []
     for conto in session.scalars(select(Account).where(
             Account.needs_manual_valuation.is_(True), Account.is_active.is_(True))).all():
         ultima = ultime.get(conto.id)
-        if ultima is not None and ultima > limite:
+        if stato_valutazione(conto, ultima, oggi) is None:
             continue
         avvisi.append({
             # La chiave contiene la data dell'ultima stima: appena ne registri

@@ -316,6 +316,11 @@ export type Account = {
   // il costo versato. Non e' una casella che si spunta, e' un fatto dedotto.
   valuedByLedger?: boolean;
   valuations?: AccountValuation[];
+  // Se la stima scritta a mano e' vecchia, o se non ce n'e' nessuna. E' la
+  // forma "valore o motivo": `days` e' l'eta' dell'ultima stima, e vale `null`
+  // quando non ce n'e' mai stata una - un numero inventato al posto di
+  // "nessuna stima" sarebbe peggio di nessun numero.
+  valuationNotice?: { code: 'valuationMissing'; days: null } | { code: 'valuationStale'; days: number } | null;
   id: number;
   name: string;
   group: 'bank' | 'asset' | 'liability' | 'financial';
@@ -6208,7 +6213,14 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
     Il "dichiarato" era la cifra importata dall'Excel, e da quando l'app non
     lo legge piu' nessuno lo aggiorna: confrontarcisi produceva una differenza
     che non si poteva ne' spiegare ne' correggere. */}
-{azioni && Math.abs(account.startingBalance) > 0.005 && <p className="ml-12 mt-1.5 text-[11px] text-[#87918e]">{t('initial')} <b className="font-medium text-[#52615d]">{formatEuro(account.startingBalance)}</b></p>}</div>; })}</CardContent>
+{azioni && Math.abs(account.startingBalance) > 0.005 && <p className="ml-12 mt-1.5 text-[11px] text-[#87918e]">{t('initial')} <b className="font-medium text-[#52615d]">{formatEuro(account.startingBalance)}</b></p>}
+{/* Il valore di una casa e' fermo a quando l'hai stimato: senza questa riga
+    l'unico modo di accorgersene era aprire le valutazioni una per una. Il
+    numero c'e' solo quando c'e' una stima da datare - l'eta' la calcola il
+    backend, perche' la soglia e' la stessa dell'avviso in cima alla pagina. */}
+{account.valuationNotice && <p className="ml-12 mt-1.5 text-[11px] text-[#87918e]">{account.valuationNotice.code === 'valuationStale'
+  ? t('accountsValuationStale', { days: account.valuationNotice.days })
+  : t('valuationsEmpty')}</p>}</div>; })}</CardContent>
       ))}
     </Card>
   );

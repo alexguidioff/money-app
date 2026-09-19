@@ -512,6 +512,52 @@ def valutazioni_per_conto(session: Session, linea_portafoglio: list[dict[str, An
     return per_conto
 
 
+# Sopra questa eta' una stima scritta a mano non descrive piu' il presente. La
+# soglia dipende da cosa si sta valutando: una casa si rivede una volta l'anno,
+# un conto titoli molto prima. Oggi l'unico gruppo che si valuta a mano e'
+# `asset` (`GRUPPI_VALUTABILI`, main.py), quindi la mappa ha una voce sola: la
+# forma c'e' per il giorno in cui serviranno le altre.
+GIORNI_VALUTAZIONE_PER_GRUPPO = {"asset": 365}
+# Il ripiego e' il numero che c'era prima che la soglia diventasse una mappa: un
+# conto di un altro gruppo non si valuta a mano, quindi non ci arriva.
+GIORNI_VALUTAZIONE = 365
+
+
+def stato_valutazione(conto: Account, ultima: date | None, oggi: date) -> str | None:
+    """Perche' questo conto chiede una stima a mano, se la chiede.
+
+    Una regola sola per due letture: l'avviso della campanella e la riga scritta
+    sotto il conto nel Patrimonio. Se divergessero, la stessa casa sarebbe
+    vecchia per una e fresca per l'altra.
+
+    `missing` se non ne ha mai registrata una, `stale` se l'ultima e' piu'
+    vecchia della soglia del suo gruppo, `None` quando non c'e' niente da dire:
+    un conto valorizzato dai suoi movimenti non ha niente da ricordare, e uno
+    archiviato non si aggiorna piu'.
+    """
+    if not conto.needs_manual_valuation or not conto.is_active:
+        return None
+    if ultima is None:
+        return "missing"
+    giorni = GIORNI_VALUTAZIONE_PER_GRUPPO.get(conto.source_group, GIORNI_VALUTAZIONE)
+    return "stale" if ultima <= oggi - timedelta(days=giorni) else None
+
+
+def _avviso_valutazione(conto: Account, stime: list[Any], oggi: date) -> dict[str, Any] | None:
+    """La riga che il Patrimonio scrive sotto il conto, se c'e' qualcosa da dire.
+
+    `days` e' l'eta' dell'ultima stima e vale `None` quando non ne esiste
+    nessuna: e' la forma "valore o motivo" dei rendimenti, perche' un numero
+    inventato al posto di "nessuna stima" sarebbe peggio di nessun numero.
+    """
+    ultima = stime[0].observed_on if stime else None
+    stato = stato_valutazione(conto, ultima, oggi)
+    if stato is None:
+        return None
+    return {"code": "valuationMissing" if stato == "missing" else "valuationStale",
+            "days": (oggi - ultima).days if ultima else None}
+
+
 def _net_worth_breakdown(session: Session, year: int, month: int | None,
                          movimenti: list[Any] | None = None,
                          linea_portafoglio: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -1613,6 +1659,11 @@ def accounts(at: str | None = Query(None, description="Saldi a questa data (YYYY
         "isLiquid": row.is_liquid, "isBroker": row.is_broker, "notes": row.notes,
         "needsManualValuation": row.needs_manual_valuation,
         "valuedByLedger": row.id in con_mercato,
+        # Il conto dice da solo se la sua stima e' vecchia, o se non ce n'e'
+        # nessuna: e' l'informazione che l'app ha sempre avuto e che la riga non
+        # diceva. Si guarda alla data chiesta, non a oggi, perche' la riga parla
+        # del saldo a quella data e non puo' raccontare un'altra storia.
+        "valuationNotice": _avviso_valutazione(row, stime.get(row.id, []), quando),
         "valuations": [{"id": v.id, "observedOn": v.observed_on.isoformat(),
                         "value": num(v.value), "notes": v.notes} for v in stime.get(row.id, [])],
     } for row, entry in zip(rows, reconciliation)], "at": quando.isoformat()}
