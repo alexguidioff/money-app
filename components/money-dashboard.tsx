@@ -882,7 +882,7 @@ function MoneyDashboardInner() {
   // L'utente sceglie quali anni mettere a confronto in Trends. Default: gli
   // ultimi 3 anni disponibili, una volta che la lista arriva dal backend.
   const [trendYears, setTrendYears] = useState<number[]>([]);
-  const [budgetView, setBudgetView] = useState<'dashboard' | 'trends' | 'plan'>('dashboard');
+  const [budgetView, setBudgetView] = useState<'dashboard' | 'trends' | 'plan' | 'categories'>('dashboard');
   const [budgetLoadFailed, setBudgetLoadFailed] = useState(false);
   const [trendsLoadFailed, setTrendsLoadFailed] = useState(false);
   const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlertData | null>(null);
@@ -1257,7 +1257,7 @@ function MoneyDashboardInner() {
       const salvato = JSON.parse(window.localStorage.getItem(CHIAVE_VISTA) ?? 'null') as
         { section?: string; period?: Partial<PeriodSelection>; year?: number; month?: number;
           overviewYear?: number; overviewMonth?: number | null; overviewCompareTo?: 'none' | 'prior_period' | 'prior_year';
-          trendYears?: number[]; budgetView?: 'dashboard' | 'trends' | 'plan' } | null;
+          trendYears?: number[]; budgetView?: 'dashboard' | 'trends' | 'plan' | 'categories' } | null;
       if (!salvato) return;
       if (salvato.section && salvato.section in SECTION_LABEL_KEYS) setActiveSection(salvato.section as Section);
       // Il vecchio formato aveva due periodi: durante la migrazione vince
@@ -1638,15 +1638,6 @@ function MoneyDashboardInner() {
 
   // Il gruppo appartiene alla categoria, non al mese: il backend lo scrive su
   // tutti i periodi in una volta.
-  async function handleCategoryGroupChange(category: string, categoryGroup: string) {
-    const response = await fetch(`${apiUrl}/api/category-groups`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category, category_group: categoryGroup || null }),
-    });
-    if (!response.ok) throw new Error('category-group');
-    await loadData(undefined, ['budget']);
-  }
 
   async function handleBudgetDelete(id: number) {
     if (!window.confirm(t('confirmDeleteBudgetCategory'))) return;
@@ -2496,7 +2487,6 @@ function MoneyDashboardInner() {
               onSearchChange={setSearchQuery}
               budgetData={budgetData}
               budgetSuggestions={budgetSuggestions}
-              onCategoryGroupChange={handleCategoryGroupChange}
               annualBudgetData={annualBudgetData}
               budgetDashboardData={budgetDashboardData}
               budgetTrendsData={budgetTrendsData}
@@ -3063,7 +3053,6 @@ function SectionView({
   accounts,
   budgetData,
   budgetSuggestions,
-  onCategoryGroupChange,
   annualBudgetData,
   budgetDashboardData,
   budgetTrendsData,
@@ -3155,7 +3144,6 @@ function SectionView({
   accounts: Account[];
   budgetData: BudgetData;
   budgetSuggestions: BudgetSuggestion[];
-  onCategoryGroupChange: (category: string, categoryGroup: string) => Promise<void>;
   annualBudgetData: AnnualBudgetData;
   budgetDashboardData: BudgetDashboardData | null;
   budgetTrendsData: BudgetTrendsData;
@@ -3213,8 +3201,8 @@ function SectionView({
   onPeriodChange: (value: PeriodSelection) => void;
   budgetType: 'Expenses' | 'Income' | 'Savings';
   onBudgetTypeChange: (value: 'Expenses' | 'Income' | 'Savings') => void;
-  budgetView: 'dashboard' | 'trends' | 'plan';
-  onBudgetViewChange: (value: 'dashboard' | 'trends' | 'plan') => void;
+  budgetView: 'dashboard' | 'trends' | 'plan' | 'categories';
+  onBudgetViewChange: (value: 'dashboard' | 'trends' | 'plan' | 'categories') => void;
   settingsData: SettingsData;
   onSettingChange: (key: string, value: string) => Promise<void>;
   settingSaving: string;
@@ -3456,7 +3444,7 @@ function SectionView({
             {([['Expenses', t('expensesType')], ['Income', t('incomeType')], ['Savings', t('savingsType')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={budgetType === value} onClick={() => onBudgetTypeChange(value)} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${budgetType === value ? 'bg-[var(--money-primary)] text-white' : 'text-[#66736f] hover:bg-[#f4f5f1]'}`}>{label}</button>)}
           </div>
           <div role="group" aria-label={t('budget')} className="flex flex-wrap gap-1 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-            {([['dashboard', t('budgetTabDashboard')], ['trends', t('budgetTabTrends')], ['plan', t('budgetTabPlan')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={budgetView === value} onClick={() => onBudgetViewChange(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${budgetView === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
+            {([['dashboard', t('budgetTabDashboard')], ['trends', t('budgetTabTrends')], ['plan', t('budgetTabPlan')], ['categories', t('budgetTabCategories')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={budgetView === value} onClick={() => onBudgetViewChange(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${budgetView === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
           </div>
         </div>
         {budgetLoadFailed ? <Card className="border-[#efc4b8] bg-[#fff6f3] shadow-sm"><CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold">{t('budgetLoadFailed')}</p><p className="mt-1 text-xs text-[#52615d]">{t('budgetLoadFailedHint')}</p></div><Button variant="outline" size="sm" onClick={() => void onReload()}>{t('retry')}</Button></CardContent></Card> : <>
@@ -3467,7 +3455,7 @@ function SectionView({
         {budgetView === 'plan' && <div className="space-y-5">
           {period.scope === 'month' ? <>
             <BudgetPlanMonthTotals data={budgetData} budgetType={budgetType} calculations={calculationData} year={selectedYear} month={selectedMonth} />
-            {budgetType === 'Savings' ? <BudgetBalanceCard balance={budgetData.balance} scope="month" /> : <BudgetEditor data={budgetData} canEdit={canEditBudgetYear} editableYears={editableBudgetYears} budgetType={budgetType} suggestions={budgetSuggestions} onUpdate={onBudgetUpdate} onCreate={onBudgetCreate} onDelete={onBudgetDelete} onCopy={onBudgetCopy} onCategoryGroupChange={onCategoryGroupChange} />}
+            {budgetType === 'Savings' ? <BudgetBalanceCard balance={budgetData.balance} scope="month" /> : <BudgetEditor data={budgetData} canEdit={canEditBudgetYear} editableYears={editableBudgetYears} budgetType={budgetType} suggestions={budgetSuggestions} onUpdate={onBudgetUpdate} onCreate={onBudgetCreate} onDelete={onBudgetDelete} onCopy={onBudgetCopy} categorieDelVerso={settingsData.categoriesByType[budgetType] ?? []} />}
           </> : budgetType === 'Savings' ? <BudgetBalanceCard balance={annualBudgetData.balance} scope="year" /> : <AnnualBudgetEditor data={annualBudgetData} onApply={onAnnualBudgetApply} />}
         </div>}
         </>}
@@ -3476,7 +3464,7 @@ function SectionView({
             accorge che serve. Un posto solo - le Impostazioni non ce l'hanno
             piu' - perche' due elenchi uguali in due stanze diverse sono due
             elenchi da tenere allineati. */}
-        <CategoryTreeCard apiUrl={apiUrl} onChanged={onReload} />
+        {budgetView === 'categories' && <CategoryTreeCard apiUrl={apiUrl} onChanged={onReload} />}
       </div>}
 
       {section === 'Obiettivi' && <GoalsView data={goalsData} accounts={accounts} onSave={onGoalSave} onDelete={onGoalDelete} />}
@@ -5322,19 +5310,27 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
   </div>;
 }
 
-function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, onUpdate, onCreate, onDelete, onCopy, onCategoryGroupChange }: {
+function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, categorieDelVerso, onUpdate, onCreate, onDelete, onCopy }: {
   data: BudgetData;
   canEdit: boolean;
   editableYears: number[];
   budgetType: 'Expenses' | 'Income';
   suggestions: BudgetSuggestion[];
+  categorieDelVerso: string[];
   onUpdate: (id: number, payload: { category?: string; amount?: number }) => Promise<void>;
   onCreate: (category: string, amount: number) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
   onCopy: (mode: 'month' | 'year') => Promise<void>;
-  onCategoryGroupChange: (category: string, categoryGroup: string) => Promise<void>;
 }) {
   const { t, formatEuro } = useI18n();
+  // Le categorie non si creano da qui: si scelgono fra quelle dell'albero, e si
+  // creano nella vista Categorie. Un campo libero ne faceva nascere una nuova a
+  // ogni errore di battitura, ed e' il motivo per cui l'elenco era arrivato a
+  // ventisette voci piatte.
+  const categorieDisponibili = useMemo(() => {
+    const gia = new Set(data.items.map((riga) => riga.category.trim().toLowerCase()));
+    return categorieDelVerso.filter((nome) => !gia.has(nome.trim().toLowerCase())).sort();
+  }, [categorieDelVerso, data.items]);
   // Il suggerimento e' quello della categoria scritta ora nella riga, non di
   // quella salvata: se stai rinominando, cambia con te.
   const suggestionFor = (category: string) => suggestions.find((item) => item.category.trim().toLowerCase() === category.trim().toLowerCase());
@@ -5393,17 +5389,6 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, o
     }
   }
 
-  async function changeGroup(category: string, categoryGroup: string) {
-    setBusy(`group-${category}`);
-    setError('');
-    try {
-      await onCategoryGroupChange(category, categoryGroup);
-    } catch {
-      setError(t('cannotSaveBudgetRow'));
-    } finally {
-      setBusy('');
-    }
-  }
 
   async function remove(item: BudgetItem) {
     setBusy(`delete-${item.id}`);
@@ -5443,12 +5428,6 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, o
               {t('budgetSuggestion', { amount: formatEuro(usefulSuggestion.median), months: usefulSuggestion.monthsWithSpending, total: usefulSuggestion.monthsConsidered })}
             </button>}
           </div>
-          <select aria-label={`${t('categoryGroup')} ${item.categoryLabel}`} disabled={!canEdit || Boolean(busy)} value={item.categoryGroup ?? ''} onChange={(event) => void changeGroup(item.category, event.target.value)} className="h-9 rounded-lg border border-input bg-[#fafaf8] px-2 text-xs outline-none focus:border-ring">
-            <option value="">{t('groupUnset')}</option>
-            <option value="Needs">{t('groupNeeds')}</option>
-            <option value="Wants">{t('groupWants')}</option>
-            <option value="Other">{t('groupOther')}</option>
-          </select>
           <Input aria-label={`${t('budget')} ${item.categoryLabel}`} disabled={!canEdit} min="0" step="0.01" type="number" value={draft.amount} onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: { ...draft, amount: event.target.value } }))} className="h-9 bg-[#fafaf8]" />
           <div className="text-right text-xs leading-4 text-[#71807c] sm:pt-2">
             <span className="sm:hidden">{actualLabel}: </span>{formatEuro(item.actual)}
@@ -5460,7 +5439,7 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, o
           </div>
         </div>;
       })}</div>
-      {canEdit && <form onSubmit={create} className="mt-4 grid gap-2 rounded-xl bg-[#f4f5f1] p-3 sm:grid-cols-[1fr_150px_auto]"><Input required value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder={t('newCategoryPlaceholder')} className="h-10 bg-white" /><Input required min="0" step="0.01" type="number" value={newAmount} onChange={(event) => setNewAmount(event.target.value)} placeholder={t('budgetPlaceholder')} className="h-10 bg-white" /><Button type="submit" disabled={Boolean(busy)} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('add')}</Button></form>}
+      {canEdit && <form onSubmit={create} className="mt-4 grid gap-2 rounded-xl bg-[#f4f5f1] p-3 sm:grid-cols-[1fr_150px_auto]"><select required value={newCategory} onChange={(event) => setNewCategory(event.target.value)} className="h-10 rounded-md border border-input bg-white px-2 text-sm"><option value="">{t('budgetPickCategory')}</option>{categorieDisponibili.map((nome) => <option key={nome} value={nome}>{nome}</option>)}</select><Input required min="0" step="0.01" type="number" value={newAmount} onChange={(event) => setNewAmount(event.target.value)} placeholder={t('budgetPlaceholder')} className="h-10 bg-white" /><Button type="submit" disabled={Boolean(busy)} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('add')}</Button></form>}
     </CardContent>
   </Card>;
 }
