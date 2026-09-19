@@ -81,6 +81,7 @@ import {
 } from '@/components/ui/chart';
 import { I18nProvider, useI18n } from '@/lib/i18n-context';
 import { COUNTRIES, countryLabel, taxNoteFor } from '@/lib/data/countries';
+import { BENCHMARKS } from '@/lib/data/benchmarks';
 import { LoginScreen, type AccountSummary } from '@/components/login-screen';
 import { SharedTotalsView } from '@/components/shared-totals';
 import { FirePage } from '@/components/fire-page';
@@ -3749,17 +3750,20 @@ function SectionView({
         {/* Due colonne: a sinistra chi sei e cosa entra, a destra come l'app
             si comporta. Le regole stanno sotto perche' sono una tabella. */}
         <div className="grid items-start gap-5 xl:grid-cols-2">
-          <div className="space-y-5">
+          {/* `min-w-0`: una scheda larga al minimo allarga la colonna oltre il
+              bordo dello schermo, e a quel punto la pagina scorre in orizzontale
+              per colpa di una riga di testo che non si poteva stringere. */}
+          <div className="min-w-0 space-y-5">
             {account && <AccountSettings apiUrl={apiUrl} account={account} onChanged={onAccountChanged} />}
        </div>
-          <div className="space-y-5">
+          <div className="min-w-0 space-y-5">
           <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]"><CardHeader><CardTitle className="text-[17px]">{t('preferences')}</CardTitle><p className="text-xs leading-5 text-[#7b8784]">{t('preferencesSubtitle')}</p></CardHeader><CardContent className="space-y-4">
             {settingError && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#bd5e46]">{settingError}</p>}
             <SettingSelect label={t('mainColor')} value={settingsData.settings.header_color} options={settingsData.options.colors} saving={settingSaving === 'header_color'} labels={{ Blue: t('colorBlue'), Orange: t('colorOrange'), Green: t('colorGreen'), Yellow: t('colorYellow'), Purple: t('colorPurple'), 'Light Blue': t('colorLightBlue') }} onChange={(value) => void onSettingChange('header_color', value)} />
             <SettingCurrencies label={t('netWorthCurrenciesSetting')} value={settingsData.settings.net_worth_currencies ?? 'USD,CHF,BTC'} saving={settingSaving === 'net_worth_currencies'} onChange={(value) => void onSettingChange('net_worth_currencies', value)} />
             <SettingSelect label={t('shiftLateIncome')} value={settingsData.settings.late_income_shift} options={uniqueOptions(settingsData.settings.late_income_shift, ['Active', 'Inactive'])} saving={settingSaving === 'late_income_shift'} hint={t('shiftLateIncomeHint')} labels={{ Active: t('toggleActive'), Inactive: t('toggleInactive') }} onChange={(value) => void onSettingChange('late_income_shift', value)} />
             <SettingSelect label={t('fromDay')} value={settingsData.settings.late_income_day} options={Array.from({ length: 28 }, (_, index) => String(index + 1))} saving={settingSaving === 'late_income_day'} disabled={settingsData.settings.late_income_shift !== 'Active'} hint={settingsData.settings.late_income_shift === 'Active' ? t('fromDayHintActive') : t('fromDayHintInactive')} onChange={(value) => void onSettingChange('late_income_day', value)} />
-            <SettingText label={t('benchmarkSymbol')} value={settingsData.settings.benchmark_symbol ?? ''} saving={settingSaving === 'benchmark_symbol'} placeholder="es. ^GSPC" hint={t('benchmarkSymbolHint')} onChange={(value) => void onSettingChange('benchmark_symbol', value)} />
+            <SettingBenchmark label={t('benchmarkSymbol')} value={settingsData.settings.benchmark_symbol ?? ''} saving={settingSaving === 'benchmark_symbol'} apiUrl={apiUrl} hint={t('benchmarkSymbolHint')} onChange={(value) => void onSettingChange('benchmark_symbol', value)} />
             {/* Il metodo di carico. Raggruppato, "media", che e' quello che
                 l'app ha sempre calcolato: chi non sceglie non vede un numero
                 muoversi, e la nota dice cosa cambia a chi sceglie. */}
@@ -6130,22 +6134,69 @@ function SettingCountry({ label, value, saving, onChange, hint }: { label: strin
   </label>;
 }
 
-// Un'impostazione che si scrive invece di sceglierla: il simbolo di un indice
-// non e' un elenco chiuso. Salva uscendo dal campo o premendo Invio, non a ogni
-// lettera: il simbolo si digita una volta, e ogni tasto sarebbe un salvataggio.
-function SettingText({ label, value, saving, onChange, hint, placeholder }: { label: string; value: string; saving: boolean; onChange: (value: string) => void; hint?: string; placeholder?: string }) {
+// L'indice di confronto si sceglie, non si scrive. Un ticker digitato a mano e
+// sbagliato non da' errore: la quotazione non arriva, il confronto resta vuoto,
+// e sembra che quell'indice non abbia storia. Si sceglie da una lista corta di
+// indici comuni o cercandolo per nome, come si fa per gli strumenti - la ricerca
+// passa dalla stessa fonte delle quotazioni, quindi un simbolo che compare li'
+// esiste davvero.
+function SettingBenchmark({ label, value, saving, onChange, hint, apiUrl }: { label: string; value: string; saving: boolean; onChange: (value: string) => void; hint: string; apiUrl: string }) {
   const { t } = useI18n();
-  const [bozza, setBozza] = useState(value);
-  // Il valore vero e' quello del server: quando arriva (o cambia altrove), la
-  // bozza si allinea invece di restare quella digitata.
-  useEffect(() => setBozza(value), [value]);
-  const salva = () => { const pulito = bozza.trim(); if (pulito !== value) onChange(pulito); };
-  return <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Array<{ symbol: string; name: string; exchange: string; type: string }>>([]);
+  const [searching, setSearching] = useState(false);
+  // Il nome dell'indice scelto, quando e' uno di quelli della lista: senza,
+  // "^SSMI" resta una sigla anche per chi l'ha scelta.
+  const scelto = BENCHMARKS.find((indice) => indice.symbol === value);
+
+  async function cerca() {
+    if (query.trim().length < 2) return;
+    setSearching(true);
+    try {
+      const response = await fetch(`${apiUrl}/api/market-data/search?q=${encodeURIComponent(query.trim())}`);
+      setResults(response.ok ? ((await response.json()) as { items: typeof results }).items : []);
+    } catch {
+      // La rete non c'e': la lista corta resta cliccabile, e il campo non
+      // finge un risultato che non ha.
+      setResults([]);
+    } finally { setSearching(false); }
+  }
+
+  async function scegli(symbol: string) {
+    setResults([]);
+    setQuery('');
+    // La quotazione si aggiorna da sola: `onSettingChange` ricarica i dati
+    // degli investimenti quando la chiave e' questa.
+    onChange(symbol);
+  }
+
+  return <div className="space-y-1.5 text-xs font-medium text-[#52615d]">
     <span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[#71807c]">{t('savingEllipsis')}</span>}</span>
-    <Input value={bozza} placeholder={placeholder} onChange={(event) => setBozza(event.target.value)} onBlur={salva}
-      onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); salva(); } }} />
-    {hint && <p className="font-normal leading-4 text-[#87918e]">{hint}</p>}
-  </label>;
+    {/* Senza valore la riga dice una frase intera, e una frase non si taglia:
+        si manda a capo. `h-10` fisso la costringerebbe a stare su una riga
+        sola, e a 390 px e' la riga che allarga la scheda oltre lo schermo. */}
+    <div className="flex min-h-10 items-center justify-between gap-2 rounded-lg border border-input bg-[#fafaf8] px-2.5 py-1.5 text-sm text-[#17211f]">
+      <span className="min-w-0 flex-1 break-words">{value ? <>{value}<span className="text-[#71807c]">{scelto ? ` · ${scelto.name}` : ''}</span></> : t('benchmarkNone')}</span>
+      {value && <button type="button" disabled={saving} onClick={() => void scegli('')} className="shrink-0 font-normal text-[#71807c] hover:text-[#17211f]">{t('benchmarkClear')}</button>}
+    </div>
+    <p className="pt-1 font-normal leading-4 text-[#87918e]">{t('benchmarkSuggestions')}</p>
+    <div className="flex flex-wrap gap-1.5 pt-1">
+      {BENCHMARKS.map((indice) => <button key={indice.symbol} type="button" disabled={saving} onClick={() => void scegli(indice.symbol)}
+        className={`rounded-full border px-2.5 py-1 text-[11px] font-normal ${indice.symbol === value ? 'border-[var(--money-deep)] bg-[var(--money-deep)] text-white' : 'border-black/10 bg-white text-[#52615d] hover:bg-[#f4f5f1]'}`}>{indice.name}</button>)}
+    </div>
+    <div className="flex flex-wrap items-center gap-2 pt-1">
+      <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('tickerSearchPlaceholder')} className="h-9 w-[280px] bg-white"
+        onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void cerca(); } }} />
+      <Button type="button" size="sm" variant="outline" disabled={searching} onClick={() => void cerca()}>{searching ? t('searchingEllipsis') : t('tickerSearch')}</Button>
+    </div>
+    {results.length > 0 && <div className="divide-y divide-black/5 rounded-lg border border-black/8 bg-white">
+      {results.map((item) => <button key={item.symbol} type="button" onClick={() => void scegli(item.symbol)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs hover:bg-[#f4f5f1]">
+        <span><span className="font-semibold">{item.symbol}</span> <span className="text-[#71807c]">{item.name}</span></span>
+        <span className="shrink-0 text-[#87918e]">{item.exchange} · {item.type}</span>
+      </button>)}
+    </div>}
+    {!searching && results.length === 0 && <p className="font-normal leading-4 text-[#87918e]">{hint}</p>}
+  </div>;
 }
 
 function formatCheckValue(key: string, value: number, locale: string) {
