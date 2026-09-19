@@ -80,6 +80,7 @@ import {
   ChartTooltipContent,
 } from '@/components/ui/chart';
 import { I18nProvider, useI18n } from '@/lib/i18n-context';
+import { COUNTRIES, countryLabel, taxNoteFor } from '@/lib/data/countries';
 import { LoginScreen, type AccountSummary } from '@/components/login-screen';
 import { SharedTotalsView } from '@/components/shared-totals';
 import { FirePage } from '@/components/fire-page';
@@ -3763,6 +3764,11 @@ function SectionView({
                 l'app ha sempre calcolato: chi non sceglie non vede un numero
                 muoversi, e la nota dice cosa cambia a chi sceglie. */}
             <SettingSelect label={t('costBasisMethod')} value={settingsData.settings.cost_basis_method ?? 'media'} options={['media', 'fifo', 'lifo']} saving={settingSaving === 'cost_basis_method'} hint={t('costBasisMethodHint')} labels={{ media: t('costBasisMedia'), fifo: t('costBasisFifo'), lifo: t('costBasisLifo') }} onChange={(value) => void onSettingChange('cost_basis_method', value)} />
+            {/* Il paese dove sono tassati gli investimenti. Non sceglie il
+                metodo al posto tuo e non muove un numero: mostra quello che
+                l'app sa di quel paese, che e' l'unica cosa che puo' dire senza
+                inventare. */}
+            <SettingCountry label={t('taxCountry')} value={settingsData.settings.tax_country ?? ''} saving={settingSaving === 'tax_country'} hint={t('taxCountryHint')} onChange={(value) => void onSettingChange('tax_country', value)} />
           </CardContent></Card>
           </div>
         </div>
@@ -6103,6 +6109,25 @@ function SettingCurrencies({ label, value, saving, onChange }: {
 function SettingSelect({ label, value, options, saving, onChange, disabled, hint, labels }: { label: string; value: string; options: string[]; saving: boolean; onChange: (value: string) => void; disabled?: boolean; hint?: string; labels?: Record<string, string> }) {
   const { t } = useI18n();
   return <label className="block space-y-1.5 text-xs font-medium text-[#52615d]"><span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[#71807c]">{t('savingEllipsis')}</span>}</span><select value={value} onChange={(event) => onChange(event.target.value)} disabled={saving || disabled} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm text-[#17211f] outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-[#f4f5f1] disabled:opacity-60">{uniqueOptions(value, options).map((option) => <option key={option} value={option}>{labels?.[option] ?? option}</option>)}</select>{hint && <p className="font-normal leading-4 text-[#87918e]">{hint}</p>}</label>;
+}
+
+// Il paese dove sono tassati gli investimenti. Serve a mostrare la nota che
+// l'app ha per quel paese e a nient'altro: non consiglia un metodo di carico,
+// perche' quale chieda il fisco di un paese non e' una cosa che questa app sa -
+// e dirla senza saperla sarebbe peggio del silenzio. La scelta resta
+// dell'utente, e il metodo si sceglie con il selettore qui sopra.
+function SettingCountry({ label, value, saving, onChange, hint }: { label: string; value: string; saving: boolean; onChange: (value: string) => void; hint: string }) {
+  const { t, lang } = useI18n();
+  const nota = value ? taxNoteFor(value, lang) : undefined;
+  return <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
+    <span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[#71807c]">{t('savingEllipsis')}</span>}</span>
+    <select value={value} onChange={(event) => onChange(event.target.value)} disabled={saving} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm text-[#17211f] outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-[#f4f5f1] disabled:opacity-60">
+      <option value="">{t('taxCountryUnset')}</option>
+      {COUNTRIES.map((paese) => <option key={paese.code} value={paese.code}>{countryLabel(paese.code, lang)}</option>)}
+    </select>
+    <p className="font-normal leading-4 text-[#87918e]">{hint}</p>
+    {nota && <p className="rounded-xl border border-black/[0.06] bg-[#fafaf8] px-3 py-2 font-normal leading-relaxed text-[#52615d]">{nota.body}</p>}
+  </label>;
 }
 
 // Un'impostazione che si scrive invece di sceglierla: il simbolo di un indice

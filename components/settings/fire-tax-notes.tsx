@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useI18n } from '@/lib/i18n-context';
-import { COUNTRIES, TAX_NOTES, countryByCode } from '@/lib/data/countries';
+import { COUNTRIES, countryLabel, taxNoteFor } from '@/lib/data/countries';
 
 // Niente calcolo fiscale: l'aliquota sui prelievi la dichiara l'utente nel
 // profilo. Qui si mostrano solo gli avvisi di testo che aiutano a ricordare
@@ -11,9 +11,8 @@ import { COUNTRIES, TAX_NOTES, countryByCode } from '@/lib/data/countries';
 export function FireTaxNotes({ profileCountry }: { profileCountry: string }) {
   const { t, lang } = useI18n();
   const [country, setCountry] = useState(profileCountry || 'IT');
-  const note = TAX_NOTES.find((n) => n.country === country && n.language === lang)
-    ?? TAX_NOTES.find((n) => n.country === country && n.language === 'it');
-  const countryName = countryByCode(country)?.[`name${lang.charAt(0).toUpperCase() + lang.slice(1)}` as keyof ReturnType<typeof countryByCode>] ?? country;
+  const note = taxNoteFor(country, lang);
+  const countryName = countryLabel(country, lang);
 
   return (
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">

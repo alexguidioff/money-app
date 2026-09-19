@@ -46,6 +46,13 @@ export function countryByCode(code: string): Country | undefined {
   return COUNTRIES.find((c) => c.code === code);
 }
 
+// Il nome del paese nella lingua dell'utente, e il codice se non lo conosciamo:
+// un codice ISO in mezzo a una frase si legge, una tendina vuota no.
+export function countryLabel(code: string, lang: string): string {
+  const nome = countryByCode(code)?.[`name${lang.charAt(0).toUpperCase() + lang.slice(1)}` as keyof Country];
+  return typeof nome === 'string' ? nome : code;
+}
+
 // Le note fiscali per paese: niente calcoli, solo avvisi. L'aliquota sui
 // prelievi la dichiara l'utente nel modulo profilo; qui si segnalano i
 // regimi che hanno trappole note (plusvalenze, patrimoniali, forfait).
@@ -157,3 +164,11 @@ export const TAX_NOTES: readonly TaxNote[] = [
   { country: 'PT', language: 'fr',
     body: 'Au Portugal, les PPR (plans d\'épargne retraite) donnent un allègement sur les versements et une imposition réduite à la sortie, à condition que le plan soit conservé assez longtemps et que le rachat respecte les conditions prévues. Les plus-values financières sont taxées à 28%.' },
 ];
+
+// La nota di un paese nella lingua dell'utente, con l'italiana come ripiego: e'
+// lo stesso testo che l'app mostra nella scheda del profilo previdenziale, letto
+// da un posto solo perche' due copie della stessa frase divergono.
+export function taxNoteFor(country: string, lang: string): TaxNote | undefined {
+  return TAX_NOTES.find((nota) => nota.country === country && nota.language === lang)
+    ?? TAX_NOTES.find((nota) => nota.country === country && nota.language === 'it');
+}

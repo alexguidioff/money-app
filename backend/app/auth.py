@@ -283,6 +283,10 @@ def prepara_account(user_id: int) -> None:
         # delle preferenze mostrerebbe un selettore vuoto finche' non lo si
         # tocca, e "vuoto" non vuol dire "media".
         "cost_basis_method": "media",
+        # Vuoto: non c'e' un paese predefinito. Uno scelto da noi sarebbe
+        # un'affermazione su dove vive questa persona, e la nota fiscale
+        # comparirebbe da sola sotto un paese che non ha mai scelto.
+        "tax_country": "",
     }
     etichette = {
         "header_color": "Colore principale",
@@ -290,6 +294,7 @@ def prepara_account(user_id: int) -> None:
         "savings_default_category": "Categoria di default del risparmio",
         "net_worth_currencies": "Valute nel patrimonio",
         "cost_basis_method": "Metodo di carico",
+        "tax_country": "Paese fiscale",
     }
     gettone = set_current_user(user_id)
     try:
