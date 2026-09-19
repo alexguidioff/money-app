@@ -620,7 +620,11 @@ const MESE_CORRENTE = { anno: new Date().getFullYear(), mese: new Date().getMont
 // Singolo Date() per componente, calcolato una volta sola: anche se la pagina
 // ri-renderizza, non rifacciamo l'allocazione a ogni tasto premuto.
 const OGGI = new Date();
-type PeriodSelection = { year: number; month: number; scope: 'month' | 'year' };
+/* `scope` dice come e' stato scelto il periodo, ed e' una cosa sola per tutta
+   l'app: un mese, un anno solare, o gli ultimi dodici mesi - che non sono un
+   anno solare, perche' a settembre cominciano a ottobre dell'anno scorso. Un
+   secondo modo di dire "quale periodo" andrebbe poi tenuto allineato a questo. */
+type PeriodSelection = { year: number; month: number; scope: 'month' | 'year' | 'last12' };
 
 // La voce in fondo alla tendina "Evento": un valore che un id non puo' avere,
 // cosi' la scelta di crearlo non si confonde con un evento che esiste.
@@ -898,10 +902,17 @@ function MoneyDashboardInner() {
   const [budgetType, setBudgetType] = useState<'Expenses' | 'Income' | 'Savings'>('Expenses');
   const [effectivePreview, setEffectivePreview] = useState<{ occurred: string; type: string; amount: number; origine: string }>(MODULO_VUOTO);
   const overviewYear = period.year;
-  const overviewMonth = period.scope === 'year' ? null : period.month;
+  // "Ultimi dodici mesi" e' una finestra che scorre, e la Panoramica sa
+  // raccontare un mese o un anno: per lei vale l'anno, cosi' il suo selettore
+  // mostra "Anno" invece di una finestra che non sa disegnare.
+  const overviewMonth = period.scope === 'month' ? period.month : null;
   const [overviewCompareTo, setOverviewCompareTo] = useState<'none' | 'prior_period' | 'prior_year'>('prior_year');
   const [overviewView, setOverviewView] = useState<'panoramica' | 'analisi'>('panoramica');
   const analysisYear = period.year;
+  // L'Analisi e' l'unica a saper raccontare gli ultimi dodici mesi, ed e' la
+  // finestra da cui parte: un mese solo non lo sa mostrare, quindi tutto quello
+  // che non e' "anno" qui vale "ultimi dodici mesi".
+  const analysisScope: 'last12' | 'year' = period.scope === 'year' ? 'year' : 'last12';
   const [analysisCategoryType, setAnalysisCategoryType] = useState<'Income' | 'Expenses' | 'Savings'>('Expenses');
   const [analysisCategory, setAnalysisCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1114,7 +1125,7 @@ function MoneyDashboardInner() {
       serve('investments') ? fetchOptional<InvestmentAllocationData>(`${apiUrl}/api/investments/allocation`, 'investment-allocation') : null,
       serve('notes') ? fetchOptional<{ items: NoteData[] }>(`${apiUrl}/api/notes`, 'notes') : null,
       serve('overview') ? fetchOptional<SummaryBreakdown>(`${apiUrl}/api/summary-breakdown?year=${overviewYear}${overviewMonth !== null ? `&month=${overviewMonth}` : ''}`, 'summary-breakdown') : null,
-      serve('analysis') ? fetchOptional<AnalysisData>(`${apiUrl}/api/analysis?year=${analysisYear}&category_type=${analysisCategoryType}${analysisCategory ? `&category=${encodeURIComponent(analysisCategory)}` : ''}`, 'analysis') : null,
+      serve('analysis') ? fetchOptional<AnalysisData>(`${apiUrl}/api/analysis?year=${analysisYear}&scope=${analysisScope}&category_type=${analysisCategoryType}${analysisCategory ? `&category=${encodeURIComponent(analysisCategory)}` : ''}`, 'analysis') : null,
       serve('budget') && period.scope === 'month' ? fetchOptional<BudgetSuggestionsData>(`${apiUrl}/api/budget-suggestions?year=${selectedYear}&month=${selectedMonth}&budget_type=${budgetType}`, 'budget-suggestions') : null,
     ]);
     const budgetFailed = serve('budget') && [importedAnnualBudget, importedBudgetDashboard, ...(period.scope === 'month' ? [importedBudgets, importedCalculations] : [])].some((value) => value === null);
@@ -1170,7 +1181,7 @@ function MoneyDashboardInner() {
     } finally {
       setInCorso((quanti) => Math.max(0, quanti - 1));
     }
-  }, [apiUrl, selectedMonth, selectedYear, period.scope, budgetType, overviewYear, overviewMonth, overviewCompareTo, analysisYear, analysisCategoryType, analysisCategory, trendYearsKey]);
+  }, [apiUrl, selectedMonth, selectedYear, period.scope, budgetType, overviewYear, overviewMonth, overviewCompareTo, analysisYear, analysisScope, analysisCategoryType, analysisCategory, trendYearsKey]);
 
   // `loadData` cambia identita' a ogni cambio di periodo: il caricamento dei
   // dati fissi deve poterlo chiamare senza per questo ripartire.
@@ -1274,7 +1285,7 @@ function MoneyDashboardInner() {
     [activeSection, overviewView, caricaAmbito, overviewYear, overviewMonth, overviewCompareTo, panoramicaRetryKey]);
   // L'analisi pure.
   useEffect(() => activeSection === 'Panoramica' && overviewView === 'analisi' ? caricaAmbito(['analysis']) : undefined,
-    [activeSection, overviewView, caricaAmbito, analysisYear, analysisCategoryType, analysisCategory]);
+    [activeSection, overviewView, caricaAmbito, analysisYear, analysisScope, analysisCategoryType, analysisCategory]);
 
   // La tendina "Evento" del modulo: si carica aprendo il modulo, cosi' un
   // evento creato poco fa c'e' gia', e chi non apre mai il modulo non la
@@ -1311,7 +1322,10 @@ function MoneyDashboardInner() {
       const month = salvato.period?.month ?? (dallaPanoramica ? salvato.overviewMonth : salvato.month);
       const restoredMonth = month === null ? MESE_CORRENTE.mese : month;
       if (Number.isInteger(year) && Number.isInteger(restoredMonth) && Number(restoredMonth) >= 1 && Number(restoredMonth) <= 12) {
-        setPeriod({ year: Number(year), month: Number(restoredMonth), scope: salvato.period?.scope === 'year' || (dallaPanoramica && salvato.overviewMonth === null) ? 'year' : 'month' });
+        // "Ultimi dodici mesi" si ripristina com'e': e' la finestra che l'Analisi
+        // stava mostrando, e le altre sezioni la leggono come l'anno.
+        const scelto = salvato.period?.scope;
+        setPeriod({ year: Number(year), month: Number(restoredMonth), scope: scelto === 'last12' ? 'last12' : scelto === 'year' || (dallaPanoramica && salvato.overviewMonth === null) ? 'year' : 'month' });
       }
       if (salvato.overviewCompareTo) setOverviewCompareTo(salvato.overviewCompareTo);
       if (Array.isArray(salvato.trendYears)) setTrendYears(salvato.trendYears.filter(Number.isInteger).slice(0, MAX_ANNI_CONFRONTO));
@@ -2393,6 +2407,7 @@ function MoneyDashboardInner() {
               <AnnualAnalysisView
                 data={analysisData}
                 period={period}
+                scope={analysisScope}
                 years={settingsData.options.overviewYears}
                 categoryType={analysisCategoryType}
                 category={analysisCategory}
@@ -3022,25 +3037,40 @@ function MoneyDashboardInner() {
   );
 }
 
-function PeriodSelector({ value, years, onChange, allowMonth = true, allowYear = true, compareTo, onCompareToChange }: {
+function PeriodSelector({ value: periodoScelto, years, onChange, allowMonth = true, allowYear = true, allowLast12 = false, compareTo, onCompareToChange }: {
   value: PeriodSelection;
   years: string[];
   onChange: (period: PeriodSelection) => void;
   allowMonth?: boolean;
   allowYear?: boolean;
+  // Gli ultimi dodici mesi si offrono solo dove la pagina sa raccontarli: una
+  // finestra che scorre non e' ne' un mese ne' un anno, e le pagine che
+  // chiedono il secondo dei due non devono ritrovarsela addosso.
+  allowLast12?: boolean;
   compareTo?: 'none' | 'prior_period' | 'prior_year';
   onCompareToChange?: (value: 'none' | 'prior_period' | 'prior_year') => void;
 }) {
   const { t, monthNames } = useI18n();
+  // Chi non offre gli ultimi dodici mesi non sa raccontarli: se li ritrova
+  // addosso (li ha scelti in Analisi) li legge come la scelta che sa mostrare -
+  // l'anno dove c'e' il selettore dell'anno, il mese altrove - cosi' frecce e
+  // "Oggi" restano vivi invece di spegnersi su una finestra che non hanno.
+  const value: PeriodSelection = !allowLast12 && periodoScelto.scope === 'last12'
+    ? { ...periodoScelto, scope: allowYear ? 'year' : 'month' }
+    : periodoScelto;
   const availableYears = [...new Set([...years.map(Number).filter(Number.isFinite), value.year, OGGI.getFullYear()])].sort((a, b) => a - b);
-  const scope = allowMonth ? (allowYear ? value.scope : 'month') : 'year';
+  const scope: PeriodSelection['scope'] = allowMonth ? (allowYear ? value.scope : 'month') : allowLast12 && value.scope === 'last12' ? 'last12' : 'year';
   const previousYear = [...availableYears].reverse().find((year) => year < value.year);
   const nextYear = availableYears.find((year) => year > value.year);
-  const atMin = scope === 'year' ? previousYear === undefined : value.month > 1 ? false : previousYear === undefined;
-  const atMax = scope === 'year' ? nextYear === undefined : value.month < 12 ? false : nextYear === undefined;
-  const periodLabel = scope === 'year' ? String(value.year) : formatPeriodRef(monthNames, value.year, value.month);
+  // Gli ultimi dodici mesi sono sempre gli stessi - finiscono con il mese di
+  // oggi - quindi non c'e' un periodo prima o dopo a cui spostarsi.
+  const atMin = scope === 'last12' || (scope === 'year' ? previousYear === undefined : value.month > 1 ? false : previousYear === undefined);
+  const atMax = scope === 'last12' || (scope === 'year' ? nextYear === undefined : value.month < 12 ? false : nextYear === undefined);
+  const periodLabel = scope === 'last12' ? t('analysisPeriodLast12') : scope === 'year' ? String(value.year) : formatPeriodRef(monthNames, value.year, value.month);
   const move = (direction: -1 | 1) => {
-    if (scope === 'year') {
+    if (scope === 'last12') {
+      return;
+    } else if (scope === 'year') {
       const year = direction < 0 ? previousYear : nextYear;
       if (year !== undefined) onChange({ ...value, year });
     } else if (direction < 0 && value.month === 1 && previousYear !== undefined) {
@@ -3054,10 +3084,10 @@ function PeriodSelector({ value, years, onChange, allowMonth = true, allowYear =
   return <div role="toolbar" aria-label={t('period')} tabIndex={0} onKeyDown={(event) => { if (event.target !== event.currentTarget) return; if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); move(event.key === 'ArrowLeft' ? -1 : 1); } }} className="flex flex-wrap items-center gap-1 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-[var(--money-primary)]/40">
     <div className="flex flex-nowrap items-center gap-1">
     <button type="button" aria-label={t('previousPeriod')} onClick={() => move(-1)} disabled={atMin} className="grid size-10 shrink-0 place-items-center rounded-xl border border-black/7 bg-white text-[#52615d] shadow-sm shadow-black/[0.02] transition hover:bg-[#f4f5f1] disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeft className="size-4" /></button>
-    <label className="relative"><span className="sr-only">{t('year')}</span><select aria-label={t('year')} value={value.year} onChange={(event) => onChange({ ...value, year: Number(event.target.value) })} className="h-10 appearance-none rounded-xl border border-black/7 bg-white py-0 pl-3.5 pr-9 text-sm font-medium shadow-sm outline-none focus:border-[#5c8f82]">{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-black/45" /></label>
+    <label className="relative"><span className="sr-only">{t('year')}</span><select aria-label={t('year')} value={scope === 'last12' ? 'last12' : value.year} onChange={(event) => onChange(event.target.value === 'last12' ? { ...value, scope: 'last12' } : { ...value, year: Number(event.target.value), scope: 'year' })} className="h-10 appearance-none rounded-xl border border-black/7 bg-white py-0 pl-3.5 pr-9 text-sm font-medium shadow-sm outline-none focus:border-[#5c8f82]">{allowLast12 && <option value="last12">{t('analysisPeriodLast12')}</option>}{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-black/45" /></label>
     {allowMonth && <label className="relative"><span className="sr-only">{t('period')}</span><select aria-label={t('period')} value={scope === 'year' ? 'year' : value.month} onChange={(event) => { const annual = event.target.value === 'year'; onChange({ ...value, scope: annual ? 'year' : 'month', month: annual ? value.month : Number(event.target.value) }); if (annual && compareTo === 'prior_period') onCompareToChange?.('prior_year'); }} className="h-10 appearance-none rounded-xl border border-black/7 bg-white py-0 pl-3.5 pr-9 text-sm font-medium shadow-sm outline-none focus:border-[#5c8f82]">{allowYear && <option value="year">{t('wholeYear')}</option>}{monthNames.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-black/45" /></label>}
     <button type="button" aria-label={t('nextPeriod')} onClick={() => move(1)} disabled={atMax} className="grid size-10 shrink-0 place-items-center rounded-xl border border-black/7 bg-white text-[#52615d] shadow-sm shadow-black/[0.02] transition hover:bg-[#f4f5f1] disabled:cursor-not-allowed disabled:opacity-40"><ChevronRight className="size-4" /></button>
-    <button type="button" onClick={() => onChange({ year: OGGI.getFullYear(), month: OGGI.getMonth() + 1, scope: allowMonth ? 'month' : value.scope })} disabled={allowMonth ? scope === 'month' && value.year === OGGI.getFullYear() && value.month === OGGI.getMonth() + 1 : value.year === OGGI.getFullYear()} className="h-10 rounded-xl border border-black/7 bg-white px-3 text-sm font-medium text-[#52615d] shadow-sm hover:bg-[#f4f5f1] disabled:opacity-40">{t('today')}</button>
+    <button type="button" onClick={() => onChange({ year: OGGI.getFullYear(), month: OGGI.getMonth() + 1, scope: allowMonth ? 'month' : value.scope })} disabled={scope === 'last12' || (allowMonth ? scope === 'month' && value.year === OGGI.getFullYear() && value.month === OGGI.getMonth() + 1 : value.year === OGGI.getFullYear())} className="h-10 rounded-xl border border-black/7 bg-white px-3 text-sm font-medium text-[#52615d] shadow-sm hover:bg-[#f4f5f1] disabled:opacity-40">{t('today')}</button>
     </div>
     {compareTo !== undefined && onCompareToChange && <label className="relative ml-1"><span className="sr-only">{t('compareWith')}</span><select aria-label={t('compareWith')} value={compareTo} onChange={(event) => onCompareToChange(event.target.value as 'none' | 'prior_period' | 'prior_year')} className="h-10 appearance-none rounded-xl border border-black/7 bg-white py-0 pl-3.5 pr-9 text-sm font-medium shadow-sm outline-none focus:border-[#5c8f82]"><option value="prior_year">{scope === 'year' ? t('priorYear') : t('vsSamePeriodPriorYear', { unit: t('monthUnit') })}</option>{scope === 'month' && <option value="prior_period">{t('vsPriorPeriod', { label: t('priorMonth').toLowerCase() })}</option>}<option value="none">{t('noComparisonOption')}</option></select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-black/45" /></label>}
     <output className="sr-only" aria-live="polite">{t('selectedPeriodAnnouncement', { period: periodLabel })}</output>
@@ -3512,7 +3542,7 @@ function SectionView({
       </div>}
 
       {section === 'FIRE' && <FirePage apiUrl={apiUrl} />}
-      {section === 'Insieme' && <SharedTotalsView apiUrl={apiUrl} year={selectedYear} month={period.scope === 'year' ? null : selectedMonth} />}
+      {section === 'Insieme' && <SharedTotalsView apiUrl={apiUrl} year={selectedYear} month={period.scope === 'month' ? selectedMonth : null} />}
       {section === 'Appunti' && <NotesView notes={notesData} onSave={onNoteSave} onDelete={onNoteDelete} />}
 
 
@@ -6539,9 +6569,30 @@ function MonthlyStackedBarChart({ data, budgetType }: { data: MonthlyBudgetPoint
   );
 }
 
-function AnnualAnalysisView({ data, period, years, categoryType, category, onPeriodChange, onCategoryTypeChange, onCategoryChange }: {
+/* Quanto e' cambiato, scritto del colore del verso: per le spese un aumento e'
+   una cosa da guardare, per le entrate il contrario - guadagnare di piu' non e'
+   un problema. La regola e' quella che l'app usa gia' per le varianze di budget,
+   non una seconda scritta qui. Un verso nullo e' il netto, che non ha un bene e
+   un male propri: li' il numero resta neutro.
+
+   La percentuale si scrive solo dove esiste: accanto a un trattino, un numero
+   inventato si legge come un dato. */
+function Differenza({ voce, verso }: { voce: ComparisonAmounts; verso: 'income' | 'expense' | null }) {
+  const { formatCompactEuro, formatNumber } = useI18n();
+  if (voce.difference === null) return <span className="block text-xs text-[#87918e]">—</span>;
+  const bene = verso !== null && budgetVarianceIsGood(verso === 'income' ? 'Income' : 'Expenses', -voce.difference);
+  return <span className="block text-xs tabular-nums" style={{ color: verso === null ? '#71807c' : bene ? '#397867' : '#bd5e46' }}>
+    {voce.difference > 0 ? '+' : ''}{formatCompactEuro(voce.difference)}
+    {voce.percent !== null && <span className="ml-1.5">({voce.percent > 0 ? '+' : ''}{formatNumber(voce.percent, { maximumFractionDigits: 1 })}%)</span>}
+  </span>;
+}
+
+function AnnualAnalysisView({ data, period, scope, years, categoryType, category, onPeriodChange, onCategoryTypeChange, onCategoryChange }: {
   data: AnalysisData | null;
   period: PeriodSelection;
+  // La finestra che l'Analisi sta mostrando: e' lei a decidere cosa dice il
+  // selettore, e non il periodo condiviso con le altre sezioni.
+  scope: 'last12' | 'year';
   years: string[];
   categoryType: 'Income' | 'Expenses' | 'Savings';
   category: string | null;
@@ -6551,6 +6602,11 @@ function AnnualAnalysisView({ data, period, years, categoryType, category, onPer
 }) {
   const { t, formatEuro, formatCompactEuro, formatDate, formatPeriodLabel, formatNumber } = useI18n();
   const [budgetTab, setBudgetTab] = useState<'expenses' | 'income' | 'savings'>('expenses');
+  // Le radici chiuse del confronto: si tiene l'elenco delle chiuse e non di
+  // quelle aperte, come nel dettaglio per categoria: di partenza si vede tutto,
+  // e una categoria appena spostata sotto un padre non sparisce dietro un clic
+  // che nessuno sa di dover fare.
+  const [chiuseConfronto, setChiuseConfronto] = useState<Record<number, boolean>>({});
   const savingsConfig = {
     amount: { label: t('saved'), color: '#6d8ff4' },
     invested: { label: t('investedInMonth'), color: '#e0b04f' },
@@ -6564,7 +6620,106 @@ function AnnualAnalysisView({ data, period, years, categoryType, category, onPer
 
   return (
     <div className="space-y-5">
-      <div className="flex justify-end"><PeriodSelector value={period} years={years} onChange={onPeriodChange} allowMonth={false} /></div>
+      {/* Il selettore e la riga che dichiara il periodo stanno insieme: un
+          report che non dice su cosa e' calcolato costringe a fidarsi. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-[#71807c]">{data ? t('analysisPeriodSince', { from: formatDate(`${data.period.from}T12:00:00`), to: formatDate(`${data.period.to}T12:00:00`) }) : t('loading')}</p>
+        <PeriodSelector value={{ ...period, scope }} years={years} onChange={onPeriodChange} allowMonth={false} allowLast12 />
+      </div>
+
+      {data && <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+        <CardHeader className="pb-3"><CardTitle className="text-[17px]">{t('analysisFlowTitle')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('analysisFlowSubtitle')}</p></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            {([['analysisFlowIn', data.flow.income, 'income'], ['analysisFlowOut', data.flow.expenses, 'expense'], ['analysisFlowLeft', data.flow.net, null]] as const).map(([chiave, voce, verso]) => (
+              <div key={chiave} className="rounded-xl border border-black/6 bg-[#fbfcfa] px-4 py-3">
+                <p className="text-xs font-medium text-[#71807c]">{t(chiave)}</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">{formatEuro(voce.amount)}</p>
+                <Differenza voce={voce} verso={verso} />
+              </div>
+            ))}
+          </div>
+          {data.flow.movers.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-[#71807c]">{t('analysisFlowMovers')}</p>
+              <ul className="mt-1 divide-y divide-black/5">
+                {data.flow.movers.map((voce) => (
+                  <li key={voce.categoryId} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2">
+                    <span className="min-w-0 truncate text-sm font-medium">{voce.name}</span>
+                    <span className="flex items-baseline gap-3">
+                      <span className="text-sm tabular-nums text-[#87918e]">{formatCompactEuro(voce.amount)}</span>
+                      <Differenza voce={voce} verso={voce.scope === 'income' ? 'income' : 'expense'} />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </CardContent>
+      </Card>}
+
+      {data && <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[17px]">{t('analysisComparisonTitle')}</CardTitle>
+          <p className="mt-1 text-xs text-[#7b8784]">{t('analysisComparisonSubtitle')}</p>
+          {/* Quando il periodo prima non c'e', si dice: confrontare un mese di
+              storia con il vuoto direbbe che ogni spesa e' cresciuta di tutto. */}
+          {!data.comparison.available && <p className="mt-1 text-xs text-[#a2703a]">{t('analysisComparisonNoHistory', { date: data.comparison.since ? formatDate(`${data.comparison.since}T12:00:00`) : '—' })}</p>}
+        </CardHeader>
+        <CardContent>
+          {!data.categoryComparison.length ? <p className="py-6 text-center text-sm text-[#87918e]">{t('noData')}</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[620px] table-fixed text-sm">
+                <colgroup><col className="w-[28%]" /><col className="w-[17%]" /><col className="w-[17%]" /><col className="w-[19%]" /><col className="w-[19%]" /></colgroup>
+                <thead className="text-xs text-[#87918e]"><tr>
+                  <th className="py-1.5 text-left font-medium">{t('category')}</th>
+                  <th className="py-1.5 text-right font-medium">{t('analysisComparisonThisPeriod')}</th>
+                  <th className="py-1.5 text-right font-medium">{t('previousPeriod')}</th>
+                  <th className="py-1.5 text-right font-medium">{t('analysisComparisonDifference')}</th>
+                  <th className="py-1.5 text-right font-medium">{t('analysisComparisonMedian')}</th>
+                </tr></thead>
+                <tbody className="divide-y divide-black/5">
+                  {(() => {
+                    const idPresenti = new Set(data.categoryComparison.map((voce) => voce.categoryId));
+                    const figliDi = (id: number) => data.categoryComparison.filter((voce) => voce.parentId === id);
+                    // Un padre che nessuno nomina non esiste: se il suo totale non
+                    // e' in elenco, i figli si mostrano come radici invece di
+                    // sparire sotto un padre che non c'e'.
+                    const eRadice = (voce: ComparisonRow) => voce.parentId === null || !idPresenti.has(voce.parentId);
+                    const riga = (voce: ComparisonRow, profondita: number) => {
+                      const figli = figliDi(voce.categoryId);
+                      const chiusa = chiuseConfronto[voce.categoryId];
+                      return <tr key={voce.categoryId}>
+                        <td className="truncate py-2.5 font-medium">{profondita > 0
+                          ? <span className="pl-5 text-[#52615d]">{voce.name}</span>
+                          : figli.length
+                            ? <button type="button" onClick={() => setChiuseConfronto((precedenti) => ({ ...precedenti, [voce.categoryId]: !precedenti[voce.categoryId] }))} className="flex items-center gap-1.5 text-left">
+                                <ChevronRight className={`size-3.5 shrink-0 text-[#87918e] transition-transform ${chiusa ? '' : 'rotate-90'}`} />{voce.name}
+                              </button>
+                            : voce.name}</td>
+                        <td className="py-2.5 text-right tabular-nums">{formatCompactEuro(voce.amount)}</td>
+                        <td className="py-2.5 text-right tabular-nums text-[#71807c]">{voce.previous === null ? '—' : formatCompactEuro(voce.previous)}</td>
+                        <td className="py-2.5 text-right"><Differenza voce={voce} verso={voce.scope === 'income' ? 'income' : 'expense'} /></td>
+                        {/* La mediana dice come sono i mesi normali, ma su
+                            quanti mesi e' calcolata decide quanto vale: scritto
+                            accanto e non nel passaggio del mouse, perche' uno
+                            zero con un mese solo dietro sembra un errore. */}
+                        <td className="py-2.5 text-right">
+                          <span className="block tabular-nums text-[#52615d]">{voce.median === null ? '—' : formatCompactEuro(voce.median)}</span>
+                          {voce.median !== null && <span className="block text-[11px] text-[#87918e]">{t('analysisComparisonMonths', { months: voce.monthsWithMovements, total: voce.monthsConsidered })}</span>}
+                        </td>
+                      </tr>;
+                    };
+                    return data.categoryComparison.flatMap((voce) => eRadice(voce)
+                      ? [riga(voce, 0), ...(chiuseConfronto[voce.categoryId] ? [] : figliDi(voce.categoryId).map((figlio) => riga(figlio, 1)))]
+                      : []);
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>}
 
       <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
         <CardHeader className="flex-row items-start justify-between pb-2">
