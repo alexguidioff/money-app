@@ -1135,7 +1135,7 @@ const it = {
   fireErrorHorizon: 'L\'età di ritiro deve essere sotto i 100 anni.',
   fireErrorRates: 'Rendimento, tasso di prelievo o tasse fuori dai valori possibili.',
   shiftLateIncomeConfirm: 'Cambiare questa impostazione ricalcola il mese di competenza di tutte le entrate già registrate, anche quelle passate. Continuare?',
-  fireSectionHelp: 'Quanto capitale serve per smettere di lavorare e quando ci arrivi, con le pensioni dentro il calcolo.\n• Il capitale necessario non è «spese × 25»: è il ponte, ciò che serve fra il ritiro e la prima pensione, più il rabbocco, ciò che le pensioni non coprono.\n• «Oggi il tuo capitale sostiene» dice quanto potresti spendere al mese con il patrimonio attuale; l\'età di indipendenza conta anche il risparmio che stai facendo.\n• Il grafico mette la tua storia accanto alla proiezione, con una fascia fra il 10° e il 90° percentile di 5.000 simulazioni.\n• Traguardi: Coast (smetti di versare e ci arrivi lo stesso), Solo-ponte, Lean (con spese ridotte), FI (piano completo).\n• La leva del risparmio mostra quanti anni cambiano col tasso di risparmio; il cursore sposta tutte le pensioni fino a 5 anni prima o dopo.',
+  fireSectionHelp: 'Quanto capitale serve per smettere di lavorare e quando ci arrivi, con le pensioni dentro il calcolo.\n• Il capitale necessario non è «spese × 25»: è il ponte, ciò che serve fra il ritiro e la prima pensione, più il rabbocco, ciò che le pensioni non coprono.\n• «Oggi il tuo capitale sostiene» dice quanto potresti spendere al mese con il patrimonio attuale; l\'età di indipendenza conta anche il risparmio che stai facendo.\n• Il grafico mette la tua storia accanto alla proiezione, con una fascia fra il 10° e il 90° percentile di 5.000 simulazioni.\n• Traguardi: Coast (smetti di versare e ci arrivi lo stesso), Solo-ponte, Lean (con spese ridotte), FI (piano completo).\n• Le leve del piano mostrano quanti anni mancano e quanto capitale serve al variare di una cosa sola - tasso di risparmio, rendimento, età di ritiro o spese in pensione; il cursore sposta tutte le pensioni fino a 5 anni prima o dopo.',
   fireSectionHelpDep: 'Si configura in Impostazioni → Pensionamento e FIRE: profilo (età, paese, rendimento, prelievo, tasse, inflazione, spese), spese in pensione per categoria e flussi di reddito futuri come AVS, LPP o INPS. I rendimenti sono reali, al netto dell\'inflazione. È uno scenario, non una previsione.',
 
   // Profilo previdenziale (3.1)
@@ -1200,8 +1200,15 @@ const it = {
   fireTaxNotesEmpty: 'Seleziona un paese per vedere le note.',
 
   // Schede secondarie (4.3)
-  fireLeverageTitle: 'Leva del risparmio',
-  fireLeverageSubtitle: 'Al variare del tasso di risparmio, quanti anni mancano al piano. Il tuo tasso attuale è segnato.',
+  fireLeverageTitle: 'Leve del piano',
+  fireLeverageSubtitle: 'Muovendo una cosa sola: quanti anni mancano al piano e quanto capitale serve. Il tuo valore è segnato.',
+  fireLeveragePick: 'Cosa muovi',
+  fireLeverageSavingsRate: 'Tasso di risparmio',
+  fireLeverageReturn: 'Rendimento reale',
+  fireLeverageRetirementAge: 'Età di ritiro',
+  fireLeverageRetirementExpenses: 'Spese in pensione',
+  fireLeverageCapital: 'Capitale necessario',
+  fireLeverageOnlyOne: 'Tutto il resto resta come nel tuo piano.',
   fireLeverageYears: 'anni',
   fireLeverageYourRow: 'Tu',
 
@@ -2434,7 +2441,7 @@ const en: TranslationTable = {
   fireErrorHorizon: 'The retirement age must be below 100.',
   fireErrorRates: 'Return, withdrawal rate or tax are outside possible values.',
   shiftLateIncomeConfirm: 'Changing this setting recalculates the accrual month of every income already recorded, past ones included. Continue?',
-  fireSectionHelp: 'How much capital you need to stop working and when you get there, with pensions included in the calculation.\n• The capital needed is not «expenses × 25»: it is the bridge, what you need between retiring and the first pension, plus the top-up, what pensions do not cover.\n• «Your capital today supports» tells you how much you could spend per month with your current net worth; the independence age also counts the savings you are making.\n• The chart puts your history next to the projection, with a band between the 10th and 90th percentile of 5,000 simulations.\n• Milestones: Coast (stop contributing and still get there), Bridge only, Lean (with reduced expenses), FI (full plan).\n• Savings leverage shows how many years change with your savings rate; the slider moves all pensions up to 5 years earlier or later.',
+  fireSectionHelp: 'How much capital you need to stop working and when you get there, with pensions included in the calculation.\n• The capital needed is not «expenses × 25»: it is the bridge, what you need between retiring and the first pension, plus the top-up, what pensions do not cover.\n• «Your capital today supports» tells you how much you could spend per month with your current net worth; the independence age also counts the savings you are making.\n• The chart puts your history next to the projection, with a band between the 10th and 90th percentile of 5,000 simulations.\n• Milestones: Coast (stop contributing and still get there), Bridge only, Lean (with reduced expenses), FI (full plan).\n• The plan levers show how many years are left and how much capital it takes as one thing changes - savings rate, return, retirement age or retirement expenses; the slider moves all pensions up to 5 years earlier or later.',
   fireSectionHelpDep: 'It is set up in Settings → Retirement and FIRE: profile (age, country, return, withdrawal, tax, inflation, expenses), retirement expenses by category and future income streams such as a state or occupational pension. Returns are real, net of inflation. It is a scenario, not a forecast.',
 
   fireProfileTitle: 'Retirement profile',
@@ -2495,8 +2502,15 @@ const en: TranslationTable = {
   fireTaxNotesSubtitle: 'Plain text warnings on regimes with known traps. No tax calculation: you declare the rate in the profile.',
   fireTaxNotesEmpty: 'Pick a country to see notes.',
 
-  fireLeverageTitle: 'Savings leverage',
-  fireLeverageSubtitle: 'How many years to the plan change as your savings rate moves. Your current rate is marked.',
+  fireLeverageTitle: 'Plan levers',
+  fireLeverageSubtitle: 'One thing at a time: how many years to the plan and how much capital it takes. Your value is marked.',
+  fireLeveragePick: 'What you move',
+  fireLeverageSavingsRate: 'Savings rate',
+  fireLeverageReturn: 'Real return',
+  fireLeverageRetirementAge: 'Retirement age',
+  fireLeverageRetirementExpenses: 'Retirement expenses',
+  fireLeverageCapital: 'Capital needed',
+  fireLeverageOnlyOne: 'Everything else stays as in your plan.',
   fireLeverageYears: 'years',
   fireLeverageYourRow: 'You',
 
@@ -3724,7 +3738,7 @@ const de: TranslationTable = {
   fireErrorHorizon: 'Das Ruhestandsalter muss unter 100 liegen.',
   fireErrorRates: 'Rendite, Entnahmerate oder Steuer liegen außerhalb möglicher Werte.',
   shiftLateIncomeConfirm: 'Diese Einstellung berechnet den Zuordnungsmonat aller bereits erfassten Einnahmen neu, auch vergangener. Fortfahren?',
-  fireSectionHelp: 'Wie viel Kapital du brauchst, um aufzuhören zu arbeiten, und wann du es erreichst, mit den Renten in der Rechnung.\n• Das nötige Kapital ist nicht «Ausgaben × 25»: es ist die Brücke, also was zwischen Ruhestand und erster Rente nötig ist, plus die Aufstockung, also was die Renten nicht decken.\n• «Dein Kapital trägt heute» sagt, wie viel du mit dem jetzigen Vermögen pro Monat ausgeben könntest; das Unabhängigkeitsalter berücksichtigt auch deine laufende Ersparnis.\n• Das Diagramm stellt deine Geschichte neben die Projektion, mit einem Band zwischen dem 10. und 90. Perzentil von 5.000 Simulationen.\n• Meilensteine: Coast (nicht mehr einzahlen und trotzdem ankommen), Nur Brücke, Lean (mit reduzierten Ausgaben), FI (voller Plan).\n• Der Hebel der Sparrate zeigt, wie sich die Jahre mit der Sparrate ändern; der Regler verschiebt alle Renten bis zu 5 Jahre früher oder später.',
+  fireSectionHelp: 'Wie viel Kapital du brauchst, um aufzuhören zu arbeiten, und wann du es erreichst, mit den Renten in der Rechnung.\n• Das nötige Kapital ist nicht «Ausgaben × 25»: es ist die Brücke, also was zwischen Ruhestand und erster Rente nötig ist, plus die Aufstockung, also was die Renten nicht decken.\n• «Dein Kapital trägt heute» sagt, wie viel du mit dem jetzigen Vermögen pro Monat ausgeben könntest; das Unabhängigkeitsalter berücksichtigt auch deine laufende Ersparnis.\n• Das Diagramm stellt deine Geschichte neben die Projektion, mit einem Band zwischen dem 10. und 90. Perzentil von 5.000 Simulationen.\n• Meilensteine: Coast (nicht mehr einzahlen und trotzdem ankommen), Nur Brücke, Lean (mit reduzierten Ausgaben), FI (voller Plan).\n• Die Hebel des Plans zeigen, wie viele Jahre bleiben und wie viel Kapital nötig ist, wenn sich eine Sache ändert - Sparrate, Rendite, Renteneintrittsalter oder Ruhestandsausgaben; der Regler verschiebt alle Renten bis zu 5 Jahre früher oder später.',
   fireSectionHelpDep: 'Eingerichtet wird es unter Einstellungen → Ruhestand und FIRE: Profil (Alter, Land, Rendite, Entnahme, Steuer, Inflation, Ausgaben), Ruhestandsausgaben nach Kategorie und künftige Einkommensströme wie AHV, BVG oder gesetzliche Rente. Renditen sind real, nach Inflation. Es ist ein Szenario, keine Prognose.',
 
   fireProfileTitle: 'Vorsorgeprofil',
@@ -3785,8 +3799,15 @@ const de: TranslationTable = {
   fireTaxNotesSubtitle: 'Reine Textwarnungen zu bekannten Fallen. Keine Steuerberechnung: den Satz erklärst du im Profil.',
   fireTaxNotesEmpty: 'Wähle ein Land, um Hinweise zu sehen.',
 
-  fireLeverageTitle: 'Hebel der Sparrate',
-  fireLeverageSubtitle: 'Wie sich die Jahre bis zum Plan mit der Sparrate verändern. Deine aktuelle Rate ist markiert.',
+  fireLeverageTitle: 'Hebel des Plans',
+  fireLeverageSubtitle: 'Immer eine Sache auf einmal: wie viele Jahre bis zum Plan und wie viel Kapital nötig ist. Dein Wert ist markiert.',
+  fireLeveragePick: 'Was du bewegst',
+  fireLeverageSavingsRate: 'Sparrate',
+  fireLeverageReturn: 'Reale Rendite',
+  fireLeverageRetirementAge: 'Renteneintrittsalter',
+  fireLeverageRetirementExpenses: 'Ruhestandsausgaben',
+  fireLeverageCapital: 'Nötiges Kapital',
+  fireLeverageOnlyOne: 'Alles andere bleibt wie in deinem Plan.',
   fireLeverageYears: 'Jahre',
   fireLeverageYourRow: 'Du',
 
@@ -5014,7 +5035,7 @@ const es: TranslationTable = {
   fireErrorHorizon: 'La edad de retiro debe ser inferior a 100 años.',
   fireErrorRates: 'Rentabilidad, tasa de retirada o impuestos fuera de los valores posibles.',
   shiftLateIncomeConfirm: 'Cambiar este ajuste recalcula el mes de imputación de todos los ingresos ya registrados, también los pasados. ¿Continuar?',
-  fireSectionHelp: 'Cuánto capital necesitas para dejar de trabajar y cuándo llegas, con las pensiones dentro del cálculo.\n• El capital necesario no es «gastos × 25»: es el puente, lo que necesitas entre la jubilación y la primera pensión, más el complemento, lo que las pensiones no cubren.\n• «Hoy tu capital sostiene» dice cuánto podrías gastar al mes con tu patrimonio actual; la edad de independencia cuenta también el ahorro que estás haciendo.\n• El gráfico pone tu historia junto a la proyección, con una banda entre el percentil 10 y el 90 de 5.000 simulaciones.\n• Hitos: Coast (dejas de aportar y llegas igual), Solo puente, Lean (con gastos reducidos), FI (plan completo).\n• El apalancamiento del ahorro muestra cuántos años cambian con tu tasa de ahorro; el cursor mueve todas las pensiones hasta 5 años antes o después.',
+  fireSectionHelp: 'Cuánto capital necesitas para dejar de trabajar y cuándo llegas, con las pensiones dentro del cálculo.\n• El capital necesario no es «gastos × 25»: es el puente, lo que necesitas entre la jubilación y la primera pensión, más el complemento, lo que las pensiones no cubren.\n• «Hoy tu capital sostiene» dice cuánto podrías gastar al mes con tu patrimonio actual; la edad de independencia cuenta también el ahorro que estás haciendo.\n• El gráfico pone tu historia junto a la proyección, con una banda entre el percentil 10 y el 90 de 5.000 simulaciones.\n• Hitos: Coast (dejas de aportar y llegas igual), Solo puente, Lean (con gastos reducidos), FI (plan completo).\n• Las palancas del plan muestran cuántos años faltan y cuánto capital hace falta al cambiar una sola cosa - tasa de ahorro, rendimiento, edad de jubilación o gastos en la jubilación; el cursor mueve todas las pensiones hasta 5 años antes o después.',
   fireSectionHelpDep: 'Se configura en Ajustes → Jubilación y FIRE: perfil (edad, país, rentabilidad, retirada, impuestos, inflación, gastos), gastos en la jubilación por categoría y flujos de ingresos futuros como la pensión pública o un plan de empresa. Las rentabilidades son reales, descontada la inflación. Es un escenario, no una previsión.',
 
   fireProfileTitle: 'Perfil previsional',
@@ -5075,8 +5096,15 @@ const es: TranslationTable = {
   fireTaxNotesSubtitle: 'Avisos de texto sobre regímenes con trampas conocidas. Sin cálculo fiscal: la tasa la declaras tú en el perfil.',
   fireTaxNotesEmpty: 'Elige un país para ver las notas.',
 
-  fireLeverageTitle: 'Apalancamiento del ahorro',
-  fireLeverageSubtitle: 'Cómo cambian los años hasta el plan al variar la tasa de ahorro. Tu tasa actual está marcada.',
+  fireLeverageTitle: 'Palancas del plan',
+  fireLeverageSubtitle: 'Una cosa a la vez: cuántos años faltan para el plan y cuánto capital hace falta. Tu valor está marcado.',
+  fireLeveragePick: 'Qué mueves',
+  fireLeverageSavingsRate: 'Tasa de ahorro',
+  fireLeverageReturn: 'Rendimiento real',
+  fireLeverageRetirementAge: 'Edad de jubilación',
+  fireLeverageRetirementExpenses: 'Gastos en la jubilación',
+  fireLeverageCapital: 'Capital necesario',
+  fireLeverageOnlyOne: 'Todo lo demás queda como en tu plan.',
   fireLeverageYears: 'años',
   fireLeverageYourRow: 'Tú',
 
@@ -6324,7 +6352,7 @@ const fr: TranslationTable = {
   fireErrorHorizon: 'L\'âge de départ doit être inférieur à 100 ans.',
   fireErrorRates: 'Rendement, taux de retrait ou impôt hors des valeurs possibles.',
   shiftLateIncomeConfirm: 'Modifier ce réglage recalcule le mois d\'imputation de tous les revenus déjà enregistrés, passés compris. Continuer ?',
-  fireSectionHelp: 'Combien de capital il faut pour arrêter de travailler et quand tu y arrives, avec les retraites dans le calcul.\n• Le capital nécessaire n\'est pas «dépenses × 25» : c\'est le pont, ce qu\'il faut entre l\'arrêt et la première retraite, plus le complément, ce que les retraites ne couvrent pas.\n• «Ton capital soutient aujourd\'hui» dit combien tu pourrais dépenser par mois avec ton patrimoine actuel ; l\'âge d\'indépendance compte aussi l\'épargne que tu fais.\n• Le graphique met ton historique à côté de la projection, avec une bande entre le 10e et le 90e percentile de 5 000 simulations.\n• Jalons : Coast (tu arrêtes de verser et tu y arrives quand même), Pont seul, Lean (avec dépenses réduites), FI (plan complet).\n• Le levier de l\'épargne montre combien d\'années changent avec ton taux d\'épargne ; le curseur décale toutes les retraites jusqu\'à 5 ans plus tôt ou plus tard.',
+  fireSectionHelp: 'Combien de capital il faut pour arrêter de travailler et quand tu y arrives, avec les retraites dans le calcul.\n• Le capital nécessaire n\'est pas «dépenses × 25» : c\'est le pont, ce qu\'il faut entre l\'arrêt et la première retraite, plus le complément, ce que les retraites ne couvrent pas.\n• «Ton capital soutient aujourd\'hui» dit combien tu pourrais dépenser par mois avec ton patrimoine actuel ; l\'âge d\'indépendance compte aussi l\'épargne que tu fais.\n• Le graphique met ton historique à côté de la projection, avec une bande entre le 10e et le 90e percentile de 5 000 simulations.\n• Jalons : Coast (tu arrêtes de verser et tu y arrives quand même), Pont seul, Lean (avec dépenses réduites), FI (plan complet).\n• Les leviers du plan montrent combien d\'années restent et combien de capital il faut quand une seule chose change - taux d\'épargne, rendement, âge de retraite ou dépenses à la retraite ; le curseur décale toutes les retraites jusqu\'à 5 ans plus tôt ou plus tard.',
   fireSectionHelpDep: 'Tout se règle dans Paramètres → Retraite et FIRE : profil (âge, pays, rendement, retrait, impôt, inflation, dépenses), dépenses de retraite par catégorie et flux de revenus futurs comme la retraite de base ou complémentaire. Les rendements sont réels, nets d\'inflation. C\'est un scénario, pas une prévision.',
 
   fireProfileTitle: 'Profil de retraite',
@@ -6385,8 +6413,15 @@ const fr: TranslationTable = {
   fireTaxNotesSubtitle: 'Avertissements en texte sur les régimes aux pièges connus. Pas de calcul fiscal: tu déclares le taux dans le profil.',
   fireTaxNotesEmpty: 'Choisis un pays pour voir les notes.',
 
-  fireLeverageTitle: 'Levier de l\'épargne',
-  fireLeverageSubtitle: 'Combien d\'années avant le plan changent avec ton taux d\'épargne. Ton taux actuel est marqué.',
+  fireLeverageTitle: 'Leviers du plan',
+  fireLeverageSubtitle: 'Une chose à la fois : combien d\'années avant le plan et combien de capital il faut. Ta valeur est marquée.',
+  fireLeveragePick: 'Ce que tu déplaces',
+  fireLeverageSavingsRate: 'Taux d\'épargne',
+  fireLeverageReturn: 'Rendement réel',
+  fireLeverageRetirementAge: 'Âge de retraite',
+  fireLeverageRetirementExpenses: 'Dépenses à la retraite',
+  fireLeverageCapital: 'Capital nécessaire',
+  fireLeverageOnlyOne: 'Tout le reste reste comme dans ton plan.',
   fireLeverageYears: 'ans',
   fireLeverageYourRow: 'Toi',
 

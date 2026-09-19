@@ -177,7 +177,7 @@ export function FirePage({ apiUrl, onOpenSettings }: { apiUrl: string; onOpenSet
                         lean: formatEuro(dati.profile?.leanAnnualExpenses ?? 0),
                         expenses: formatEuro(dati.expensesUsed ?? 0) }) : undefined} />
       <MonteCarloCard dati={piano.monteCarlo} />
-      {piano.leverage.length > 0 && <LeverageTable rows={piano.leverage[0].rows} />}
+      {piano.leverage.length > 0 && <LeverageTable leve={piano.leverage} />}
       <AgeShiftSlider apiUrl={apiUrl} />
     </div>
 
