@@ -520,6 +520,16 @@ def _risposta(c: _Contesto, piano, esito: EsitoMonteCarlo, scenari, storico, lev
                 "paths": esito.percorsi,
                 "volatility": float(c.profilo.return_volatility) / 100,
                 "medianDepletionAge": esito.eta_esaurimento_mediana,
+                # Dove si arriva, nei tre casi, all'ultimo anno disegnato. La
+                # banda del grafico li mostra gia' ma solo a occhio: qui sono
+                # numeri. Il p50 non sta fra le curve perche' le linee del
+                # grafico restano due, la centrale e' il piano deterministico.
+                "atHorizon": {
+                    "age": esito.percentili[50][-1].eta,
+                    "p10": float(esito.percentili[10][-1].capitale),
+                    "p50": float(esito.percentili[50][-1].capitale),
+                    "p90": float(esito.percentili[90][-1].capitale),
+                } if esito.percentili.get(50) else None,
             },
             # Le spese lean oltre quelle di riferimento vengono portate al loro
             # livello (vedi `_piano`): la pagina deve dirlo, altrimenti Lean e
