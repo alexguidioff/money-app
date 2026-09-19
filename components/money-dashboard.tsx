@@ -3471,6 +3471,12 @@ function SectionView({
           </> : budgetType === 'Savings' ? <BudgetBalanceCard balance={annualBudgetData.balance} scope="year" /> : <AnnualBudgetEditor data={annualBudgetData} onApply={onAnnualBudgetApply} />}
         </div>}
         </>}
+        {/* L'albero delle categorie sta qui e non fra le preferenze: si spacca
+            una categoria mentre si pianifica, ed e' il momento in cui ci si
+            accorge che serve. Un posto solo - le Impostazioni non ce l'hanno
+            piu' - perche' due elenchi uguali in due stanze diverse sono due
+            elenchi da tenere allineati. */}
+        <CategoryTreeCard apiUrl={apiUrl} onChanged={onReload} />
       </div>}
 
       {section === 'Obiettivi' && <GoalsView data={goalsData} accounts={accounts} onSave={onGoalSave} onDelete={onGoalDelete} />}
@@ -3500,7 +3506,6 @@ function SectionView({
           </div>
         </div>
         <FireSettingsSection apiUrl={apiUrl} />
-        <CategoryTreeCard apiUrl={apiUrl} onChanged={onReload} />
       </div>}
       <Dialog open={showPdfPreview} onOpenChange={open => { if (!open && !pdfImporting) onPdfImportCancel(); }}>
         {showPdfPreview && <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-[95vw]" showCloseButton={false}>

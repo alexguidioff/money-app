@@ -7,8 +7,11 @@ tendina, i budget e i report leggono da qui invece di ricavare le categorie da
 cosa e' gia' stato speso: un elenco che emerge dai movimenti non sa mostrare
 una categoria appena creata e non ancora usata.
 
-Due livelli, non di piu': radice e figlio. Il gruppo bisogni/piaceri non e' un
-campo, e' il nome della radice.
+Due livelli, non di piu': radice e figlio. L'albero dice a cosa servono i soldi,
+e il verso (`scope`) dice se sono soldi che entrano o che escono: sono due
+domande diverse, e una categoria di spesa non appartiene all'albero delle
+entrate. Quanto una spesa sia essenziale - bisogno o piacere - e' un'altra cosa
+ancora, ed e' un campo a parte: `essenziale`.
 
 Il nome si confronta senza badare alle maiuscole. E' la chiave con cui l'import
 di un estratto conto ritrova una categoria, e "Casa" e "casa" sarebbero due voci
@@ -31,9 +34,9 @@ from .models import BudgetPlan, CategorizationRule, Category, Transaction
 router = APIRouter()
 
 # Bisogni e piaceri, e il residuo. "Other" non e' una terza categoria di spesa:
-# e' dove finisce cio' che non hai ancora classificato. Il gruppo di una
-# categoria e' il nome della radice sotto cui sta, e queste sono le tre che
-# contano: le altre radici sono categorie normali e valgono "Other".
+# e' dove finisce cio' che non hai ancora classificato. Sono tre parole
+# dell'interfaccia, non tre posti nell'albero: la classificazione sta sulla
+# categoria, e una radice qualunque vale "Other" finche' nessuno dice altro.
 GRUPPI = ("Needs", "Wants", "Other")
 
 # Le tre parole dell'interfaccia e quello che si scrive nella colonna: "Other"
@@ -48,12 +51,16 @@ class CategoryPayload(BaseModel):
     ``parentId`` assente e ``parentId`` nullo sono due cose diverse: il primo
     lascia il padre com'e', il secondo la riporta fra le radici. Per questo la
     rotta guarda quali campi sono arrivati, non solo il loro valore.
+
+    ``scope`` si sceglie solo creando una radice: un figlio sta nell'albero del
+    padre, e chiederlo al modulo vorrebbe dire ammettere una risposta sbagliata.
     """
 
     name: str = ""
     parentId: int | None = None
     position: int | None = None
     active: bool | None = None
+    scope: str = "expense"
 
 
 def categoria_json(riga: Category, *, movimenti: int = 0, budget: int = 0, regole: int = 0,
@@ -99,10 +106,11 @@ def radici_con_figli(session: Session) -> list[dict[str, Any]]:
     """Le radici con i nomi dei loro figli, in ordine d'albero.
 
     E' la forma che serve a un elenco a tendina: i figli si mostrano indentati
-    sotto il padre, e un padre che ne ha non e' una scelta ma il contenitore di
-    quelle che ha sotto. I nomi e non gli id perche' l'interfaccia di oggi sceglie
-    una categoria scrivendone il nome; le categorie spente restano dentro,
-    altrimenti i figli di una radice spenta sparirebbero dall'elenco.
+    sotto il padre, e il padre resta il titolo che dice a cosa appartengono -
+    anche quando non e' una scelta, perche' il verso non lo offre qui. I nomi e
+    non gli id perche' l'interfaccia di oggi sceglie una categoria scrivendone il
+    nome; le categorie spente restano dentro, altrimenti i figli di una radice
+    spenta sparirebbero dall'elenco.
     """
     righe = elenco(session)
     figli: dict[int, list[str]] = defaultdict(list)
@@ -238,6 +246,18 @@ def _dal_payload(session: Session, category_id: int | None, nome: str | None) ->
     return riga
 
 
+def _verso(scope: str) -> str:
+    """Il verso scritto nel payload, se e' uno dei due che esistono.
+
+    Un verso inventato non e' una categoria che non compare in nessuna tendina:
+    e' un errore, e va detto subito invece di scriverlo e scoprirlo dopo.
+    """
+    pulito = (scope or "").strip()
+    if pulito not in ("expense", "income"):
+        raise HTTPException(status_code=422, detail="categoryScopeUnknown")
+    return pulito
+
+
 def _pulito(nome: str) -> str:
     pulito = nome.strip()
     if not pulito or len(pulito) > 255:
@@ -311,6 +331,11 @@ def crea_categoria(payload: CategoryPayload, session: Session = Depends(get_sess
     padre = _padre(session, payload.parentId)
     _senza_omonimi(session, nome, padre.id if padre else None)
     riga = Category(name=nome, parent_id=padre.id if padre else None,
+                    # Il verso lo decide il padre: una voce di una radice di
+                    # entrate e' una voce di entrate. Chiederlo al modulo
+                    # vorrebbe dire poter creare un figlio che non compare
+                    # nell'albero dove sta il padre.
+                    scope=padre.scope if padre else _verso(payload.scope),
                     position=payload.position if payload.position is not None
                     else _prossima_posizione(session, padre.id if padre else None))
     session.add(riga)
@@ -335,6 +360,11 @@ def aggiorna_categoria(category_id: int, payload: CategoryPayload,
                 select(func.count(Category.id)).where(Category.parent_id == riga.id)):
             raise HTTPException(status_code=422, detail="categoryTooDeep")
         _senza_omonimi(session, riga.name, padre.id if padre else None, esclusa=riga.id)
+        # Spostandola sotto un altro padre si cambia albero: la voce segue il
+        # padre, altrimenti resterebbe scritta in un albero in cui non sta e
+        # sparirebbe dalla tendina del verso in cui adesso si trova.
+        if padre is not None:
+            riga.scope = padre.scope
         riga.parent_id = padre.id if padre else None
     if payload.position is not None:
         riga.position = payload.position

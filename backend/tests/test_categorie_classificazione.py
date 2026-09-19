@@ -15,8 +15,8 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.categorie import (CategoryGroupPayload, classifica_categoria, essenziale_di_categoria,
-                           gruppo_di_categoria)
+from app.categorie import (CategoryGroupPayload, CategoryPayload, classifica_categoria, crea_categoria,
+                           essenziale_di_categoria, gruppo_di_categoria)
 from app.core_routes import settings
 from app.database import Base
 from app.models import Category, Transaction
@@ -137,3 +137,24 @@ class ClassificazioneTests(unittest.TestCase):
         # I trasferimenti spostano denaro fra conti: non c'e' niente da
         # categorizzare, e la tendina resta vuota apposta.
         self.assertEqual(tipi["Transfers"], [])
+
+    def test_8_una_voce_nasce_nell_albero_del_padre(self):
+        """Il verso lo decide il padre, non il modulo che scrive la voce.
+
+        Le due tendine sono separate: una voce nata fra le spese sotto una
+        radice di entrate non comparirebbe dove sta il padre, e nessuno
+        saprebbe dove andarla a cercare. Per una radice invece il verso si
+        sceglie, ed e' l'unico momento in cui si sceglie.
+        """
+        stipendio = self.crea("Stipendio", scope="income")
+        voce = crea_categoria(CategoryPayload(name="Tredicesima", parentId=stipendio.id), self.session)
+        self.assertEqual(voce["scope"], "income")
+        radice = crea_categoria(CategoryPayload(name="Affitti", scope="income"), self.session)
+        self.assertEqual(radice["scope"], "income")
+        self.assertEqual(settings(self.session)["categoriesByType"]["Income"],
+                         ["Affitti", "Stipendio", "Tredicesima"])
+        # Un verso inventato non e' una categoria che non compare da nessuna
+        # parte: e' un errore, e si dice subito.
+        with self.assertRaises(HTTPException) as errore:
+            crea_categoria(CategoryPayload(name="Boh", scope="boh"), self.session)
+        self.assertEqual(errore.exception.status_code, 422)
