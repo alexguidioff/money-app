@@ -39,8 +39,10 @@ class QuadraturaTests(unittest.TestCase):
         self.session.close()
 
     def _bonifico(self, importo: str, da: str = "Banca", a: str = "Broker") -> Transaction:
+        # Un bonifico verso il broker non ha categoria: il segnaposto "_" della
+        # vecchia colonna di testo adesso e' semplicemente l'assenza di id.
         riga = Transaction(occurred_on=date(2024, 1, 5), effective_on=date(2024, 1, 5),
-                           transaction_type="Investment", category="_", amount=Decimal(importo),
+                           transaction_type="Investment", category_id=None, amount=Decimal(importo),
                            account_name=da, destination_name=a)
         self.session.add(riga)
         self.session.flush()

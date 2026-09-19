@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.database import Base
 from app.main import LiabilityPayload, TransactionPayload, create_transaction, liabilities, save_liability
 from app.models import Account, LiabilityProfile
+from tests.categorie_fixture import categoria
 
 
 class LineaDiCreditoTests(unittest.TestCase):
@@ -99,7 +100,7 @@ class LineaDiCreditoTests(unittest.TestCase):
                                           ("2025-03-01", 99, True)):
             create_transaction(TransactionPayload(
                 occurred_on=giorno, transaction_type="Expenses", amount=importo,
-                category="Interessi", account_name="Fido",
+                categoryId=categoria(self.session, "Interessi"), account_name="Fido",
                 **({"debt_interest": importo} if dichiara else {})), self.session)
         voce = self._voce()
         # 40 dichiarato nell'anno; 25 non dichiarato; 99 di un altro anno.

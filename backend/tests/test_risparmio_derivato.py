@@ -20,10 +20,13 @@ from sqlalchemy.orm import Session
 
 from app.core_routes import analysis, budget_annual
 from app.database import Base
-from app.models import (AppSetting, BudgetPlan, InvestmentInstrument, InvestmentTransaction,
+from app.models import (AppSetting, BudgetPlan, Category, InvestmentInstrument, InvestmentTransaction,
                         MarketPrice, Transaction)
+from tests.categorie_fixture import categoria
 
-TABELLE = [Transaction.__table__, BudgetPlan.__table__, AppSetting.__table__,
+# La tabella delle categorie serve allo SQLite in memoria: la fixture ne crea
+# una riga, e senza la tabella il primo flush della prova fallirebbe.
+TABELLE = [Category.__table__, Transaction.__table__, BudgetPlan.__table__, AppSetting.__table__,
            InvestmentTransaction.__table__, MarketPrice.__table__, InvestmentInstrument.__table__]
 
 
@@ -34,16 +37,20 @@ class RisparmioDerivatoTests(unittest.TestCase):
         self.session = Session(self.engine)
         self._movimento("Income", "Stipendio", "2000")
         self._movimento("Expenses", "Casa", "1200")
+        # Il risparmio pianificato sta su una categoria vera come tutte le
+        # altre: "Savings" e' quella che l'app usa per appoggiarlo.
         self.session.add(BudgetPlan(period=date(2026, 1, 1), budget_type="Savings",
-                                    category="Savings", amount=Decimal("500")))
+                                    category_id=categoria(self.session, "Savings"),
+                                    amount=Decimal("500")))
         self.session.commit()
 
     def tearDown(self) -> None:
         self.session.close()
 
-    def _movimento(self, tipo: str, categoria: str, importo: str) -> None:
+    def _movimento(self, tipo: str, nome: str, importo: str) -> None:
+        # La categoria e' una riga: la fixture la cerca o la crea e torna l'id.
         self.session.add(Transaction(occurred_on=date(2026, 1, 15), effective_on=date(2026, 1, 15),
-                                     transaction_type=tipo, category=categoria,
+                                     transaction_type=tipo, category_id=categoria(self.session, nome),
                                      amount=Decimal(importo), account_name="Conto"))
 
     def _analisi(self) -> dict:

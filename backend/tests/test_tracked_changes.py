@@ -5,6 +5,7 @@ from decimal import Decimal
 from sqlalchemy import create_engine, select, event, text
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
+from app.categorie import nomi as nomi_categorie
 from app.database import Base
 from app.models import Account, BudgetPlan, Transaction
 from app import main, core_routes
@@ -12,6 +13,7 @@ from app.transaction_rules import missing_fields
 from app.interchange import build_export
 from app.interchange_import import import_data
 from app.migrations import tracked_changes
+from tests.categorie_fixture import categoria
 
 
 class TrackedChangesTests(unittest.TestCase):
@@ -28,9 +30,12 @@ class TrackedChangesTests(unittest.TestCase):
         self.engine.dispose()
 
     def tx(self, **changes):
+        # La categoria si scrive per nome nel test e diventa una riga: una
+        # stringa vuota vuol dire "non ne ha", cioe' NULL.
+        nome = changes.pop("category", "Food")
         values = dict(occurred_on=date(2026, 9, 7), effective_on=date(2026, 9, 7),
-                      transaction_type="Expenses", category="Food", account_name="Bank",
-                      amount=Decimal("12.50"), details="Spesa Intermarché!")
+                      transaction_type="Expenses", category_id=categoria(self.s, nome) if nome else None,
+                      account_name="Bank", amount=Decimal("12.50"), details="Spesa Intermarché!")
         values.update(changes)
         row = Transaction(**values)
         self.s.add(row)
@@ -51,8 +56,11 @@ class TrackedChangesTests(unittest.TestCase):
         # I duplicati vengono letti una volta sola, non per riga. Le regole di
         # categorizzazione sono la seconda lettura dell'anteprima, anche loro
         # una volta sola per import: il numero non deve crescere con le righe.
-        self.assertEqual(len(queries), 2)
+        # La terza e' l'elenco delle categorie, che l'anteprima legge per
+        # tradurre i nomi in id: anche quella una volta sola per import.
+        self.assertEqual(len(queries), 3)
         self.assertEqual(sum('FROM transactions' in query for query in queries), 1)
+        self.assertEqual(sum('FROM categories' in query for query in queries), 1)
         # Il movimento esistente vale per una riga sola: la seconda da 12,50 e'
         # un'altra spesa, e l'importo diverso non e' un doppione.
         self.assertEqual([r["duplicate"] for r in result], [True, False, False, False])
@@ -78,10 +86,11 @@ class TrackedChangesTests(unittest.TestCase):
         ids = [t.id for t in rows[:3]]
         result = main.bulk_transactions(main.BulkTransactionsPayload(ids=ids, changes={"category": "Home"}), self.s)
         self.assertEqual(result["updated"], 3)
-        self.assertEqual([t.category for t in rows], ["Home"] * 3 + ["Food"])
+        nomi = nomi_categorie(self.s)
+        self.assertEqual([nomi[t.category_id] for t in rows], ["Home"] * 3 + ["Food"])
         with self.assertRaises(HTTPException):
             main.bulk_transactions(main.BulkTransactionsPayload(ids=ids, changes={"category": "Oops", "transaction_type": "Transfers"}), self.s)
-        self.assertEqual([t.category for t in rows], ["Home"] * 3 + ["Food"])
+        self.assertEqual([nomi[t.category_id] for t in rows], ["Home"] * 3 + ["Food"])
         self.assertTrue(all(t.transaction_type == "Expenses" for t in rows))
 
     def test_excluded_budget_not_cash_and_inactive_history(self):
@@ -112,7 +121,7 @@ class TrackedChangesTests(unittest.TestCase):
 
     def test_partial_refunds_work_in_both_directions_and_roundtrip(self):
         self.s.add(BudgetPlan(period=date(2026, 9, 1), budget_type="Expenses",
-                              category="Housing", amount=Decimal("500.00")))
+                              category_id=categoria(self.s, "Housing"), amount=Decimal("500.00")))
         self.s.commit()
         expense = self.tx(category="Housing", amount=Decimal("915.00"))
         payload = main.TransactionPayload(occurred_on="2026-09-08", transaction_type="Income",
@@ -120,18 +129,20 @@ class TrackedChangesTests(unittest.TestCase):
         refund = main.create_transaction(payload, self.s)
         self.assertTrue(expense.counts_in_budget)
         self.assertFalse(refund["countsInBudget"])
-        self.assertEqual(core_routes.budget_actual(self.s, 2026, 9, "Expenses")["housing"], 610)
+        # L'effettivo e' chiavato sull'id della categoria: si chiede quella.
+        casa = categoria(self.s, "Housing")
+        self.assertEqual(core_routes.budget_actual(self.s, 2026, 9, "Expenses")[casa], 610)
         summary = core_routes.summary_breakdown(2026, 9, self.s)["sections"]["expenses"]
         self.assertEqual(summary["actualTotal"], 610)
         self.assertEqual(core_routes._summary_core(self.s, 2026, 9)["control"]["overBudgetCategories"], 1)
         second = main.create_transaction(main.TransactionPayload(occurred_on="2026-09-09", transaction_type="Income",
             category="Refund", amount=100, account_name="Bank", refund_of_id=expense.id), self.s)
-        self.assertEqual(core_routes.budget_actual(self.s, 2026, 9, "Expenses")["housing"], 510)
+        self.assertEqual(core_routes.budget_actual(self.s, 2026, 9, "Expenses")[casa], 510)
         income = self.tx(transaction_type="Income", category="Salary", amount=Decimal("100.00"))
         paid = main.create_transaction(main.TransactionPayload(occurred_on="2026-09-09", transaction_type="Expenses",
             category="Refund", amount=20, account_name="Bank", refund_of_id=income.id), self.s)
         self.assertFalse(paid["countsInBudget"])
-        self.assertEqual(core_routes.budget_actual(self.s, 2026, 9, "Income")["salary"], 80)
+        self.assertEqual(core_routes.budget_actual(self.s, 2026, 9, "Income")[categoria(self.s, "Salary")], 80)
         with self.assertRaises(HTTPException):
             main.create_transaction(main.TransactionPayload(occurred_on="2026-09-09", transaction_type="Income",
                 category="Refund", amount=600, account_name="Bank", refund_of_id=expense.id), self.s)
@@ -142,7 +153,10 @@ class TrackedChangesTests(unittest.TestCase):
             import_data(other, build_export(self.s), source_name="roundtrip.xlsx")
             received = other.get(Transaction, refund["id"])
             self.assertFalse(received.counts_in_budget)
-            self.assertEqual(other.get(Transaction, received.refund_of_id).category, "Housing")
+            # Il giro di andata e ritorno conserva la categoria, che viaggia
+            # come nome nel file di scambio.
+            nomi_altro = nomi_categorie(other)
+            self.assertEqual(nomi_altro[other.get(Transaction, received.refund_of_id).category_id], "Housing")
             self.assertFalse(other.scalar(select(Account).where(Account.name == "Closed")).is_active)
         target.dispose()
         # Una spesa non puo' diventare un Investment in blocco: le mancherebbe

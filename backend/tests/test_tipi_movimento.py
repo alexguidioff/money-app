@@ -15,6 +15,7 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
+from app.categorie import nomi as nomi_categorie
 from app.database import Base
 from app.main import RecurringTransactionCreate, create_recurring_transaction, save_pdf_transactions
 from app.models import Account, Transaction
@@ -48,14 +49,19 @@ class ImportEstrattoTipiTests(unittest.TestCase):
         esito = self._salva(_riga(transactionType="Expenses", category="Groceries", categoryAutomatic=False),
                             _riga(transactionType="Income"))
         self.assertEqual([], esito["errors"])
+        # Il movimento porta l'id: il nome e' quello che si legge, ricavato
+        # dalla categoria com'e' adesso.
+        nomi = nomi_categorie(self.session)
         self.assertEqual(["Groceries", "Da categorizzare"],
-                         [t.category for t in self.session.scalars(select(Transaction).order_by(Transaction.id))])
+                         [nomi[t.category_id] for t in self.session.scalars(select(Transaction).order_by(Transaction.id))])
 
     def test_un_investimento_va_sul_broker_e_non_ha_categoria(self) -> None:
         esito = self._salva(_riga(transactionType="Investment", destinationName="Broker", category="Groceries", categoryAutomatic=False))
         self.assertEqual([], esito["errors"])
         movimento = self.session.scalar(select(Transaction))
-        self.assertEqual(("Investment", "Broker", "_"), (movimento.transaction_type, movimento.destination_name, movimento.category))
+        # Nessuna categoria: il vecchio segnaposto "_" adesso e' NULL.
+        self.assertEqual(("Investment", "Broker", None),
+                         (movimento.transaction_type, movimento.destination_name, movimento.category_id))
 
     def test_un_investimento_senza_broker_dice_perche(self) -> None:
         esito = self._salva(_riga(transactionType="Investment", destinationName="Conto deposito"))

@@ -58,6 +58,7 @@ from app.models import (Account, AccountValuation, AppSetting, BudgetPlan, Categ
                         InvestmentInstrument,
                         LiabilityProfile, LookupOption, MarketPrice, Note, RetirementProfile, Transaction, TransactionLedgerLink)
 from app.notifications import elenco as notifiche
+from tests.categorie_fixture import categoria
 
 # Un simbolo inventato per l'indice di riferimento: i contratti non devono
 # somigliare a un portafoglio vero, devono solo avere i campi pieni.
@@ -136,13 +137,13 @@ def _semina(session: Session) -> None:
     # Tre gruppi per l'apprendimento: uno deciso, uno con una minoranza e uno
     # diviso a meta'. "Affitto" c'e' gia' sopra, quindi qui bastano gli altri
     # due: con gli elenchi vuoti il contratto non verificherebbe niente.
-    for indice, (categoria, quante) in enumerate((("Groceries", 4), ("Other", 1))):
+    for indice, (nome, quante) in enumerate((("Groceries", 4), ("Other", 1))):
         for mese in range(1, quante + 1):
-            movimento(occurred_on=f"{anno_scorso}-{mese:02d}-20", transaction_type="Expenses", category=categoria,
+            movimento(occurred_on=f"{anno_scorso}-{mese:02d}-20", transaction_type="Expenses", category=nome,
                       amount=15 + indice, account_name="Banca", details="Bar")
-    for categoria in ("Car", "Leisure"):
+    for nome in ("Car", "Leisure"):
         for mese in range(1, 6):
-            movimento(occurred_on=f"{anno_scorso}-{mese:02d}-25", transaction_type="Expenses", category=categoria,
+            movimento(occurred_on=f"{anno_scorso}-{mese:02d}-25", transaction_type="Expenses", category=nome,
                       amount=8, account_name="Banca", details="Parcheggio")
 
     salva_profilo(ProfiloPayload(birth_year=oggi.year - 30, country="CH", target_retirement_age=60, real_return=4,
@@ -159,8 +160,9 @@ def _semina(session: Session) -> None:
     # Una regola con tutti i campi facoltativi valorizzati: un elenco vuoto
     # sarebbe compatibile con qualunque tipo e non controllerebbe niente.
     session.add_all([
-        CategorizationRule(position=0, pattern="spesa coop", category="Groceries"),
-        CategorizationRule(position=1, pattern=r"^pos \d+", is_regex=True, category="Commissions",
+        CategorizationRule(position=0, pattern="spesa coop", category_id=categoria(session, "Groceries")),
+        CategorizationRule(position=1, pattern=r"^pos \d+", is_regex=True,
+                           category_id=categoria(session, "Commissions"),
                            transaction_type="Expenses", min_amount=Decimal("10"), max_amount=Decimal("500"),
                            active=False),
     ])
@@ -171,10 +173,14 @@ def _semina(session: Session) -> None:
     for anno in (anno_scorso, oggi.year):
         for mese in range(1, 13):
             session.add_all([
-                BudgetPlan(period=date(anno, mese, 1), budget_type="Expenses", category_group="Needs", category="Housing", amount=Decimal("900")),
-                BudgetPlan(period=date(anno, mese, 1), budget_type="Expenses", category_group="Wants", category="Groceries", amount=Decimal("250")),
-                BudgetPlan(period=date(anno, mese, 1), budget_type="Income", category="Salary", amount=Decimal("3000")),
-                BudgetPlan(period=date(anno, mese, 1), budget_type="Savings", category="Savings", amount=Decimal("1000")),
+                BudgetPlan(period=date(anno, mese, 1), budget_type="Expenses",
+                           category_id=categoria(session, "Housing"), amount=Decimal("900")),
+                BudgetPlan(period=date(anno, mese, 1), budget_type="Expenses",
+                           category_id=categoria(session, "Groceries"), amount=Decimal("250")),
+                BudgetPlan(period=date(anno, mese, 1), budget_type="Income",
+                           category_id=categoria(session, "Salary"), amount=Decimal("3000")),
+                BudgetPlan(period=date(anno, mese, 1), budget_type="Savings",
+                           category_id=categoria(session, "Savings"), amount=Decimal("1000")),
             ])
     session.add_all([
         Goal(name="Fondo emergenza", starting_amount=Decimal("1000"), target_amount=Decimal("10000"),
@@ -318,7 +324,8 @@ def _gestori(session: Session) -> dict[str, tuple[type[BaseModel], Any]]:
         "note": (NotePayload, lambda p: create_note(p, session)),
         "budgetCreate": (BudgetCreatePayload, lambda p: create_budget(p, session)),
         "budgetUpdate": (BudgetUpdatePayload, lambda p: update_budget(
-            session.scalars(select(BudgetPlan.id).where(BudgetPlan.category == "Groceries")).first(), p, session)),
+            session.scalars(select(BudgetPlan.id).where(
+                BudgetPlan.category_id == categoria(session, "Groceries"))).first(), p, session)),
         "recurring": (RecurringTransactionCreate, lambda p: asyncio.run(create_recurring_transaction(p, session))),
         "categorizationRule": (RulePayload, lambda p: create_categorization_rule(p, session)),
         "categorizationBulk": (RuleBulkPayload, lambda p: create_categorization_rules(p, session)),
@@ -332,7 +339,8 @@ def _gestori(session: Session) -> dict[str, tuple[type[BaseModel], Any]]:
             TransactionEventPayload(event_id=session.scalar(select(Event.id).where(Event.name == "Trasloco")))
             if p.event_id is not None else TransactionEventPayload(), session)),
         "split": (SplitPayload, lambda p: split_transaction(session.scalars(select(Transaction.id).where(
-            Transaction.transaction_type == "Expenses", Transaction.category == "Housing")).first(), p, session)),
+            Transaction.transaction_type == "Expenses",
+            Transaction.category_id == categoria(session, "Housing"))).first(), p, session)),
     }
 
 

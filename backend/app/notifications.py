@@ -7,10 +7,12 @@ ricalcolato dallo stato attuale, quindi non esistono avvisi che sopravvivono al
 problema che li ha generati: risolvi la cosa e spariscono da soli. Del passato
 resta solo l'elenco delle chiavi che hai messo via.
 
-**La chiave descrive l'occorrenza, non il tipo.** ``budget:2026-09:Groceries``
-non e' ``budget:2026-10:Groceries``: chiudere lo sforamento di settembre non ti
-rende cieco a quello di ottobre. Viceversa lo stesso identico problema non
-torna a bussare all'infinito, perche' la sua chiave e' gia' fra quelle chiuse.
+**La chiave descrive l'occorrenza, non il tipo.** ``budget:2026-09:7`` non e'
+``budget:2026-10:7``: chiudere lo sforamento di settembre non ti rende cieco a
+quello di ottobre. Viceversa lo stesso identico problema non torna a bussare
+all'infinito, perche' la sua chiave e' gia' fra quelle chiuse. La chiave porta
+l'id della categoria e non il suo nome, cosi' una categoria rinominata non fa
+ricomparire un avviso che era stato chiuso.
 
 Il testo non sta qui: si mandano un codice e i suoi valori, e lo compone
 l'interfaccia nella lingua scelta.
@@ -25,6 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .categorie import nomi as nomi_categorie
 from .core_routes import budget_actual, conti_con_valore_di_mercato, quoted_prices_by_instrument
 from .database import get_session
 from .models import (Account, AccountValuation, BudgetPlan, DismissedNotification,
@@ -60,25 +63,28 @@ def _periodo(anno: int, mese: int) -> str:
 def _sforamenti_budget(session: Session, oggi: date) -> list[dict[str, Any]]:
     """Categorie che hanno superato il pianificato del mese in corso."""
     avvisi = []
-    # Il confronto e' senza maiuscole, ma il nome mostrato resta quello scritto
-    # nel budget: leggere "groceries" al posto di "Groceries" fa sembrare
-    # l'avviso una cosa di un altro programma.
+    # Il pianificato e l'effettivo si incontrano sull'id della categoria: il
+    # nome e' solo quello che si legge nell'avviso, preso dalla categoria
+    # com'e' adesso e non da com'era scritta il giorno del budget.
     pianificato = {
-        piano.category.strip().lower(): (piano.category.strip(), float(piano.amount))
+        piano.category_id: float(piano.amount)
         for piano in session.scalars(select(BudgetPlan).where(
             BudgetPlan.period == date(oggi.year, oggi.month, 1),
             BudgetPlan.budget_type == "Expenses",
         )).all()
     }
     effettivo = budget_actual(session, oggi.year, oggi.month, "Expenses")
-    for chiave, (nome, previsto) in pianificato.items():
-        speso = effettivo.get(chiave, 0.0)
+    nomi = nomi_categorie(session)
+    for categoria_id, previsto in pianificato.items():
+        speso = effettivo.get(categoria_id, 0.0)
         if previsto > 0 and speso > previsto * SOGLIA_SFORAMENTO:
             avvisi.append({
-                "key": f"budget:{oggi.year}-{oggi.month:02d}:{chiave}",
+                # La chiave porta l'id: e' quello che identifica la categoria
+                # anche se poi viene rinominata.
+                "key": f"budget:{oggi.year}-{oggi.month:02d}:{categoria_id}",
                 "code": "budgetOverrun",
                 "level": "warning",
-                "params": {"category": nome, "spent": round(speso, 2),
+                "params": {"category": nomi.get(categoria_id, ""), "spent": round(speso, 2),
                            "planned": round(previsto, 2),
                            "percent": round(speso / previsto * 100)},
             })

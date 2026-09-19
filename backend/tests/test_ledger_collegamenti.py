@@ -33,7 +33,7 @@ class LedgerCollegamentiTests(unittest.TestCase):
                                                    occurred_on=date(2024, 1, 5), units=Decimal("1"),
                                                    amount=Decimal("100"), price=Decimal("100")))
         self.movimento = Transaction(occurred_on=date(2024, 1, 5), effective_on=date(2024, 1, 5),
-                                     transaction_type="Transfers", category="", amount=Decimal("100"),
+                                     transaction_type="Transfers", category_id=None, amount=Decimal("100"),
                                      account_name="Conto", destination_name="Titoli")
         self.session.add(self.movimento)
         self.session.commit()
@@ -59,7 +59,7 @@ class LedgerCollegamentiTests(unittest.TestCase):
         raddoppierebbe la riga nell'elenco."""
         alfa = next(r for r in self.session.query(InvestmentTransaction) if r.name == "Alfa")
         secondo = Transaction(occurred_on=date(2024, 1, 6), effective_on=date(2024, 1, 6),
-                              transaction_type="Transfers", category="", amount=Decimal("50"),
+                              transaction_type="Transfers", category_id=None, amount=Decimal("50"),
                               account_name="Conto", destination_name="Titoli")
         self.session.add(secondo)
         self.session.flush()

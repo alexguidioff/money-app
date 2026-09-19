@@ -195,6 +195,16 @@ def tracked_changes(engine: Engine) -> None:
         # righe, e i riferimenti passano dall'id. Gira a ogni avvio, quindi
         # ogni passo guarda prima se l'ha gia' fatto.
         if inspect(conn).has_table("categories"):
+            # Le colonne dei riferimenti nascono qui: `create_all` crea le
+            # tabelle nuove ma non tocca quelle che esistono gia', quindi su un
+            # database di prima la colonna non c'e'. Senza questo passo il
+            # collegamento dei nomi agli id non avrebbe dove scrivere, e
+            # l'albero resterebbe vuoto con movimenti e budget scollegati.
+            for tabella in ("transactions", "budget_plans", "categorization_rules"):
+                colonne = _colonne_di(conn, tabella)
+                if colonne and "category_id" not in colonne:
+                    conn.execute(text(f"ALTER TABLE {tabella} ADD COLUMN category_id INTEGER "
+                                      "REFERENCES categories(id)"))
             _albero_delle_categorie(conn)
 
 def _colonne_di(conn, tabella: str) -> set[str]:
@@ -233,27 +243,40 @@ def _albero_delle_categorie(conn) -> None:
     if not letture:
         return
 
-    # Un nome che esiste gia' non si duplica: e' anche il modo in cui questo
-    # blocco resta innocuo se gira una seconda volta.
+    # Un nome che esiste gia' non si duplica, a qualunque livello stia: e' anche
+    # il modo in cui questo blocco resta innocuo se gira una seconda volta. La
+    # ricerca guarda anche i figli perche' le tre categorie dichiarate qui sotto
+    # sono gia' rami al secondo giro: cercando solo fra le radici ne
+    # ricomparirebbe una copia, e lo spostamento sotto il padre sbatterebbe
+    # contro il vincolo di unicita' del ramo.
     for user_id, nome in conn.execute(text(" UNION ".join(letture))).all():
-        if conn.execute(text("SELECT 1 FROM categories WHERE user_id = :u AND parent_id IS NULL "
-                             "AND lower(name) = lower(:n)"), {"u": user_id, "n": nome}).scalar():
+        if conn.execute(text("SELECT 1 FROM categories WHERE user_id = :u AND lower(name) = lower(:n)"),
+                        {"u": user_id, "n": nome}).scalar():
             continue
         conn.execute(text("INSERT INTO categories (user_id, parent_id, name, position, active) "
                           "VALUES (:u, NULL, :n, 0, true)"), {"u": user_id, "n": nome})
 
-    # I riferimenti: dal nome all'id, solo dove l'id non c'e' gia'. La radice si
-    # cerca per nome, quindi un movimento scritto "Alimentari" continua a
-    # puntare alla stessa categoria anche dopo che qualcuno l'ha rinominata da
-    # un'altra parte della migrazione.
+    # I riferimenti: dal nome all'id, solo dove l'id non c'e' gia'. La categoria
+    # si cerca per nome, quindi un movimento scritto "Alimentari" continua a
+    # puntare alla stessa riga anche dopo che l'ha rinominata qualcun altro.
+    #
+    # Non si cerca solo fra le radici: le tre associazioni dichiarate qui sotto
+    # spostano delle categorie sotto un padre, e da li' in poi una ricerca fra
+    # le sole radici non le troverebbe piu' - un secondo giro lascerebbe
+    # scollegati proprio i movimenti di quelle tre. Vince l'id piu' basso, che
+    # e' la riga nata per prima: cosi' il risultato e' lo stesso a ogni giro e
+    # non dipende da quale riga il database legge per prima.
     for tabella in ("transactions", "budget_plans", "categorization_rules"):
         colonne = _colonne_di(conn, tabella)
         if "category" not in colonne or "category_id" not in colonne:
             continue
         conn.execute(text(
-            f"UPDATE {tabella} AS t SET category_id = c.id FROM categories c "
-            f"WHERE c.user_id = t.user_id AND c.parent_id IS NULL "
-            f"AND lower(c.name) = lower(trim(t.category)) AND t.category_id IS NULL"))
+            f"UPDATE {tabella} AS t SET category_id = ("
+            "SELECT c.id FROM categories c WHERE c.user_id = t.user_id "
+            "AND lower(c.name) = lower(trim(t.category)) ORDER BY c.id LIMIT 1) "
+            "WHERE t.category_id IS NULL AND EXISTS ("
+            "SELECT 1 FROM categories c WHERE c.user_id = t.user_id "
+            "AND lower(c.name) = lower(trim(t.category)))"))
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{tabella}_category_id ON {tabella} (category_id)"))
 
     # Le tre associazioni che erano dichiarate diventano rami veri: Needs e

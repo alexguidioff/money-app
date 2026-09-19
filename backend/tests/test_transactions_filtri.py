@@ -16,13 +16,15 @@ from sqlalchemy.orm import Session
 from app.core_routes import transactions
 from app.database import Base
 from app.models import Transaction
+from tests.categorie_fixture import categoria
 
 
-def _tx(giorno: date, tipo: str, categoria: str, importo: str, conto: str,
+def _tx(session: Session, giorno: date, tipo: str, nome: str, importo: str, conto: str,
         destinazione: str | None = None, dettagli: str | None = None,
         template: bool = False, obiettivo: str | None = None) -> Transaction:
+    """Un movimento: la categoria e' una riga, quindi si crea qui."""
     return Transaction(occurred_on=giorno, effective_on=giorno, transaction_type=tipo,
-                       category=categoria, amount=Decimal(importo), account_type="Bank",
+                       category_id=categoria(session, nome), amount=Decimal(importo), account_type="Bank",
                        account_name=conto, destination_name=destinazione, details=dettagli,
                        is_recurring_template=template, goal=obiettivo)
 
@@ -33,13 +35,14 @@ class FiltriMovimentiTests(unittest.TestCase):
         Base.metadata.create_all(self.engine)
         self.session = Session(self.engine)
         self.session.add_all([
-            _tx(date(2026, 7, 3), "Expenses", "Groceries", "20", "Conto", dettagli="spesa Intermarché"),
-            _tx(date(2026, 7, 20), "Income", "Stipendio", "1500", "Conto"),
-            _tx(date(2026, 8, 5), "Transfers", "Giroconto", "100", "Conto", destinazione="Libretto",
-                obiettivo="Casa"),
-            _tx(date(2025, 7, 9), "Expenses", "Groceries", "35", "Libretto"),
+            _tx(self.session, date(2026, 7, 3), "Expenses", "Groceries", "20", "Conto",
+                dettagli="spesa Intermarché"),
+            _tx(self.session, date(2026, 7, 20), "Income", "Stipendio", "1500", "Conto"),
+            _tx(self.session, date(2026, 8, 5), "Transfers", "Giroconto", "100", "Conto",
+                destinazione="Libretto", obiettivo="Casa"),
+            _tx(self.session, date(2025, 7, 9), "Expenses", "Groceries", "35", "Libretto"),
             # Un template di ricorrenza non e' un movimento: non deve comparire.
-            _tx(date(2026, 7, 15), "Expenses", "Groceries", "999", "Conto", template=True),
+            _tx(self.session, date(2026, 7, 15), "Expenses", "Groceries", "999", "Conto", template=True),
         ])
         self.session.commit()
 

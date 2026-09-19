@@ -18,11 +18,14 @@ from sqlalchemy.orm import Session
 from app.core_routes import _net_worth_breakdown, balance_sheet_series, net_worth, net_worth_series
 from app.database import Base
 from app.models import Account, Transaction
+from tests.categorie_fixture import categoria
 
 
-def _tx(giorno: date, tipo: str, importo: str, conto: str, destinazione: str | None = None) -> Transaction:
+def _tx(session: Session, giorno: date, tipo: str, importo: str, conto: str,
+        destinazione: str | None = None) -> Transaction:
+    # La categoria e' una riga: la fixture la crea e passa l'id.
     return Transaction(occurred_on=giorno, effective_on=giorno, transaction_type=tipo,
-                       category="Varie", amount=Decimal(importo), account_type="Bank",
+                       category_id=categoria(session, "Varie"), amount=Decimal(importo), account_type="Bank",
                        account_name=conto, destination_name=destinazione, is_recurring_template=False)
 
 
@@ -39,10 +42,10 @@ class PanoramicaEPatrimonioTests(unittest.TestCase):
             # Un debito: saldo negativo, come lo scrive l'app.
             Account(name="Mutuo", source_group="liability",
                     starting_balance=Decimal("-40000"), current_balance=Decimal("-40000"), counts_in_net_worth=True),
-            _tx(date(2026, 7, 10), "Income", "500", "Conto"),
+            _tx(self.session, date(2026, 7, 10), "Income", "500", "Conto"),
             # Agosto: se la Panoramica leggesse i saldi di oggi invece che quelli
             # di luglio, questo movimento finirebbe dentro il patrimonio di luglio.
-            _tx(date(2026, 8, 15), "Expenses", "300", "Conto"),
+            _tx(self.session, date(2026, 8, 15), "Expenses", "300", "Conto"),
         ])
         self.session.commit()
 

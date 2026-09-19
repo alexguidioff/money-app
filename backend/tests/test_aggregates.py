@@ -20,12 +20,19 @@ from app.core_routes import budget_actual, budget_actual_year, period_total, por
 from app.database import Base
 from app.models import (Account, BudgetPlan, InvestmentInstrument, InvestmentTransaction,
                         MarketPrice, Transaction)
+from tests.categorie_fixture import categoria
 
 
-def _tx(day: date, tx_type: str, category: str, amount: str, *, template: bool = False,
+def _tx(session: Session, day: date, tx_type: str, nome: str, amount: str, *, template: bool = False,
         account: str = "Conto", counts_in_budget: bool = True, refund_of_id: int | None = None) -> Transaction:
+    """Un movimento su una categoria che esiste.
+
+    "_" vuol dire "non ne ha" - i giroconti non hanno categoria - e vale NULL,
+    non una categoria chiamata trattino basso.
+    """
     return Transaction(occurred_on=day, effective_on=day, transaction_type=tx_type,
-                       category=category, amount=Decimal(amount), account_type="Bank",
+                       category_id=None if nome == "_" else categoria(session, nome),
+                       amount=Decimal(amount), account_type="Bank",
                        account_name=account, is_recurring_template=template,
                        counts_in_budget=counts_in_budget, refund_of_id=refund_of_id)
 
@@ -41,10 +48,10 @@ class RecurringTemplatesAreNotMovementsTests(unittest.TestCase):
         self.engine = create_engine("sqlite://")
         Base.metadata.create_all(self.engine)
         self.session = Session(self.engine)
-        self.session.add(_tx(date(2026, 9, 3), "Expenses", "Groceries", "50.00"))
-        self.session.add(_tx(date(2026, 9, 10), "Expenses", "Groceries", "999.99", template=True))
+        self.session.add(_tx(self.session, date(2026, 9, 3), "Expenses", "Groceries", "50.00"))
+        self.session.add(_tx(self.session, date(2026, 9, 10), "Expenses", "Groceries", "999.99", template=True))
         self.session.add(BudgetPlan(period=date(2026, 9, 1), budget_type="Expenses",
-                                    category_group="Casa", category="Groceries", amount=Decimal("100")))
+                                    category_id=categoria(self.session, "Groceries"), amount=Decimal("100")))
         self.session.commit()
 
     def tearDown(self) -> None:
@@ -54,7 +61,9 @@ class RecurringTemplatesAreNotMovementsTests(unittest.TestCase):
         self.assertEqual(period_total(self.session, 2026, 9, "Expenses"), 50.0)
 
     def test_budget_actual_ignores_templates(self) -> None:
-        self.assertEqual(budget_actual(self.session, 2026, 9, "Expenses").get("groceries"), 50.0)
+        # Le chiavi sono id: si chiede la categoria che la fixture ha creato.
+        self.assertEqual(budget_actual(self.session, 2026, 9, "Expenses").get(
+            categoria(self.session, "Groceries")), 50.0)
 
 
 class InvestedCapitalTests(unittest.TestCase):
@@ -121,10 +130,10 @@ class AccountBalanceSignTests(unittest.TestCase):
         self.session.add(Account(source_group="asset", name="Deposito",
                                  starting_balance=Decimal("0"), current_balance=Decimal("0"),
                                  status="active"))
-        transfer = _tx(date(2026, 4, 2), "Transfers", "_", "200.00")
+        transfer = _tx(self.session, date(2026, 4, 2), "Transfers", "_", "200.00")
         transfer.destination_type, transfer.destination_name = "Asset", "Deposito"
-        self.session.add_all([transfer, _tx(date(2026, 4, 5), "Expenses", "Groceries", "30.00"),
-                              _tx(date(2026, 4, 8), "Income", "Salary", "500.00")])
+        self.session.add_all([transfer, _tx(self.session, date(2026, 4, 5), "Expenses", "Groceries", "30.00"),
+                              _tx(self.session, date(2026, 4, 8), "Income", "Salary", "500.00")])
         self.session.commit()
 
     def tearDown(self) -> None:
@@ -157,12 +166,12 @@ class AnnualRefundNettingTests(unittest.TestCase):
         # Originale a novembre 2026, rimborso a gennaio 2027: il netting va
         # applicato nel mese dell'originale (novembre), non in quello del
         # rimborso. L'originale resta budgeable per poter essere scalato.
-        originale = _tx(date(2026, 11, 5), "Expenses", "Spese mediche", "50.00")
+        originale = _tx(self.session, date(2026, 11, 5), "Expenses", "Spese mediche", "50.00")
         self.session.add(originale)
         self.session.flush()
-        self.session.add(_tx(date(2027, 1, 10), "Income", "Rimborso spese mediche",
+        self.session.add(_tx(self.session, date(2027, 1, 10), "Income", "Rimborso spese mediche",
                              "20.00", counts_in_budget=False, refund_of_id=originale.id))
-        self.session.add(_tx(date(2026, 11, 12), "Expenses", "Altro", "30.00"))
+        self.session.add(_tx(self.session, date(2026, 11, 12), "Expenses", "Altro", "30.00"))
         self.session.commit()
 
     def tearDown(self) -> None:
@@ -171,8 +180,8 @@ class AnnualRefundNettingTests(unittest.TestCase):
     def test_refund_nets_in_original_month(self) -> None:
         speso = budget_actual_year(self.session, 2026, "Expenses")
         # 50 di Spese mediche - 20 di rimborso = 30; piu' 30 di Altro.
-        self.assertEqual(speso[11].get("spese mediche"), 30.0)
-        self.assertEqual(speso[11].get("altro"), 30.0)
+        self.assertEqual(speso[11].get(categoria(self.session, "Spese mediche")), 30.0)
+        self.assertEqual(speso[11].get(categoria(self.session, "Altro")), 30.0)
 
     def test_refund_does_not_appear_in_refund_month(self) -> None:
         # Il rimborso non rientra nel calcolo del 2027: l'originale non e' del
@@ -217,10 +226,13 @@ class CategorieSenzaPianoTests(unittest.TestCase):
         _Base.metadata.create_all(self.engine)
         self.session = _Session(self.engine)
         self.session.add(_Account(source_group="bank", name="Banca", starting_balance=_Decimal("0"), current_balance=_Decimal("0")))
-        self.session.add(_Plan(period=_date(2025, 3, 1), budget_type="Expenses", category="Housing", amount=_Decimal("500")))
+        self.session.add(_Plan(period=_date(2025, 3, 1), budget_type="Expenses",
+                               category_id=categoria(self.session, "Housing"), amount=_Decimal("500")))
         self.session.commit()
-        for categoria, importo in (("Housing", 400), ("Viaggi", 900)):
-            _crea(_Payload(occurred_on="2025-03-10", transaction_type="Expenses", category=categoria,
+        # Il modulo scrive ancora il nome della categoria: e' il confine dove i
+        # nomi esistono, e la categoria "Housing" e' gia' una riga per il piano.
+        for nome, importo in (("Housing", 400), ("Viaggi", 900)):
+            _crea(_Payload(occurred_on="2025-03-10", transaction_type="Expenses", category=nome,
                            amount=importo, account_name="Banca"), self.session)
 
     def tearDown(self) -> None:

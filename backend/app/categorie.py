@@ -25,10 +25,17 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .categorization import categoria_da_nome
 from .database import get_session
 from .models import BudgetPlan, CategorizationRule, Category, Transaction
 
 router = APIRouter()
+
+# Bisogni e piaceri, e il residuo. "Other" non e' una terza categoria di spesa:
+# e' dove finisce cio' che non hai ancora classificato. Il gruppo di una
+# categoria e' il nome della radice sotto cui sta, e queste sono le tre che
+# contano: le altre radici sono categorie normali e valgono "Other".
+GRUPPI = ("Needs", "Wants", "Other")
 
 
 class CategoryPayload(BaseModel):
@@ -84,6 +91,68 @@ def nomi(session: Session) -> dict[int, str]:
     per riga.
     """
     return dict(session.execute(select(Category.id, Category.name)).all())
+
+
+def nome_di(session: Session, category_id: int | None) -> str:
+    """Il nome di una categoria, vuoto quando non c'e'.
+
+    Vuoto e non "Da categorizzare": l'assenza di categoria e' un'informazione -
+    uno spostamento fra conti non ne ha una, e non e' un dato mancante - e un
+    nome inventato al posto suo la cancellerebbe. Serve a chi serializza una
+    riga sola; chi ne serializza tante si porta la mappa `nomi` e la legge da
+    li', invece di interrogare il database una volta per movimento.
+    """
+    return nomi(session).get(category_id, "") if category_id is not None else ""
+
+
+def radici(session: Session) -> dict[int, str]:
+    """Da ogni categoria al nome della sua radice: se stessa, se e' una radice.
+
+    Serve a chi somma per gruppi: le voci di un report si sommano sotto il
+    totale della radice, e per farlo basta sapere a quale radice appartiene
+    ogni foglia.
+    """
+    righe = session.scalars(select(Category)).all()
+    nome_radice = {riga.id: riga.name for riga in righe if riga.parent_id is None}
+    return {riga.id: nome_radice.get(riga.parent_id) or riga.name for riga in righe}
+
+
+def gruppo_di_categoria(session: Session) -> dict[int, str]:
+    """Bisogni, piaceri, o il resto: il gruppo di ogni categoria.
+
+    Il gruppo non e' un campo, e' il nome della radice sotto cui la categoria
+    sta. Una radice che si chiama "Needs" e' un bisogno essa stessa - con figli
+    o senza -; una categoria figlia di quella radice e' un bisogno anche lei.
+    Quello che non sta sotto nessuna delle tre radici e' "Other", dove finisce
+    cio' che non e' stato classificato: tenerlo visibile serve proprio a farlo
+    svuotare.
+
+    Prima il gruppo era scritto su ogni riga di budget, una per mese, e
+    descriveva la categoria: la spesa non e' un bisogno a gennaio e un piacere
+    a febbraio. Adesso si legge dall'albero, e vale per tutti i mesi insieme.
+    """
+    noto = {gruppo.casefold(): gruppo for gruppo in GRUPPI}
+    return {category_id: noto.get(radice.casefold(), "Other")
+            for category_id, radice in radici(session).items()}
+
+
+def _dal_payload(session: Session, category_id: int | None, nome: str | None) -> Category:
+    """La categoria nominata da un payload: per id se c'e', altrimenti per nome.
+
+    Non la crea: chi classifica una categoria deve nominarne una che esiste, e
+    un nome scritto male deve dare un errore invece di una categoria vuota in
+    mezzo all'albero.
+    """
+    if category_id is not None:
+        return _categoria(session, category_id)
+    pulito = (nome or "").strip()
+    if not pulito:
+        raise HTTPException(status_code=422, detail="category obbligatoria")
+    riga = session.scalar(select(Category).where(func.lower(Category.name) == pulito.casefold(),
+                                                 Category.parent_id.is_(None)))
+    if riga is None:
+        raise HTTPException(status_code=404, detail="categoryNotFound")
+    return riga
 
 
 def _pulito(nome: str) -> str:
@@ -216,6 +285,48 @@ def cancella_categoria(category_id: int, session: Session = Depends(get_session)
     session.delete(riga)
     session.commit()
     return {"success": True}
+
+
+class CategoryGroupPayload(BaseModel):
+    """Quale categoria, e in quale gruppo."""
+
+    category: str = ""
+    categoryId: int | None = None
+    category_group: str | None = None
+
+
+@router.put("/api/category-groups")
+def classifica_categoria(payload: CategoryGroupPayload,
+                         session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Classifica una categoria come bisogno o piacere.
+
+    La classificazione non e' piu' scritta su ogni riga di budget - era
+    ``category_group``, la stessa parola ripetuta per mese su una riga che
+    descriveva la categoria e non il mese - ma e' la posizione nell'albero:
+    bisogni e piaceri sono le radici che portano quei nomi. Classificare vuol
+    dire quindi spostare la categoria sotto la radice del gruppo, creandola se
+    non c'e'. E' per tutti i periodi in una volta, com'era prima.
+
+    La rotta resta dove stava, cosi' l'interfaccia continua a funzionare: e'
+    il posto in cui si dice "questa categoria e' un bisogno", che e' una cosa
+    che si fa all'albero.
+    """
+    riga = _dal_payload(session, payload.categoryId, payload.category)
+    gruppo = (payload.category_group or "").strip()
+    if gruppo not in GRUPPI:
+        raise HTTPException(status_code=422, detail="categoryGroupUnknown")
+    if riga.parent_id is None and session.scalar(
+            select(func.count(Category.id)).where(Category.parent_id == riga.id)):
+        # Una radice con figli non si sposta: sotto di lei ci sarebbe un terzo
+        # livello, e l'albero ne ha due.
+        raise HTTPException(status_code=422, detail="categoryTooDeep")
+    radice = _categoria(session, categoria_da_nome(session, gruppo))
+    if radice.id != riga.id:
+        _senza_omonimi(session, riga.name, radice.id, esclusa=riga.id)
+        riga.parent_id = radice.id
+    session.commit()
+    return {"success": True, "categoryId": riga.id, "category": riga.name,
+            "categoryGroup": gruppo, "parentId": riga.parent_id}
 
 
 def register_categorie_routes(app) -> None:

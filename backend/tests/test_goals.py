@@ -19,11 +19,14 @@ from app import core_routes
 from app.core_routes import _ritmo_goal, _stato_goal, goals
 from app.database import Base
 from app.models import Goal, Transaction
+from tests.categorie_fixture import categoria
 
 
 def _tx_goal(obiettivo: str, importo: str, conto: str, destinazione: str | None = None) -> Transaction:
+    # Un versamento su un goal e' un giroconto, e i giroconti non hanno
+    # categoria: l'id mancante e' quello che prima si scriveva "_".
     return Transaction(occurred_on=date(2026, 2, 4), effective_on=date(2026, 2, 4),
-                       transaction_type="Transfers", category="_", amount=Decimal(importo),
+                       transaction_type="Transfers", category_id=None, amount=Decimal(importo),
                        account_type="Bank", account_name=conto, destination_name=destinazione,
                        goal=obiettivo, is_recurring_template=False)
 
@@ -97,7 +100,8 @@ class FonteDelValoreTests(unittest.TestCase):
             _goal(name="Versamenti", starting_amount=Decimal("1000"), kind="contributions"),
             _goal(name="Portafoglio", starting_amount=Decimal("1000"), kind="portfolio"),
             Transaction(occurred_on=date(2026, 1, 5), effective_on=date(2026, 1, 5),
-                        transaction_type="Savings", category="Savings", amount=Decimal("500"),
+                        transaction_type="Savings", category_id=categoria(self.session, "Savings"),
+                        amount=Decimal("500"),
                         account_type="Bank", account_name="Conto", goal="Versamenti",
                         is_recurring_template=False),
         ])
@@ -209,7 +213,8 @@ class StimaFinePeriodoTests(unittest.TestCase):
         for mese in range(1, 8):
             self.session.add(Transaction(
                 occurred_on=date(2026, mese, 1), effective_on=date(2026, mese, 1),
-                transaction_type="Expenses", category="Affitto", amount=Decimal("1000"),
+                transaction_type="Expenses", category_id=categoria(self.session, "Affitto"),
+                amount=Decimal("1000"),
                 account_type="Bank", account_name="Conto", is_recurring_template=False))
         self.session.commit()
 
@@ -227,7 +232,8 @@ class StimaFinePeriodoTests(unittest.TestCase):
         from app.core_routes import stima_fine_periodo
         self.session.add(Transaction(
             occurred_on=date(2026, 7, 3), effective_on=date(2026, 7, 3),
-            transaction_type="Expenses", category="Affitto", amount=Decimal("500"),
+            transaction_type="Expenses", category_id=categoria(self.session, "Affitto"),
+            amount=Decimal("500"),
             account_type="Bank", account_name="Conto", is_recurring_template=False))
         self.session.commit()
         self.assertEqual(stima_fine_periodo(self.session, 2026, 7, self.oggi)["estimate"], 1500.0)

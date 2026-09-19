@@ -15,16 +15,18 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.core_routes import (_budget_balance, _needs_wants, _totali_mensili, budget_annual, budget_dashboard,
-                             budget_suggestions, budget_trends, budget_trends_available_years, category_groups,
+                             budget_suggestions, budget_trends, budget_trends_available_years,
                              previous_month_leftover, settings, sync_savings_plan)
 from app.database import Base
 from app.models import AppSetting, BudgetPlan, Transaction
 from app.notifications import _sforamenti_budget
+from tests.categorie_fixture import categoria
 
 
-def _tx(day: date, category: str, amount: str, tx_type: str = "Expenses") -> Transaction:
+def _tx(session: Session, day: date, nome: str, amount: str, tx_type: str = "Expenses") -> Transaction:
+    """Un movimento su una categoria che esiste: la riga si crea qui."""
     return Transaction(occurred_on=day, effective_on=day, transaction_type=tx_type,
-                       category=category, amount=Decimal(amount), account_type="Bank",
+                       category_id=categoria(session, nome), amount=Decimal(amount), account_type="Bank",
                        account_name="Conto", is_recurring_template=False)
 
 
@@ -32,15 +34,16 @@ def _rimborso(day: date, originale: Transaction, amount: str) -> Transaction:
     # I rimborsi nascono con `counts_in_budget = False`: non sono una spesa
     # dell'utente, e' denaro che rientra. Nettono l'originale via refund_of_id.
     return Transaction(occurred_on=day, effective_on=day, transaction_type="Expenses",
-                       category=originale.category, amount=Decimal(amount), account_type="Bank",
+                       category_id=originale.category_id, amount=Decimal(amount), account_type="Bank",
                        account_name="Conto", is_recurring_template=False,
                        counts_in_budget=False, refund_of_id=originale.id)
 
 
-def _piano(mese: int, category: str, amount: str, gruppo: str | None = None,
-           tipo: str = "Expenses") -> BudgetPlan:
-    return BudgetPlan(period=date(2026, mese, 1), budget_type=tipo, category=category,
-                      category_group=gruppo, amount=Decimal(amount))
+def _piano(session: Session, mese: int, nome: str, amount: str, tipo: str = "Expenses") -> BudgetPlan:
+    # Il gruppo non c'e' piu': non era un campo del mese ma dell'albero, ed e'
+    # la radice sotto cui sta la categoria.
+    return BudgetPlan(period=date(2026, mese, 1), budget_type=tipo,
+                      category_id=categoria(session, nome), amount=Decimal(amount))
 
 
 class BudgetBase(unittest.TestCase):
@@ -64,13 +67,16 @@ class AnniBudgetTests(BudgetBase):
 class DashboardAnnualeTests(BudgetBase):
     def test_aggregazione_annuale_usa_tutti_i_mesi(self) -> None:
         self.session.add_all([
-            _piano(1, "Casa", "100", "Needs"), _piano(2, "Casa", "200", "Needs"),
-            _tx(date(2026, 1, 5), "Casa", "80"), _tx(date(2026, 2, 5), "Casa", "150"),
+            _piano(self.session, 1, "Casa", "100"), _piano(self.session, 2, "Casa", "200"),
+            _tx(self.session, date(2026, 1, 5), "Casa", "80"), _tx(self.session, date(2026, 2, 5), "Casa", "150"),
         ])
         self.session.commit()
         dati = budget_dashboard(2026, None, "Expenses", self.session)
         self.assertEqual((dati["periodMonth"], dati["plannedTotal"], dati["actualTotal"]), (None, 300.0, 230.0))
-        self.assertEqual(dati["groups"][0]["actual"], 230.0)
+        # "Casa" non sta sotto nessuna delle tre radici: la sua spesa finisce
+        # in "Other", che e' dove il piano lascia cio' che non e' classificato.
+        altro = next(riga for riga in dati["groups"] if riga["group"] == "Other")
+        self.assertEqual((altro["actual"], altro["planned"]), (230.0, 300.0))
 
 
 class RisparmioDedottoTests(BudgetBase):
@@ -78,8 +84,8 @@ class RisparmioDedottoTests(BudgetBase):
 
     def test_il_risparmio_e_quello_che_avanza(self) -> None:
         self.session.add_all([
-            _piano(9, "Stipendio", "3000", tipo="Income"),
-            _piano(9, "Spesa", "2000"),
+            _piano(self.session, 9, "Stipendio", "3000", tipo="Income"),
+            _piano(self.session, 9, "Spesa", "2000"),
         ])
         self.session.commit()
         self.assertEqual(sync_savings_plan(self.session, date(2026, 9, 1)), Decimal("1000"))
@@ -90,8 +96,8 @@ class RisparmioDedottoTests(BudgetBase):
 
     def test_puo_venire_negativo(self) -> None:
         self.session.add_all([
-            _piano(9, "Stipendio", "1000", tipo="Income"),
-            _piano(9, "Spesa", "1500"),
+            _piano(self.session, 9, "Stipendio", "1000", tipo="Income"),
+            _piano(self.session, 9, "Spesa", "1500"),
         ])
         self.session.commit()
         self.assertEqual(sync_savings_plan(self.session, date(2026, 9, 1)), Decimal("-500"))
@@ -100,9 +106,9 @@ class RisparmioDedottoTests(BudgetBase):
 
     def test_una_riga_gia_scritta_a_mano_viene_riallineata(self) -> None:
         self.session.add_all([
-            _piano(9, "Stipendio", "1000", tipo="Income"),
-            _piano(9, "Spesa", "400"),
-            _piano(9, "Savings", "999", tipo="Savings"),
+            _piano(self.session, 9, "Stipendio", "1000", tipo="Income"),
+            _piano(self.session, 9, "Spesa", "400"),
+            _piano(self.session, 9, "Savings", "999", tipo="Savings"),
         ])
         self.session.commit()
         sync_savings_plan(self.session, date(2026, 9, 1))
@@ -116,7 +122,7 @@ class RisparmioDedottoTests(BudgetBase):
         self.assertEqual(self.session.scalars(select(BudgetPlan)).all(), [])
 
     def test_senza_entrate_pianificate_lo_dice(self) -> None:
-        self.session.add(_piano(9, "Spesa", "2000"))
+        self.session.add(_piano(self.session, 9, "Spesa", "2000"))
         self.session.commit()
         saldo = _budget_balance(self.session, 2026, 9)
         self.assertFalse(saldo["hasIncomePlan"])
@@ -126,8 +132,8 @@ class RisparmioDedottoTests(BudgetBase):
 class RisparmioAnnualeTests(BudgetBase):
     def test_somma_tutti_i_mesi_dell_anno(self) -> None:
         self.session.add_all([
-            _piano(1, "Stipendio", "1000", tipo="Income"), _piano(2, "Stipendio", "1000", tipo="Income"),
-            _piano(1, "Spesa", "700"), _piano(2, "Spesa", "900"),
+            _piano(self.session, 1, "Stipendio", "1000", tipo="Income"), _piano(self.session, 2, "Stipendio", "1000", tipo="Income"),
+            _piano(self.session, 1, "Spesa", "700"), _piano(self.session, 2, "Spesa", "900"),
         ])
         self.session.commit()
         self.assertEqual(_budget_balance(self.session, 2026)["savings"], 400.0)
@@ -140,16 +146,19 @@ class AvanzoDelMesePrecedenteTests(BudgetBase):
     def setUp(self) -> None:
         super().setUp()
         self.session.add_all([
-            _piano(7, "Spesa", "400"), _tx(date(2026, 7, 5), "Spesa", "300"),   # avanzano 100
-            _piano(8, "Spesa", "400"), _tx(date(2026, 8, 5), "Spesa", "450"),   # mancano 50
-            _piano(9, "Spesa", "400"),
+            _piano(self.session, 7, "Spesa", "400"), _tx(self.session, date(2026, 7, 5), "Spesa", "300"),   # avanzano 100
+            _piano(self.session, 8, "Spesa", "400"), _tx(self.session, date(2026, 8, 5), "Spesa", "450"),   # mancano 50
+            _piano(self.session, 9, "Spesa", "400"),
         ])
         self.session.commit()
+        # La chiave dell'avanzo e' l'id della categoria: in questo test una
+        # spesa sola, quindi un nome solo.
+        self.spesa = categoria(self.session, "Spesa")
 
     def test_guarda_solo_il_mese_prima(self) -> None:
         # Settembre vede agosto (-50), non la somma di luglio e agosto (+50).
-        self.assertEqual(previous_month_leftover(self.session, 2026, 9), {"spesa": -50.0})
-        self.assertEqual(previous_month_leftover(self.session, 2026, 8), {"spesa": 100.0})
+        self.assertEqual(previous_month_leftover(self.session, 2026, 9), {self.spesa: -50.0})
+        self.assertEqual(previous_month_leftover(self.session, 2026, 8), {self.spesa: 100.0})
 
     def test_gennaio_non_guarda_indietro_e_vale_solo_per_le_spese(self) -> None:
         self.assertEqual(previous_month_leftover(self.session, 2026, 1), {})
@@ -166,7 +175,7 @@ class AvanzoDelMesePrecedenteTests(BudgetBase):
     def test_gli_avvisi_misurano_il_pianificato(self) -> None:
         # Con il riporto sommato al budget questo sforamento sparirebbe: non
         # deve sparire, il budget di settembre e' 400 e basta.
-        self.session.add(_tx(date(2026, 9, 9), "Spesa", "500"))
+        self.session.add(_tx(self.session, date(2026, 9, 9), "Spesa", "500"))
         self.session.commit()
         avvisi = _sforamenti_budget(self.session, date(2026, 9, 15))
         self.assertEqual([avviso["params"]["planned"] for avviso in avvisi], [400.0])
@@ -175,25 +184,25 @@ class AvanzoDelMesePrecedenteTests(BudgetBase):
         # Il setUp mette a agosto una spesa di 450. Aggiungo una spesa di 500
         # rimborsata di 200: agosto totale netto = 450 + 500 - 200 = 750.
         # Avanzo = 400 - 750 = -350. Senza netting sarebbe 400 - 950 = -550.
-        spesa_agosto = _tx(date(2026, 8, 5), "Spesa", "500")
+        spesa_agosto = _tx(self.session, date(2026, 8, 5), "Spesa", "500")
         self.session.add(spesa_agosto)
         self.session.flush()
         self.session.add(_rimborso(date(2026, 8, 20), spesa_agosto, "200"))
         self.session.commit()
-        self.assertEqual(previous_month_leftover(self.session, 2026, 9), {"spesa": -350.0})
+        self.assertEqual(previous_month_leftover(self.session, 2026, 9), {self.spesa: -350.0})
 
     def test_il_rimborso_netto_va_nel_mese_dell_originale(self) -> None:
         # Spesa a luglio (300 di setUp piu' 500 nuova) rimborsata a ottobre:
         # agosto vede l'avanzo di luglio gia' corretto: 400 - 800 = -400.
         # Senza netting vedrebbe 400 - 800 = -400, ma il fix conta anche 200 in
         # piu' dal rimborso di luglio (perche' il netting e' sul mese originale).
-        spesa_luglio = _tx(date(2026, 7, 5), "Spesa", "500")
+        spesa_luglio = _tx(self.session, date(2026, 7, 5), "Spesa", "500")
         self.session.add(spesa_luglio)
         self.session.flush()
         self.session.add(_rimborso(date(2026, 10, 1), spesa_luglio, "200"))
         self.session.commit()
         # Luglio netto = 300 + 500 - 200 = 600. Avanzo = 400 - 600 = -200.
-        self.assertEqual(previous_month_leftover(self.session, 2026, 8), {"spesa": -200.0})
+        self.assertEqual(previous_month_leftover(self.session, 2026, 8), {self.spesa: -200.0})
 
 
 class AndamentoStoricoTests(BudgetBase):
@@ -202,8 +211,8 @@ class AndamentoStoricoTests(BudgetBase):
     def test_un_anno_senza_piano_mostra_comunque_lo_speso_reale(self) -> None:
         # 2023 non ha BudgetPlan ma ha transazioni: deve vedere lo speso reale.
         self.session.add_all([
-            _tx(date(2023, 3, 10), "Spesa", "200"),
-            _tx(date(2023, 7, 5), "Spesa", "350"),
+            _tx(self.session, date(2023, 3, 10), "Spesa", "200"),
+            _tx(self.session, date(2023, 7, 5), "Spesa", "350"),
         ])
         self.session.commit()
         totali = budget_annual(2023, "Expenses", self.session)["monthTotals"]
@@ -214,8 +223,8 @@ class AndamentoStoricoTests(BudgetBase):
         self.assertAlmostEqual(totali[6]["actual"], 350.0)
 
     def test_le_tendenze_includono_anni_senza_piano(self) -> None:
-        self.session.add(_tx(date(2023, 4, 10), "Spesa", "150"))
-        self.session.add(_tx(date(2023, 9, 10), "Spesa", "80"))
+        self.session.add(_tx(self.session, date(2023, 4, 10), "Spesa", "150"))
+        self.session.add(_tx(self.session, date(2023, 9, 10), "Spesa", "80"))
         self.session.commit()
         dati = budget_trends(years="2023,2024", budget_type="Expenses", session=self.session)
         anno_2023 = next(item for item in dati["years"] if item["year"] == 2023)
@@ -227,10 +236,10 @@ class AndamentoStoricoTests(BudgetBase):
     def test_gli_anni_disponibili_solo_se_hanno_dati(self) -> None:
         # 2022 e 2024 hanno transazioni, 2023 no: deve uscire solo [2022, 2024].
         self.session.add_all([
-            _tx(date(2022, 5, 5), "Spesa", "100"),
-            _tx(date(2024, 6, 5), "Spesa", "200"),
+            _tx(self.session, date(2022, 5, 5), "Spesa", "100"),
+            _tx(self.session, date(2024, 6, 5), "Spesa", "200"),
             BudgetPlan(period=date(2025, 1, 1), budget_type="Expenses",
-                       category="Spesa", amount=Decimal("300")),
+                       category_id=categoria(self.session, "Spesa"), amount=Decimal("300")),
         ])
         self.session.commit()
         anni = budget_trends_available_years(self.session)["years"]
@@ -241,9 +250,9 @@ class AndamentoStoricoTests(BudgetBase):
 
     def test_il_multiselettore_ignora_anni_non_nella_lista(self) -> None:
         # L'utente sceglie anni specifici: il backend deve rispettare la lista.
-        self.session.add(_tx(date(2023, 1, 5), "Spesa", "10"))
-        self.session.add(_tx(date(2024, 2, 5), "Spesa", "20"))
-        self.session.add(_tx(date(2025, 3, 5), "Spesa", "30"))
+        self.session.add(_tx(self.session, date(2023, 1, 5), "Spesa", "10"))
+        self.session.add(_tx(self.session, date(2024, 2, 5), "Spesa", "20"))
+        self.session.add(_tx(self.session, date(2025, 3, 5), "Spesa", "30"))
         self.session.commit()
         dati = budget_trends(years="2023,2025", budget_type="Expenses", session=self.session)
         anni_ritornati = sorted(item["year"] for item in dati["years"])
@@ -266,10 +275,10 @@ class RisparmioMensileTests(BudgetBase):
 
     def _entrate_e_spese(self) -> None:
         self.session.add_all([
-            _tx(date(2026, 1, 10), "Stipendio", "2000", "Income"),
-            _tx(date(2026, 1, 20), "Casa", "1200"),
-            _tx(date(2026, 2, 10), "Stipendio", "2000", "Income"),
-            _tx(date(2026, 2, 20), "Casa", "1500"),
+            _tx(self.session, date(2026, 1, 10), "Stipendio", "2000", "Income"),
+            _tx(self.session, date(2026, 1, 20), "Casa", "1200"),
+            _tx(self.session, date(2026, 2, 10), "Stipendio", "2000", "Income"),
+            _tx(self.session, date(2026, 2, 20), "Casa", "1500"),
         ])
         self.session.commit()
 
@@ -305,7 +314,7 @@ class QuadraturaDelMeseTests(BudgetBase):
     def test_il_piano_del_mese_ha_la_sua_quadratura(self) -> None:
         from app.core_routes import budgets
         for mese, entrate, spese in ((8, "1736", "1287.44"), (9, "250", "147.11")):
-            self.session.add_all([_piano(mese, "Stipendio", entrate, tipo="Income"), _piano(mese, "Casa", spese)])
+            self.session.add_all([_piano(self.session, mese, "Stipendio", entrate, tipo="Income"), _piano(self.session, mese, "Casa", spese)])
         self.session.commit()
         saldo = budgets(2026, 9, "Savings", self.session)["balance"]
         self.assertEqual((250.0, 147.11, 102.89), (saldo["income"], saldo["expenses"], saldo["savings"]))

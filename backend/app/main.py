@@ -25,8 +25,9 @@ from sqlalchemy.orm import Session
 
 from .calculation_engine import (account_balances_series, calculate_account_balance, debito_pianificato_al, effective_date, piano_ammortamento,
                                  normalized_name, stato_debito_registrato)
-from .categorization import PENDING_CATEGORY, applica, carica_regole, scartate
-from .core_routes import (CATEGORY_GROUPS, GOAL_KINDS, MAX_SELEZIONE_MASSA, benchmark_symbol, display_currencies,
+from .categorization import PENDING_CATEGORY, applica, carica_regole, categoria_da_nome, scartate
+from .categorie import gruppo_di_categoria, nome_di, nomi as nomi_categorie
+from .core_routes import (GOAL_KINDS, MAX_SELEZIONE_MASSA, benchmark_symbol, display_currencies,
                           fx_symbols, movimenti_per_saldi, num, sync_savings_plan)
 from .database import Base, admin_engine, engine, get_session, set_default_user, current_user_id
 from .migrations import accendi_isolamento, aggiungi_colonna_utente, tracked_changes
@@ -36,7 +37,7 @@ from .transaction_rules import (REAL_MOVEMENT, BUDGET_MOVEMENT, SPOSTAMENTI, TIP
 from .market_data import MarketDataError, fetch_instrument_profile, fetch_price_history, fetch_yahoo_quote, search_yahoo_symbols
 from .yahoo_profile import YahooProfileError, YahooRateLimited, fetch_profile
 from .market_cache import get_or_fetch_price, list_cached_symbols
-from .models import Account, AccountValuation, AppSetting, BudgetPlan, InstrumentProfile, LiabilityProfile, LiabilityTransactionDetail, MarketPrice, Goal, InvestmentInstrument, InvestmentTransaction, InvestmentTransactionDetail, Note, Transaction, TransactionLedgerLink
+from .models import Account, AccountValuation, AppSetting, BudgetPlan, Category, InstrumentProfile, LiabilityProfile, LiabilityTransactionDetail, MarketPrice, Goal, InvestmentInstrument, InvestmentTransaction, InvestmentTransactionDetail, Note, Transaction, TransactionLedgerLink
 from .interchange import FORMAT_VERSION, build_export
 from .interchange_import import InterchangeError, read_and_validate, write_imported_data, summarize_state
 from .models import User
@@ -161,7 +162,9 @@ def health_summary(session: Session = Depends(get_session)) -> dict:
         "budgets": session.scalar(select(func.count(BudgetPlan.id))) or 0,
         "investments": session.scalar(select(func.count(InvestmentTransaction.id))) or 0,
         "instruments": session.scalar(select(func.count(InvestmentInstrument.id))) or 0,
-        "categories": len(session.execute(select(Transaction.category).distinct().where(REAL_MOVEMENT)).all()),
+        # Quante categorie esistono, non quante ne sono state usate: una
+        # categoria appena creata e' una categoria, e il conteggio la vede.
+        "categories": session.scalar(select(func.count(Category.id))) or 0,
     }
     return {
         "status": "ok",
@@ -319,6 +322,13 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
         per_importo[abs(item.amount)].append(item)
         per_giorno[item.occurred_on].append(item)
     regole = carica_regole(session)
+    # La categoria e' un id: qui si legge per mostrarla, ma l'anteprima non
+    # scrive niente. Se il nome che arriva dal file non esiste ancora,
+    # `categoria_id` resta vuoto e la categoria nasce al salvataggio: crearla
+    # adesso vorrebbe dire inventare categorie per un'anteprima che magari si
+    # chiude senza salvare.
+    nomi_cat = nomi_categorie(session)
+    id_di_nome = {nome.casefold(): identificativo for identificativo, nome in nomi_cat.items()}
     usati: set[int] = set()
     rows = []
     for tx in raw_transactions:
@@ -344,18 +354,24 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
         # Nessuno ha scelto a mano questa categoria: se una regola decide, la
         # categoria resta automatica e il pattern dice da quale regola viene.
         tipo = tx.get("transactionType", "Expenses")
-        automatica = not (tx.get("category") or "").strip() \
-                     or (tx.get("category") or "").strip().casefold() == PENDING_CATEGORY.casefold()
+        dichiarata = (tx.get("category") or "").strip()
+        automatica = not dichiarata or dichiarata.casefold() == PENDING_CATEGORY.casefold()
         decisione = applica(regole, description, tipo, amount)
-        categoria = _resolve_category(tx.get("category"), tipo, decisione[0] if decisione else None)
+        if automatica and decisione:
+            categoria_id = decisione[0]
+            categoria = nomi_cat.get(categoria_id) or PENDING_CATEGORY
+        else:
+            categoria = _resolve_category(tx.get("category"), tipo)
+            categoria_id = id_di_nome.get(categoria.casefold())
         rows.append({
             "id": None, "date": occurred, "description": description,
             "details": description,
             "category": categoria,
+            "categoryId": categoria_id,
             "categoryAutomatic": automatica,
             # La regola si nomina solo quando ha davvero deciso: se la riga
             # portava gia' una categoria, quella vince e la regola non c'entra.
-            "categoryRule": decisione[1] if decisione and automatica and categoria == decisione[0] else None,
+            "categoryRule": decisione[1] if decisione and automatica and categoria_id == decisione[0] else None,
             "amount": float(amount), "transactionType": tipo,
             "type": tx.get("type", "expense"), "accountName": tx.get("accountName"),
             "destinationName": tx.get("destinationName"), "goal": tx.get("goal"),
@@ -416,7 +432,8 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
                 # dire che l'anteprima l'ha mostrata per niente. Una riga senza
                 # categoria resta senza: il segnaposto lo scioglie
                 # `_resolve_category`.
-                category=_resolve_category(tx_data.get('category'), transaction_type),
+                category_id=_id_categoria(session, category_id=tx_data.get('categoryId'),
+                                          nome=tx_data.get('category'), transaction_type=transaction_type),
                 amount=amount, account_name=account.name, account_type=account.source_group.title(),
                 destination_name=destination.name if transaction_type in SPOSTAMENTI else None,
                 destination_type=destination.source_group.title() if transaction_type in SPOSTAMENTI else None,
@@ -427,7 +444,7 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
             session.flush()
             _sync_liability_detail(session, transaction, TransactionPayload(
                 occurred_on=occurred.isoformat(), transaction_type=transaction_type,
-                category=transaction.category, amount=float(amount), account_name=transaction.account_name,
+                categoryId=transaction.category_id, amount=float(amount), account_name=transaction.account_name,
                 destination_name=transaction.destination_name, details=transaction.details))
             session.commit()
             saved_count += 1
@@ -538,11 +555,13 @@ VALID_TRANSACTION_TYPES = set(TIPI_MOVIMENTO)
 
 
 def _transaction_to_dict(tx: Transaction, session: Session | None = None) -> dict:
+    categoria = nome_di(session, tx.category_id)
     payload = {
         "id": tx.id,
         "description": tx.details or "",
-        "category": tx.category or "Da categorizzare",
-        "categoryRaw": (tx.category or "Da categorizzare"),
+        "category": categoria,
+        "categoryId": tx.category_id,
+        "categoryRaw": categoria,
         "date": tx.occurred_on.isoformat() if tx.occurred_on else None,
         "effectiveOn": tx.effective_on.isoformat() if tx.effective_on else None,
         "amount": float(tx.amount or 0),
@@ -600,6 +619,10 @@ class TransactionPayload(BaseModel):
     # Assente sui trasferimenti, che non hanno categoria; obbligatoria per il
     # resto, ma il controllo sta nel gestore perche' dipende dal tipo.
     category: str | None = None
+    # L'id vince sul nome quando c'e': l'elenco a tendina dell'albero manda
+    # questo, e due figli con lo stesso nome sotto padri diversi si
+    # distinguono solo cosi'. Il nome resta per chi non manda id.
+    categoryId: int | None = None
     amount: float
     account_name: str | None = None
     destination_name: str | None = None
@@ -626,18 +649,19 @@ def _apply_transaction_payload(tx: Transaction, payload: TransactionPayload, ses
     # e per i versamenti su un broker allo stesso modo. Il segnaposto "_" e'
     # quello che il workbook usava nella stessa colonna; l'API lo rimuove in
     # lettura, cosi' non si vede un trattino dove non c'e' niente.
-    if tx.id is None:
-        category = _resolve_category(payload.category, payload.transaction_type)
-    elif payload.transaction_type in SPOSTAMENTI:
-        category = "_"
-    elif not payload.category or not payload.category.strip():
+    #
+    # Su un movimento nuovo la categoria mancante diventa "Da categorizzare" -
+    # l'import non si ferma per una riga senza categoria -; su uno esistente
+    # invece manca e basta, e la modifica si rifiuta: un movimento che aveva una
+    # categoria non deve perderla perche' il modulo non l'ha mandata.
+    if (tx.id is not None and payload.transaction_type not in SPOSTAMENTI
+            and payload.categoryId is None and not (payload.category or "").strip()):
         raise HTTPException(status_code=422, detail="category obbligatoria")
-    else:
-        category = payload.category.strip()
 
     tx.occurred_on = occurred
     tx.transaction_type = payload.transaction_type
-    tx.category = category
+    tx.category_id = _id_categoria(session, category_id=payload.categoryId, nome=payload.category,
+                                   transaction_type=payload.transaction_type)
     tx.effective_on = compute_effective_on(session, occurred, payload.transaction_type)
     tx.amount = _to_decimal(payload.amount, "amount", allow_negative=False)
     tx.account_name = (payload.account_name or None) or None
@@ -765,7 +789,8 @@ class BulkTransactionsPayload(BaseModel):
 
 @app.patch("/api/transactions/bulk")
 def bulk_transactions(payload: BulkTransactionsPayload, session: Session = Depends(get_session)):
-    allowed = {"category", "account_name", "transaction_type", "counts_in_budget", "incomplete_accepted"}
+    allowed = {"category", "categoryId", "account_name", "transaction_type", "counts_in_budget",
+               "incomplete_accepted"}
     booleani = {"counts_in_budget", "incomplete_accepted"}
     if not payload.changes or set(payload.changes) - allowed:
         raise HTTPException(422, detail="bulkInvalidFields")
@@ -774,6 +799,10 @@ def bulk_transactions(payload: BulkTransactionsPayload, session: Session = Depen
     if len(payload.ids) > MAX_SELEZIONE_MASSA:
         raise HTTPException(422, detail="bulkTooMany")
     for key, value in payload.changes.items():
+        if key == "categoryId":
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise HTTPException(422, detail="bulkInvalidFields")
+            continue
         if (key in booleani and type(value) is not bool) or (key not in booleani and not isinstance(value, str)):
             raise HTTPException(422, detail="bulkInvalidFields")
     # Accettare un movimento incompleto non e' modificarlo: e' dire che lo si e'
@@ -793,7 +822,18 @@ def bulk_transactions(payload: BulkTransactionsPayload, session: Session = Depen
             for tx in rows:
                 previous = (tx.account_name, tx.destination_name)
                 for key, value in payload.changes.items():
+                    if key in ("category", "categoryId"):
+                        continue
                     setattr(tx, key, value.strip() if isinstance(value, str) else value)
+                if "category" in payload.changes or "categoryId" in payload.changes:
+                    # La categoria e' una riga, e si scrive dopo il tipo: uno
+                    # spostamento non ne ha una, e il tipo puo' cambiare qui.
+                    # Il nome resta la via dell'interfaccia com'era prima
+                    # dell'albero, l'id e' quella nuova.
+                    tx.category_id = _id_categoria(session,
+                                                   category_id=payload.changes.get("categoryId"),
+                                                   nome=payload.changes.get("category"),
+                                                   transaction_type=tx.transaction_type)
                 if tx.transaction_type in SPOSTAMENTI:
                     tx.counts_in_budget = False
                 if solo_accettazione:
@@ -912,6 +952,7 @@ class SplitPayload(BaseModel):
     amount: float
     transaction_type: str
     category: str | None = None
+    categoryId: int | None = None
     destination_name: str | None = None
     details: str | None = None
 
@@ -951,7 +992,8 @@ def split_transaction(tx_id: int, payload: SplitPayload, session: Session = Depe
     nuovo = Transaction()
     _apply_transaction_payload(nuovo, TransactionPayload(
         occurred_on=tx.occurred_on.isoformat(), transaction_type=payload.transaction_type,
-        category=payload.category, amount=float(parte), account_name=tx.account_name,
+        category=payload.category, categoryId=payload.categoryId, amount=float(parte),
+        account_name=tx.account_name,
         destination_name=payload.destination_name, details=payload.details if payload.details is not None else tx.details,
     ), session)
     tx.amount -= parte
@@ -1568,9 +1610,10 @@ def liabilities(session: Session = Depends(get_session)):
     stime, rivalutazioni = valutazioni_per_conto(session), rivalutazioni_per_conto(session)
     by_name: dict[str, list[dict[str, Any]]] = defaultdict(list)
     names_set = set(names)
+    nomi_cat = nomi_categorie(session)
     for tx in transactions:
         item = {"id": tx.id, "occurredOn": tx.effective_on.isoformat(), "type": tx.transaction_type,
-                "amount": float(tx.amount), "description": tx.details or tx.category,
+                "amount": float(tx.amount), "description": tx.details or nomi_cat.get(tx.category_id, ""),
                 "accountName": tx.account_name, "destinationName": tx.destination_name}
         for name in {tx.account_name, tx.destination_name} & names_set:
             by_name[name].append({**item, "effect": float(-calculate_account_balance(0, name, [tx]))})
@@ -2484,9 +2527,12 @@ def list_transaction_links_for_ledger(ledger_id: int, session: Session = Depends
         .where(TransactionLedgerLink.ledger_id == ledger_id)
         .order_by(Transaction.occurred_on.desc(), Transaction.id.desc())
     ).all()
+    nomi_cat = nomi_categorie(session)
     items = []
     for link, tx in rows:
-        items.append({"linkId": link.id, "id": tx.id, "category": tx.category, "amount": num(tx.amount), "occurredOn": tx.occurred_on.isoformat()})
+        items.append({"linkId": link.id, "id": tx.id, "category": nomi_cat.get(tx.category_id, ""),
+                      "categoryId": tx.category_id, "amount": num(tx.amount),
+                      "occurredOn": tx.occurred_on.isoformat()})
     return {"items": items}
 
 
@@ -2688,13 +2734,20 @@ def _budget_period(year: int, month: int) -> date:
     return date(year, month, 1)
 
 
-def _budget_to_dict(plan: BudgetPlan) -> dict:
+def _budget_to_dict(plan: BudgetPlan, session: Session) -> dict:
+    """Una voce di budget come la vuole l'interfaccia.
+
+    Il gruppo non sta piu' sulla riga, si legge dall'albero. Resta nella
+    risposta perche' l'interfaccia lo mostra, e adesso dice la stessa cosa per
+    ogni mese invece di dipendere da quando quel budget e' stato salvato.
+    """
     return {
         "id": plan.id,
         "period": plan.period.isoformat(),
         "budgetType": plan.budget_type,
-        "category": plan.category,
-        "categoryGroup": plan.category_group,
+        "category": nome_di(session, plan.category_id),
+        "categoryId": plan.category_id,
+        "categoryGroup": gruppo_di_categoria(session).get(plan.category_id),
         "amount": float(plan.amount or 0),
     }
 
@@ -2703,15 +2756,17 @@ class BudgetCreatePayload(BaseModel):
     year: int
     month: int
     budget_type: str = "Expenses"
-    category: str
+    category: str | None = None
+    # L'id vince sul nome: due figli con lo stesso nome sotto padri diversi si
+    # distinguono solo cosi'.
+    categoryId: int | None = None
     amount: float
-    category_group: str | None = None
 
 
 class BudgetUpdatePayload(BaseModel):
     category: str | None = None
+    categoryId: int | None = None
     amount: float | None = None
-    category_group: str | None = None
 
 
 class BudgetCopyPayload(BaseModel):
@@ -2725,10 +2780,10 @@ class BudgetCopyPayload(BaseModel):
 class BudgetBulkPayload(BaseModel):
     year: int
     budget_type: str = "Expenses"
-    category: str
+    category: str | None = None
+    categoryId: int | None = None
     months: list[int]
     amount: float
-    category_group: str | None = None
 
 
 def _rifiuta_savings(budget_type: str) -> None:
@@ -2766,6 +2821,51 @@ def _resolve_category(category: str | None, transaction_type: str, regola: str |
     return regola or PENDING_CATEGORY
 
 
+def _id_categoria(session: Session, *, category_id: int | None, nome: str | None,
+                  transaction_type: str) -> int | None:
+    """La categoria da scrivere su un movimento, come id.
+
+    L'id vince sul nome: due figli con lo stesso nome sotto padri diversi hanno
+    lo stesso nome, e il nome da solo non direbbe quale dei due. Un id che non
+    esiste si rifiuta invece di finire in un errore di chiave esterna.
+
+    Il nome resta la via di chi non manda id - i file di scambio vecchi,
+    l'interfaccia com'era prima che la tendina diventasse un albero - e in quel
+    caso si risolve come sempre: se la categoria non c'e' nasce, perche' un
+    nome scritto a mano e' una categoria nuova, non un errore. E' quello che
+    faceva la vecchia colonna di testo, e le categorie della migrazione sono
+    nate cosi'.
+
+    I trasferimenti non hanno categoria: tornano vuoti anche col nome scritto.
+    """
+    if transaction_type in SPOSTAMENTI:
+        return None
+    if category_id is not None:
+        if session.get(Category, category_id) is None:
+            raise HTTPException(status_code=404, detail="categoryNotFound")
+        return category_id
+    return categoria_da_nome(session, _resolve_category(nome, transaction_type))
+
+
+def _categoria_di_budget(session: Session, category_id: int | None, nome: str | None) -> int:
+    """L'id della categoria di una riga di budget.
+
+    Una riga di budget senza categoria non vuol dire niente - "quanto ho
+    stanziato, per cosa?" - e si rifiuta invece di scriverla vuota. Un nome
+    nuovo diventa una categoria, come per i movimenti: pianificare una
+    categoria che non esiste ancora e' un modo normale di pianificare prima di
+    spendere, ed e' quello che fa l'import del foglio di budget.
+    """
+    if category_id is not None:
+        if session.get(Category, category_id) is None:
+            raise HTTPException(status_code=404, detail="categoryNotFound")
+        return category_id
+    categoria = categoria_da_nome(session, (nome or "").strip())
+    if categoria is None:
+        raise HTTPException(status_code=422, detail="category obbligatoria")
+    return categoria
+
+
 def _check_budget_type(budget_type: str) -> str:
     if budget_type not in VALID_BUDGET_TYPES:
         raise HTTPException(status_code=422, detail=f"budget_type non valido: {budget_type}")
@@ -2776,9 +2876,7 @@ def _check_budget_type(budget_type: str) -> str:
 def create_budget(payload: BudgetCreatePayload, session: Session = Depends(get_session)):
     """Crea la voce di budget di una categoria per un periodo."""
     budget_type = _check_budget_type(payload.budget_type)
-    category = payload.category.strip()
-    if not category:
-        raise HTTPException(status_code=422, detail="category obbligatoria")
+    categoria_id = _categoria_di_budget(session, payload.categoryId, payload.category)
     # Il risparmio effettivo e' un numero solo - quello che resta delle entrate -
     # e non si puo' spalmare fra piu' categorie senza inventarselo. Una seconda
     # categoria mostrerebbe per sempre "pianificato X, effettivo zero", che e'
@@ -2786,11 +2884,12 @@ def create_budget(payload: BudgetCreatePayload, session: Session = Depends(get_s
     _rifiuta_savings(budget_type)
     period = _budget_period(payload.year, payload.month)
     existing = session.scalar(select(BudgetPlan).where(
-        BudgetPlan.period == period, BudgetPlan.budget_type == budget_type, BudgetPlan.category == category))
+        BudgetPlan.period == period, BudgetPlan.budget_type == budget_type,
+        BudgetPlan.category_id == categoria_id))
     if existing is not None:
-        raise HTTPException(status_code=409, detail=f"Budget gia' presente per '{category}' in questo periodo")
-    plan = BudgetPlan(period=period, budget_type=budget_type, category=category,
-                      category_group=(payload.category_group or None),
+        raise HTTPException(status_code=409, detail=f"Budget gia' presente per "
+                                                    f"'{nome_di(session, categoria_id)}' in questo periodo")
+    plan = BudgetPlan(period=period, budget_type=budget_type, category_id=categoria_id,
                       amount=_to_decimal(payload.amount, "amount", allow_negative=False))
     session.add(plan)
     try:
@@ -2801,7 +2900,7 @@ def create_budget(payload: BudgetCreatePayload, session: Session = Depends(get_s
     except IntegrityError as exc:
         session.rollback()
         raise HTTPException(status_code=409, detail=f"Conflitto budget: {exc.orig}") from exc
-    return _budget_to_dict(plan)
+    return _budget_to_dict(plan, session)
 
 
 @app.patch("/api/budgets/{budget_id}")
@@ -2811,15 +2910,10 @@ def update_budget(budget_id: int, payload: BudgetUpdatePayload, session: Session
     if plan is None:
         raise HTTPException(status_code=404, detail=f"Budget {budget_id} non trovato")
     _rifiuta_savings(plan.budget_type)
-    if payload.category is not None:
-        category = payload.category.strip()
-        if not category:
-            raise HTTPException(status_code=422, detail="category non puo' essere vuota")
-        plan.category = category
+    if payload.category is not None or payload.categoryId is not None:
+        plan.category_id = _categoria_di_budget(session, payload.categoryId, payload.category)
     if payload.amount is not None:
         plan.amount = _to_decimal(payload.amount, "amount", allow_negative=False)
-    if payload.category_group is not None:
-        plan.category_group = payload.category_group or None
     try:
         session.flush()
         sync_savings_plan(session, plan.period)
@@ -2828,7 +2922,7 @@ def update_budget(budget_id: int, payload: BudgetUpdatePayload, session: Session
     except IntegrityError as exc:
         session.rollback()
         raise HTTPException(status_code=409, detail="Esiste gia' un budget per questa categoria nel periodo") from exc
-    return _budget_to_dict(plan)
+    return _budget_to_dict(plan, session)
 
 
 @app.delete("/api/budgets/{budget_id}")
@@ -2844,36 +2938,6 @@ def delete_budget(budget_id: int, session: Session = Depends(get_session)):
     sync_savings_plan(session, period)
     session.commit()
     return {"success": True, "deleted_id": budget_id}
-
-
-class CategoryGroupPayload(BaseModel):
-    category: str
-    category_group: str | None = None
-
-
-@app.put("/api/category-groups")
-def set_category_group(payload: CategoryGroupPayload, session: Session = Depends(get_session)):
-    """Classifica una categoria come bisogno o piacere, per tutti i periodi.
-
-    La classificazione vive sulle righe di budget perche' e' li' che c'era gia'
-    la colonna, ma non appartiene al mese: cambiarla in settembre e lasciare
-    agosto com'era darebbe due risposte diverse alla stessa domanda. Si scrive
-    quindi su tutte le righe di quella categoria in una volta sola.
-    """
-    category = payload.category.strip()
-    if not category:
-        raise HTTPException(status_code=422, detail="category obbligatoria")
-    group = (payload.category_group or "").strip() or None
-    if group is not None and group not in CATEGORY_GROUPS:
-        raise HTTPException(status_code=422, detail=f"Gruppo non valido: {group}")
-    rows = session.scalars(select(BudgetPlan).where(
-        func.lower(BudgetPlan.category) == category.lower())).all()
-    if not rows:
-        raise HTTPException(status_code=404, detail=f"Nessun budget per la categoria '{category}'")
-    for row in rows:
-        row.category_group = group
-    session.commit()
-    return {"success": True, "category": category, "categoryGroup": group, "updated": len(rows)}
 
 
 @app.post("/api/budgets/copy")
@@ -2899,8 +2963,8 @@ def copy_budget(payload: BudgetCopyPayload, session: Session = Depends(get_sessi
         session.delete(existing)
     session.flush()
     for row in rows:
-        session.add(BudgetPlan(period=target, budget_type=budget_type, category=row.category,
-                               category_group=row.category_group, amount=row.amount))
+        session.add(BudgetPlan(period=target, budget_type=budget_type, category_id=row.category_id,
+                               amount=row.amount))
     session.flush()
     sync_savings_plan(session, target)
     session.commit()
@@ -2912,9 +2976,7 @@ def bulk_budget(payload: BudgetBulkPayload, session: Session = Depends(get_sessi
     """Imposta lo stesso importo su piu' mesi dello stesso anno per una categoria."""
     budget_type = _check_budget_type(payload.budget_type)
     _rifiuta_savings(budget_type)
-    category = payload.category.strip()
-    if not category:
-        raise HTTPException(status_code=422, detail="category obbligatoria")
+    categoria_id = _categoria_di_budget(session, payload.categoryId, payload.category)
     months = sorted({int(month) for month in payload.months})
     if not months:
         raise HTTPException(status_code=422, detail="Nessun mese selezionato")
@@ -2923,15 +2985,14 @@ def bulk_budget(payload: BudgetBulkPayload, session: Session = Depends(get_sessi
     for month in months:
         period = _budget_period(payload.year, month)
         plan = session.scalar(select(BudgetPlan).where(
-            BudgetPlan.period == period, BudgetPlan.budget_type == budget_type, BudgetPlan.category == category))
+            BudgetPlan.period == period, BudgetPlan.budget_type == budget_type,
+            BudgetPlan.category_id == categoria_id))
         if plan is None:
-            session.add(BudgetPlan(period=period, budget_type=budget_type, category=category,
-                                   category_group=(payload.category_group or None), amount=amount))
+            session.add(BudgetPlan(period=period, budget_type=budget_type, category_id=categoria_id,
+                                   amount=amount))
             created += 1
         else:
             plan.amount = amount
-            if payload.category_group is not None:
-                plan.category_group = payload.category_group or None
             updated += 1
     session.flush()
     for month in months:
@@ -3417,7 +3478,8 @@ async def import_csv_statement(file: UploadFile = File(...), session: Session = 
 
 class RecurringTransactionCreate(BaseModel):
     description: str
-    category: str
+    category: str | None = None
+    categoryId: int | None = None
     categoryRaw: str = "Other"
     amount: float
     type: str = "expense"
@@ -3444,11 +3506,18 @@ class RecurringTransactionResponse(BaseModel):
     next_occurrence: str | None
 
 
-def _recurring_template_to_response(template: Transaction, next_occ: date | None) -> "RecurringTransactionResponse":
+def _recurring_template_to_response(template: Transaction, next_occ: date | None,
+                                    nome: str) -> "RecurringTransactionResponse":
+    """Un modello di ricorrenza come lo vuole l'interfaccia.
+
+    Il nome della categoria arriva da fuori: chi elenca i modelli lo prende
+    dalla mappa caricata una volta sola, invece di interrogare il database per
+    ogni riga.
+    """
     return RecurringTransactionResponse(
         id=template.id,
-        description=template.details or template.category,
-        category=template.category,
+        description=template.details or nome,
+        category=nome,
         amount=float(template.amount),
         type={"Income": "income", "Expenses": "expense", "Savings": "saving", "Transfers": "transfer"}.get(template.transaction_type, "expense"),
         transactionType=template.transaction_type,
@@ -3475,7 +3544,8 @@ async def create_recurring_transaction(
             occurred_on=start_date,
             effective_on=compute_effective_on(session, start_date, data.transactionType),
             transaction_type=data.transactionType,
-            category=data.category,
+            category_id=_id_categoria(session, category_id=data.categoryId, nome=data.category,
+                                      transaction_type=data.transactionType),
             amount=Decimal(str(abs(data.amount))),
             account_name=data.accountName,
             destination_name=data.destinationName,
@@ -3491,7 +3561,7 @@ async def create_recurring_transaction(
         session.refresh(template)
 
         next_occ = _calculate_next_occurrence(template.occurred_on, template.recurrence_rule, template.recurrence_end_date)
-        return _recurring_template_to_response(template, next_occ)
+        return _recurring_template_to_response(template, next_occ, nome_di(session, template.category_id))
     except HTTPException:
         session.rollback()
         raise
@@ -3509,10 +3579,11 @@ async def list_recurring_transactions(
         select(Transaction).where(Transaction.is_recurring_template == True)
     ).scalars().all()
 
+    nomi_cat = nomi_categorie(session)
     result = []
     for t in templates:
         next_occ = _calculate_next_occurrence(t.occurred_on, t.recurrence_rule, t.recurrence_end_date)
-        result.append(_recurring_template_to_response(t, next_occ))
+        result.append(_recurring_template_to_response(t, next_occ, nomi_cat.get(t.category_id, "")))
     return result
 
 
@@ -3583,7 +3654,7 @@ async def generate_recurring_transactions(
                         occurred_on=current,
                         effective_on=compute_effective_on(session, current, template.transaction_type),
                         transaction_type=template.transaction_type,
-                        category=template.category,
+                        category_id=template.category_id,
                         amount=template.amount,
                         account_name=template.account_name,
                         destination_name=template.destination_name,
@@ -3600,7 +3671,7 @@ async def generate_recurring_transactions(
                     generated += 1
                 except Exception as e:
                     session.rollback()
-                    errors.append(f"{template.category} @ {current}: {str(e)}")
+                    errors.append(f"{nome_di(session, template.category_id)} @ {current}: {str(e)}")
 
             current = _calculate_next_occurrence(current, template.recurrence_rule, template.recurrence_end_date)
 
@@ -3716,38 +3787,36 @@ async def get_budget_alerts(
         )
     ).scalars().all()
 
-    # Calcola spesa per categoria
+    # Calcola spesa per categoria. Si somma sugli id: due modi di scrivere lo
+    # stesso nome non sono due categorie, e con la chiave esterna il confronto
+    # fra spesa e budget non ha piu' bisogno di abbassare le maiuscole.
     spending = session.execute(
-        select(Transaction.category, func.sum(Transaction.amount))
+        select(Transaction.category_id, func.sum(Transaction.amount))
         .where(
             Transaction.effective_on >= period_start,
             Transaction.effective_on < period_end,
             BUDGET_MOVEMENT,
             Transaction.transaction_type == "Expenses",
         )
-        .group_by(Transaction.category)
+        .group_by(Transaction.category_id)
     ).all()
-    # Aggregazione case-insensitive: Excel confronta le categorie ignorando
-    # maiuscole/minuscole (operatore =), replichiamo lo stesso qui.
-    spending_map: dict[str, float] = {}
-    spending_label: dict[str, str] = {}
-    for cat, total in spending:
-        if cat:
-            key = cat.strip().lower()
-            spending_map[key] = spending_map.get(key, 0.0) + float(total)
-            spending_label.setdefault(key, cat.strip())
+    spending_map: dict[int, float] = {category_id: float(total) for category_id, total in spending
+                                      if category_id is not None}
+    nomi_cat = nomi_categorie(session)
+    gruppi = gruppo_di_categoria(session)
 
     alerts = []
     for budget in budgets:
-        spent = spending_map.get(budget.category.strip().lower(), 0.0)
+        spent = spending_map.get(budget.category_id, 0.0)
         planned = float(budget.amount)
         if planned <= 0:
             continue
         usage = spent / planned
         if usage >= warning_threshold:
             alerts.append({
-                "category": budget.category,
-                "category_group": budget.category_group,
+                "category": nomi_cat.get(budget.category_id, ""),
+                "categoryId": budget.category_id,
+                "category_group": gruppi.get(budget.category_id),
                 "planned": planned,
                 "spent": spent,
                 "usage": round(usage * 100, 1),
@@ -3756,11 +3825,12 @@ async def get_budget_alerts(
 
     # Categorie con spesa ma senza budget
     uncategorized_spending = []
-    budget_categories = {b.category.strip().lower() for b in budgets}
-    for cat, total in spending_map.items():
-        if cat and cat not in budget_categories and total > 0:
+    budget_categories = {b.category_id for b in budgets}
+    for category_id, total in spending_map.items():
+        if category_id not in budget_categories and total > 0:
             uncategorized_spending.append({
-                "category": spending_label.get(cat, cat),
+                "category": nomi_cat.get(category_id, ""),
+                "categoryId": category_id,
                 "spent": total,
             })
 
@@ -3862,6 +3932,7 @@ def download_report(kind: str, year: int = Query(ge=2000, le=2100), month: int =
             BUDGET_MOVEMENT,
         ).order_by(Transaction.effective_on.desc(), Transaction.id.desc())
     ).all()
+    nomi_cat = nomi_categorie(session)
     transactions = []
     for row in rows:
         amount = _report_num(row.amount)
@@ -3869,8 +3940,8 @@ def download_report(kind: str, year: int = Query(ge=2000, le=2100), month: int =
         transactions.append({
             "date": row.effective_on.isoformat(),
             "type": row.transaction_type,
-            "category": row.category,
-            "description": row.details or row.category,
+            "category": nomi_cat.get(row.category_id, ""),
+            "description": row.details or nomi_cat.get(row.category_id, ""),
             "account": row.account_name,
             "destination": row.destination_name,
             "signed_amount": signed,

@@ -24,7 +24,8 @@ from app.core_routes import (RuleBulkPayload, RuleOrderPayload, RulePayload, cat
                              delete_categorization_rule, reorder_categorization_rules, update_categorization_rule)
 from app.database import Base, reset_current_user, set_current_user
 from app.main import PENDING_CATEGORY, _resolve_category, save_pdf_transactions, statement_preview
-from app.models import Account, CategorizationRule, LookupOption, Transaction
+from app.models import Account, CategorizationRule, Transaction
+from tests.categorie_fixture import categoria
 
 
 class MotoreTests(unittest.TestCase):
@@ -36,13 +37,15 @@ class MotoreTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.session.close()
 
-    def _regola(self, pattern: str, categoria: str = "Groceries", **campi) -> CategorizationRule:
-        regola = CategorizationRule(pattern=pattern, category=categoria, **campi)
+    def _regola(self, pattern: str, nome: str = "Groceries", **campi) -> CategorizationRule:
+        # La regola punta alla riga: la categoria del test si crea qui, perche'
+        # un id che non esiste non e' una categoria.
+        regola = CategorizationRule(pattern=pattern, category_id=categoria(self.session, nome), **campi)
         self.session.add(regola)
         self.session.commit()
         return regola
 
-    def _applica(self, descrizione: str, tipo: str = "Expenses", importo: str = "10") -> tuple[str, str] | None:
+    def _applica(self, descrizione: str, tipo: str = "Expenses", importo: str = "10") -> tuple[int, str] | None:
         return applica(carica_regole(self.session), descrizione, tipo, Decimal(importo))
 
     def test_nessuna_regola_lascia_il_movimento_da_categorizzare(self) -> None:
@@ -51,12 +54,12 @@ class MotoreTests(unittest.TestCase):
 
     def test_testo_contenuto_ignora_maiuscole_e_spazi_doppi(self) -> None:
         self._regola("spesa lidl")
-        self.assertEqual(("Groceries", "spesa lidl"), self._applica("SPESA  Lidl   via roma"))
+        self.assertEqual((categoria(self.session, "Groceries"), "spesa lidl"), self._applica("SPESA  Lidl   via roma"))
 
     def test_vince_la_regola_con_posizione_minore_non_la_piu_specifica(self) -> None:
         self._regola("lidl", "Other", position=5)
         self._regola("spesa lidl", "Groceries", position=1)
-        self.assertEqual(("Groceries", "spesa lidl"), self._applica("spesa lidl"))
+        self.assertEqual((categoria(self.session, "Groceries"), "spesa lidl"), self._applica("spesa lidl"))
 
     def test_una_regola_spenta_non_si_applica(self) -> None:
         self._regola("spesa lidl", active=False)
@@ -65,14 +68,14 @@ class MotoreTests(unittest.TestCase):
 
     def test_una_regex_combacia_e_il_testo_non_e_una_regex(self) -> None:
         self._regola(r"^pos \d+", "Commissions", is_regex=True)
-        self.assertEqual(("Commissions", r"^pos \d+"), self._applica("POS 12345 caffe"))
+        self.assertEqual((categoria(self.session, "Commissions"), r"^pos \d+"), self._applica("POS 12345 caffe"))
         self.session.query(CategorizationRule).delete()
         self.session.commit()
         # Lo stesso pattern senza la spunta e' testo: il punto e' un punto, non
         # "un carattere qualunque".
         self._regola("a.b")
         self.assertIsNone(self._applica("axb"))
-        self.assertEqual(("Groceries", "a.b"), self._applica("a.b caffe"))
+        self.assertEqual((categoria(self.session, "Groceries"), "a.b"), self._applica("a.b caffe"))
 
     def test_una_regex_malformata_non_fa_esplodere_l_import(self) -> None:
         # La scrittura la rifiuta: per arrivare qui va forzata nel database.
@@ -83,16 +86,16 @@ class MotoreTests(unittest.TestCase):
 
     def test_importo_assoluto_fra_minimo_e_massimo_estremi_inclusi(self) -> None:
         self._regola("affitto", "Housing", min_amount=Decimal("10"), max_amount=Decimal("50"))
-        self.assertEqual(("Housing", "affitto"), self._applica("affitto", importo="10"))
-        self.assertEqual(("Housing", "affitto"), self._applica("affitto", importo="50"))
-        self.assertEqual(("Housing", "affitto"), self._applica("affitto", importo="-30"))
+        self.assertEqual((categoria(self.session, "Housing"), "affitto"), self._applica("affitto", importo="10"))
+        self.assertEqual((categoria(self.session, "Housing"), "affitto"), self._applica("affitto", importo="50"))
+        self.assertEqual((categoria(self.session, "Housing"), "affitto"), self._applica("affitto", importo="-30"))
         self.assertIsNone(self._applica("affitto", importo="9.99"))
         self.assertIsNone(self._applica("affitto", importo="50.01"))
 
     def test_il_tipo_valorizzato_non_tocca_l_altro_tipo(self) -> None:
         self._regola("stipendio", "Salary", transaction_type="Income")
         self.assertIsNone(self._applica("stipendio", tipo="Expenses"))
-        self.assertEqual(("Salary", "stipendio"), self._applica("stipendio", tipo="Income"))
+        self.assertEqual((categoria(self.session, "Salary"), "stipendio"), self._applica("stipendio", tipo="Income"))
 
     def test_un_trasferimento_non_ha_categoria_e_nessuna_regola_lo_tocca(self) -> None:
         self._regola("giroconto")
@@ -116,7 +119,9 @@ class RotteTests(unittest.TestCase):
         self.engine = create_engine("sqlite://")
         Base.metadata.create_all(self.engine)
         self.session = Session(self.engine)
-        self.session.add(LookupOption(option_group="categories_expenses", position=0, value="Groceries"))
+        # La regola nomina una categoria che deve esistere: prima bastava la voce
+        # nel vocabolario, adesso serve la riga.
+        categoria(self.session, "Groceries")
         self.session.add(Account(source_group="bank", name="Banca", starting_balance=Decimal("0"),
                                  current_balance=Decimal("0"), is_active=True))
         self.session.commit()
@@ -150,7 +155,8 @@ class RotteTests(unittest.TestCase):
         self.assertEqual("Groceries", self._crea(min_amount=10, max_amount=10)["category"])
 
     def test_oltre_duecento_regole_non_se_ne_aggiungono(self) -> None:
-        self.session.add_all([CategorizationRule(pattern=f"regola {n}", category="Groceries")
+        spesa = categoria(self.session, "Groceries")
+        self.session.add_all([CategorizationRule(pattern=f"regola {n}", category_id=spesa)
                               for n in range(MAX_REGOLE)])
         self.session.commit()
         self.assertEqual("ruleLimitReached", self._rifiuto(pattern="una di troppo"))
@@ -205,7 +211,7 @@ class RotteTests(unittest.TestCase):
                                         "occurredOn": "2026-08-05", "accountName": "Banca"}], self.session)
         esito = asyncio.run(save_pdf_transactions(anteprima["transactions"], self.session))
         self.assertEqual([], esito["errors"])
-        self.assertEqual("Groceries", self.session.scalar(select(Transaction.category)))
+        self.assertEqual(categoria(self.session, "Groceries"), self.session.scalar(select(Transaction.category_id)))
 
     def test_una_regola_non_si_applica_ai_movimenti_gia_registrati(self) -> None:
         # Il percorso di scrittura non passa dalle regole: e' la proprieta' di
@@ -222,15 +228,17 @@ class ApprendimentoTests(unittest.TestCase):
         self.engine = create_engine("sqlite://")
         Base.metadata.create_all(self.engine)
         self.session = Session(self.engine)
-        self.session.add(LookupOption(option_group="categories_expenses", position=0, value="Groceries"))
         self.session.commit()
 
     def tearDown(self) -> None:
         self.session.close()
 
-    def _movimenti(self, descrizione: str, categoria: str, quante: int, tipo: str = "Expenses") -> None:
+    def _movimenti(self, descrizione: str, nome: str, quante: int, tipo: str = "Expenses") -> None:
+        # "_" e' il segnaposto dei movimenti senza categoria: adesso vale NULL,
+        # non una categoria chiamata trattino basso.
+        categoria_id = None if nome == "_" else categoria(self.session, nome)
         self.session.add_all([Transaction(occurred_on=date(2026, 1, 1), effective_on=date(2026, 1, 1),
-                                          transaction_type=tipo, category=categoria, amount=Decimal("10.00"),
+                                          transaction_type=tipo, category_id=categoria_id, amount=Decimal("10.00"),
                                           details=descrizione) for _ in range(quante)])
         self.session.commit()
 
@@ -238,7 +246,9 @@ class ApprendimentoTests(unittest.TestCase):
         self._movimenti("spesa lidl", "Groceries", 3)
         proposte = suggest(self.session)["proposte"]
         self.assertEqual(1, len(proposte))
-        self.assertEqual({"pattern": "spesa lidl", "category": "Groceries", "transactionType": "Expenses",
+        self.assertEqual({"pattern": "spesa lidl", "category": "Groceries",
+                          "categoryId": categoria(self.session, "Groceries"),
+                          "transactionType": "Expenses",
                           "occorrenze": 3, "quota": 1.0, "fiducia": "sicura", "altre": []}, proposte[0])
 
     def test_due_righe_sole_non_fanno_una_proposta(self) -> None:
@@ -252,7 +262,8 @@ class ApprendimentoTests(unittest.TestCase):
         proposta = suggest(self.session)["proposte"][0]
         self.assertEqual("incerta", proposta["fiducia"])
         self.assertEqual(0.8, proposta["quota"])
-        self.assertEqual([{"category": "Other", "count": 2}], proposta["altre"])
+        self.assertEqual([{"category": "Other", "categoryId": categoria(self.session, "Other"), "count": 2}],
+                         proposta["altre"])
 
     def test_un_gruppo_diviso_a_meta_finisce_fra_gli_incoerenti(self) -> None:
         # 5 e 5: non si propone, si mostra. E' un problema da guardare, non da
@@ -263,12 +274,14 @@ class ApprendimentoTests(unittest.TestCase):
         self.assertEqual([], risultato["proposte"])
         self.assertEqual("parcheggio", risultato["incoerenti"][0]["pattern"])
         self.assertEqual(10, risultato["incoerenti"][0]["occorrenze"])
-        self.assertEqual([{"category": "Car", "count": 5}, {"category": "Leisure", "count": 5}],
+        self.assertEqual([{"category": "Car", "categoryId": categoria(self.session, "Car"), "count": 5},
+                          {"category": "Leisure", "categoryId": categoria(self.session, "Leisure"), "count": 5}],
                          risultato["incoerenti"][0]["categorie"])
 
     def test_una_descrizione_gia_coperta_da_una_regola_non_si_ripropone(self) -> None:
-        self.session.add(CategorizationRule(pattern="spesa lidl", category="Groceries", active=True))
-        self.session.add(CategorizationRule(pattern="spesa coop", category="Groceries", active=False))
+        spesa = categoria(self.session, "Groceries")
+        self.session.add(CategorizationRule(pattern="spesa lidl", category_id=spesa, active=True))
+        self.session.add(CategorizationRule(pattern="spesa coop", category_id=spesa, active=False))
         self.session.commit()
         self._movimenti("spesa lidl", "Groceries", 4)
         self._movimenti("spesa coop", "Groceries", 4)
@@ -306,7 +319,8 @@ class ApprendimentoTests(unittest.TestCase):
         self.assertEqual(["affitto", "spesa lidl"], [p["pattern"] for p in suggest(self.session)["proposte"]])
 
     def test_il_lotto_scrive_le_regole_spuntate_in_coda_a_quelle_che_ci_sono(self) -> None:
-        self.session.add(CategorizationRule(position=4, pattern="altra", category="Groceries"))
+        self.session.add(CategorizationRule(position=4, pattern="altra",
+                                            category_id=categoria(self.session, "Groceries")))
         self.session.commit()
         create_categorization_rules(RuleBulkPayload(rules=[
             RulePayload(pattern="spesa lidl", category="Groceries", transaction_type="Expenses"),
@@ -319,7 +333,8 @@ class ApprendimentoTests(unittest.TestCase):
         self.assertEqual([False, False], [riga["isRegex"] for riga in regole[1:]])
 
     def test_un_lotto_che_sfora_il_tetto_non_ne_scrive_nessuna(self) -> None:
-        self.session.add_all([CategorizationRule(pattern=f"regola {n}", category="Groceries")
+        spesa = categoria(self.session, "Groceries")
+        self.session.add_all([CategorizationRule(pattern=f"regola {n}", category_id=spesa)
                               for n in range(MAX_REGOLE - 1)])
         self.session.commit()
         with self.assertRaises(HTTPException) as errore:
@@ -332,6 +347,7 @@ class ApprendimentoTests(unittest.TestCase):
     def test_un_lotto_con_due_proposte_uguali_non_ne_scrive_mezza(self) -> None:
         # Meta' lotto scritto e meta' no lascerebbe l'utente senza sapere quali
         # regole sono passate.
+        categoria(self.session, "Groceries")
         with self.assertRaises(HTTPException) as errore:
             create_categorization_rules(RuleBulkPayload(rules=[
                 RulePayload(pattern="spesa lidl", category="Groceries"),
@@ -373,8 +389,8 @@ class IsolamentoTests(unittest.TestCase):
             token = set_current_user(101)
             try:
                 with Session(limited) as session:
-                    session.add_all([LookupOption(option_group="categories_expenses", position=0, value="Groceries"),
-                                     CategorizationRule(pattern="spesa lidl", category="Groceries")])
+                    session.add(CategorizationRule(pattern="spesa lidl",
+                                                   category_id=categoria(session, "Groceries")))
                     session.commit()
             finally:
                 reset_current_user(token)

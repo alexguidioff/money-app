@@ -21,11 +21,12 @@ from unittest import TestCase, skipUnless
 
 from sqlalchemy import extract, func, select
 
+from app.categorie import nomi as nomi_categorie
 from app.calculation_engine import effective_date
 from app.core_routes import derived_savings, goals as goals_endpoint
 from app.database import SessionLocal
 from app.main import late_income_settings
-from app.models import BudgetPlan, Goal, Transaction
+from app.models import Goal, Transaction
 
 try:
     import openpyxl
@@ -87,18 +88,21 @@ def _db_budget_actual(session, year: int, month: int, budget_type: str) -> dict[
     deve essere fra le due cifre del budget.
     """
     rows = session.execute(
-        select(Transaction.category, func.sum(Transaction.amount)).where(
+        select(Transaction.category_id, func.sum(Transaction.amount)).where(
             extract("year", Transaction.effective_on) == year,
             extract("month", Transaction.effective_on) == month,
             Transaction.transaction_type == budget_type,
             Transaction.is_recurring_template.is_(False),
             Transaction.counts_in_budget.is_(True),
-        ).group_by(Transaction.category)
+        ).group_by(Transaction.category_id)
     ).all()
+    # Si aggrega sull'id e il nome si scrive alla fine: il workbook non conosce
+    # i movimenti senza categoria, e non li conosce nemmeno il confronto.
+    nomi = nomi_categorie(session)
     totals: dict[str, float] = defaultdict(float)
-    for category, total in rows:
-        if total:
-            totals[str(category).strip().lower()] += float(total)
+    for categoria_id, total in rows:
+        if total and categoria_id is not None:
+            totals[nomi.get(categoria_id, "").strip().lower()] += float(total)
     return {key: round(value, 2) for key, value in totals.items()}
 
 
@@ -148,13 +152,6 @@ class BudgetAnnualParityTests(TestCase):
     def test_expenses_2025(self):
         expected = _load_tracking_totals(2025, None, "Expenses")
         with SessionLocal() as session:
-            plans = session.scalars(
-                select(BudgetPlan).where(
-                    extract("year", BudgetPlan.period) == 2025,
-                    BudgetPlan.budget_type == "Expenses",
-                )
-            ).all()
-            categories = {p.category for p in plans}
             actual: dict[str, float] = defaultdict(float)
             for month in range(1, 13):
                 for category, total in _db_budget_actual(session, 2025, month, "Expenses").items():

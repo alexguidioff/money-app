@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app import main
 from app.database import Base
 from app.models import Transaction
+from tests.categorie_fixture import categoria
 
 
 class DoppioniEstrattoTests(unittest.TestCase):
@@ -30,8 +31,12 @@ class DoppioniEstrattoTests(unittest.TestCase):
 
     def _movimento(self, giorno: int, importo: str, tipo: str = "Expenses", dettagli: str | None = None,
                    conto: str = "Banca", destinazione: str | None = None) -> int:
+        # Un movimento con una destinazione e' un giroconto e non ha categoria:
+        # l'id mancante e' quello che prima si scriveva "_". Le spese stanno in
+        # una radice vera, creata qui al primo uso.
         riga = Transaction(occurred_on=date(2026, 7, giorno), effective_on=date(2026, 7, giorno),
-                           transaction_type=tipo, category="_" if destinazione else "Other",
+                           transaction_type=tipo,
+                           category_id=None if destinazione else categoria(self.session, "Other"),
                            amount=Decimal(importo), account_name=conto, destination_name=destinazione, details=dettagli)
         self.session.add(riga)
         self.session.commit()

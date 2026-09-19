@@ -13,6 +13,7 @@ from app.core_routes import accounts, budget_actual, movimenti_per_saldi
 from app.database import Base
 from app.main import LiabilityTransferPayload, TransactionPayload, create_liability_transfer, create_transaction, liabilities
 from app.models import Account, AppSetting, LiabilityProfile, LiabilityTransactionDetail, Transaction
+from tests.categorie_fixture import categoria
 
 
 class LiabilityTransferTests(unittest.TestCase):
@@ -32,8 +33,11 @@ class LiabilityTransferTests(unittest.TestCase):
         self.session.close()
 
     def test_la_rata_e_un_solo_movimento_debt(self) -> None:
+        # La categoria e' una riga: la fixture la crea e passa l'id. Il nome
+        # resta solo nelle chiavi del budget, che adesso sono id.
+        interessi = categoria(self.session, "Interessi")
         create_transaction(TransactionPayload(
-            occurred_on="2026-09-08", transaction_type="Expenses", category="Interessi",
+            occurred_on="2026-09-08", transaction_type="Expenses", categoryId=interessi,
             amount=10, account_name="Mutuo", details="Interessi settembre"), self.session)
         result = create_liability_transfer(LiabilityTransferPayload(
             occurred_on="2026-09-08", source_account="Banca", destination_account="Mutuo",
@@ -52,17 +56,20 @@ class LiabilityTransferTests(unittest.TestCase):
                          (detail.principal_amount, detail.interest_amount))
         self.assertEqual(890.0, by_name["Banca"])
         self.assertEqual(900.0, abs(by_name["Mutuo"]))
-        self.assertEqual({"interessi": 10.0}, budget_actual(self.session, 2026, 9, "Expenses"))
+        # `budget_actual` chiave per id di categoria: la chiave e' l'id della
+        # riga creata qui sopra, non piu' il nome.
+        self.assertEqual({interessi: 10.0}, budget_actual(self.session, 2026, 9, "Expenses"))
         self.assertEqual([debt_rows[0].id], result["transactionIds"])
 
     def test_saldo_e_registro_includono_giroconti_e_oneri(self) -> None:
         oggi = date.today().isoformat()
+        interessi = categoria(self.session, "Interessi")
         create_transaction(TransactionPayload(
             occurred_on=oggi, transaction_type="Transfers", amount=100,
             account_name="Banca", destination_name="Mutuo"), self.session)
         create_transaction(TransactionPayload(
             occurred_on=oggi, transaction_type="Expenses", amount=25,
-            account_name="Mutuo", category="Interessi", debt_interest=25), self.session)
+            account_name="Mutuo", categoryId=interessi, debt_interest=25), self.session)
         dati = liabilities(self.session)
         voce = dati["items"][0]
         saldo = next(r["value"] for r in accounts(at=None, session=self.session)["items"]
@@ -72,7 +79,7 @@ class LiabilityTransferTests(unittest.TestCase):
         self.assertEqual(saldo, dati["summary"]["totalDebt"])
         self.assertEqual(-100, voce["reconciliationDifference"])
         self.assertEqual([-100, 25], sorted(r["effect"] for r in voce["movements"]))
-        self.assertEqual({"interessi": 25}, budget_actual(self.session, date.today().year,
+        self.assertEqual({interessi: 25}, budget_actual(self.session, date.today().year,
                                                        date.today().month, "Expenses"))
 
     def test_confronto_e_grafico_arrivano_a_oggi(self) -> None:
@@ -107,7 +114,8 @@ class LiabilityTransferTests(unittest.TestCase):
 
     def test_stato_reale_senza_profilo_usa_solo_gli_oneri_registrati(self) -> None:
         create_transaction(TransactionPayload(
-            occurred_on=date.today().isoformat(), transaction_type="Expenses", category="Interessi",
+            occurred_on=date.today().isoformat(), transaction_type="Expenses",
+            categoryId=categoria(self.session, "Interessi"),
             amount=25, account_name="Mutuo", details="Interessi capitalizzati",
             debt_interest=25), self.session)
 
@@ -126,7 +134,8 @@ class LiabilityTransferTests(unittest.TestCase):
         quelli da classificare, dove si vede e si corregge.
         """
         create_transaction(TransactionPayload(
-            occurred_on=date.today().isoformat(), transaction_type="Expenses", category="Varie",
+            occurred_on=date.today().isoformat(), transaction_type="Expenses",
+            categoryId=categoria(self.session, "Varie"),
             amount=40, account_name="Mutuo", details="spesa da classificare"), self.session)
 
         dati = liabilities(self.session)
@@ -215,8 +224,8 @@ class LiabilityTransferTests(unittest.TestCase):
         # L'addebito della banca: una spesa sul conto del debito.
         create_transaction(TransactionPayload(
             occurred_on=today.isoformat(), transaction_type="Expenses", amount=10,
-            category="Interessi", account_name="Mutuo", details="interessi passivi",
-            debt_interest=10), self.session)
+            categoryId=categoria(self.session, "Interessi"), account_name="Mutuo",
+            details="interessi passivi", debt_interest=10), self.session)
         create_transaction(TransactionPayload(
             occurred_on=today.isoformat(), transaction_type="Debt", amount=104,
             account_name="Banca", destination_name="Mutuo", debt_principal=100, debt_interest=4), self.session)

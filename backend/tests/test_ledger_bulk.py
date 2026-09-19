@@ -40,7 +40,7 @@ class LedgerBulkTests(unittest.TestCase):
 
     def movimento(self, amount: str = "300", tipo: str = "Investment") -> Transaction:
         tx = Transaction(occurred_on=date(2026, 1, 5), effective_on=date(2026, 1, 5),
-                         transaction_type=tipo, category="_", amount=Decimal(amount),
+                         transaction_type=tipo, category_id=None, amount=Decimal(amount),
                          account_name="Banca", destination_name="Broker")
         self.session.add(tx)
         self.session.commit()

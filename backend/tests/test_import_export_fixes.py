@@ -84,7 +84,7 @@ class ImportExportFixes(unittest.TestCase):
         self.session.add_all([Account(name="Bank", source_group="bank"),
                               Account(name="Other", source_group="bank")])
         self.session.add(Transaction(occurred_on=date(2026, 9, 1), effective_on=date(2026, 9, 1),
-                                     transaction_type="Transfers", category="_", amount=Decimal("-10.00"),
+                                     transaction_type="Transfers", category_id=None, amount=Decimal("-10.00"),
                                      account_name="Bank", account_type="Bank", destination_name="Other",
                                      destination_type="Financial"))
         self.session.commit()

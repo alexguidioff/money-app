@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -106,11 +107,14 @@ class RegolaCompilata:
     all'utente; ``chiave`` e' la versione normalizzata con cui si confronta.
     Una regola con ``is_regex`` acceso e ``regex`` a None non si e' potuta
     compilare: non si applica e finisce fra quelle scartate.
+
+    La categoria e' un id: il nome si scrive solo dove si mostra, cosi' una
+    categoria rinominata non lascia indietro le regole che la nominavano.
     """
 
     id: int
     pattern: str
-    categoria: str
+    categoria_id: int | None
     transaction_type: str | None
     min_amount: Decimal | None
     max_amount: Decimal | None
@@ -130,15 +134,15 @@ def _compila(riga: CategorizationRule) -> RegolaCompilata:
     """
     if riga.is_regex:
         try:
-            return RegolaCompilata(id=riga.id, pattern=riga.pattern, categoria=riga.category,
+            return RegolaCompilata(id=riga.id, pattern=riga.pattern, categoria_id=riga.category_id,
                                    transaction_type=riga.transaction_type, min_amount=riga.min_amount,
                                    max_amount=riga.max_amount, is_regex=True,
                                    regex=re.compile(riga.pattern, re.IGNORECASE))
         except re.error:
-            return RegolaCompilata(id=riga.id, pattern=riga.pattern, categoria=riga.category,
+            return RegolaCompilata(id=riga.id, pattern=riga.pattern, categoria_id=riga.category_id,
                                    transaction_type=riga.transaction_type, min_amount=riga.min_amount,
                                    max_amount=riga.max_amount, is_regex=True, scartata=True)
-    return RegolaCompilata(id=riga.id, pattern=riga.pattern, categoria=riga.category,
+    return RegolaCompilata(id=riga.id, pattern=riga.pattern, categoria_id=riga.category_id,
                            transaction_type=riga.transaction_type, min_amount=riga.min_amount,
                            max_amount=riga.max_amount, chiave=normalizza(riga.pattern))
 
@@ -162,17 +166,23 @@ def scartate(regole: list[RegolaCompilata]) -> list[str]:
 
 
 def applica(regole: list[RegolaCompilata], descrizione: str | None, tipo: str,
-            importo: Decimal) -> tuple[str, str] | None:
+            importo: Decimal) -> tuple[int, str] | None:
     """La categoria della prima regola che combacia, col pattern che l'ha decisa.
 
     Vince la prima, non la piu' specifica: l'ordine e' una scelta dell'utente e
     deve restare leggibile guardando l'elenco. ``None`` vuol dire che nessuna
     regola si e' pronunciata e la categoria resta quella di prima.
+
+    Torna l'id, non il nome: chi scrive il movimento deve puntare alla riga, e
+    una categoria rinominata dopo non deve cambiare cosa decide la regola.
     """
     testo = normalizza(descrizione)
     importo = abs(importo)
     for regola in regole:
-        if regola.scartata:
+        if regola.scartata or regola.categoria_id is None:
+            # Una regola senza categoria non decide niente: il tipo e' facoltativo,
+            # la categoria no. Il controllo c'e' anche in scrittura, ma una riga
+            # resa orfana da una cancellazione non deve far esplodere l'import.
             continue
         if regola.transaction_type is not None and regola.transaction_type != tipo:
             continue
@@ -187,7 +197,7 @@ def applica(regole: list[RegolaCompilata], descrizione: str | None, tipo: str,
                 continue
         elif not regola.chiave or regola.chiave not in testo:
             continue
-        return regola.categoria, regola.pattern
+        return regola.categoria_id, regola.pattern
     return None
 
 
@@ -223,51 +233,65 @@ def suggest(session: Session) -> dict[str, list[dict]]:
     allora si raggruppa sui primi N termini invece che sulla stringa intera.
     """
     righe = session.execute(
-        select(Transaction.transaction_type, Transaction.category, Transaction.details)
+        select(Transaction.transaction_type, Transaction.category_id, Transaction.details)
         .where(REAL_MOVEMENT,
                Transaction.transaction_type.in_(TIPI_CON_CATEGORIA),
-               Transaction.category.notin_((PENDING_CATEGORY, "_")),
                Transaction.details.is_not(None), Transaction.details != "")
     ).all()
     # descrizione -> tipo -> categoria -> quante volte. Il tipo sta in mezzo
     # perche' "spesa lidl" a spese e a entrate sono due gruppi diversi: la
     # stessa descrizione con due versi e' un caso da guardare, non da
     # automatizzare.
-    gruppi: dict[str, dict[str, dict[str, int]]] = {}
-    for tipo, categoria, descrizione in righe:
+    #
+    # Si raggruppa sugli id e i nomi si scrivono alla fine: la categoria di un
+    # movimento senza categoria e' NULL, e "_" adesso vale NULL, quindi il
+    # segnaposto non va piu' filtrato a mano. Resta da togliere la pila "Da
+    # categorizzare", che e' una categoria come le altre ma non e' una scelta.
+    nomi = dict(session.execute(select(Category.id, Category.name)).all())
+    gruppi: dict[str, dict[str, dict[int, int]]] = {}
+    for tipo, categoria_id, descrizione in righe:
+        if categoria_id is None or nomi.get(categoria_id, "").casefold() == PENDING_CATEGORY.casefold():
+            continue
         chiave = normalizza(descrizione)
         gruppi.setdefault(chiave, {}).setdefault(tipo, {})
-        gruppi[chiave][tipo][categoria] = gruppi[chiave][tipo].get(categoria, 0) + 1
+        gruppi[chiave][tipo][categoria_id] = gruppi[chiave][tipo].get(categoria_id, 0) + 1
+
+    def voce(categoria_id: int, quante: int) -> dict[str, Any]:
+        # Il nome per chi legge, l'id per chi poi scrive la regola: due figli con
+        # lo stesso nome sotto padri diversi sono due categorie diverse, e il
+        # nome da solo non direbbe quale delle due.
+        return {"category": nomi.get(categoria_id, ""), "categoryId": categoria_id, "count": quante}
 
     regole = carica_regole(session)
     proposte, incoerenti = [], []
     for descrizione, per_tipo in gruppi.items():
-        somma: dict[str, int] = {}
+        somma: dict[int, int] = {}
         for categorie in per_tipo.values():
-            for categoria, quante in categorie.items():
-                somma[categoria] = somma.get(categoria, 0) + quante
+            for categoria_id, quante in categorie.items():
+                somma[categoria_id] = somma.get(categoria_id, 0) + quante
         totale = sum(somma.values())
         if totale < MIN_OCCORRENZE:
             continue
         # A parita' di conteggio l'ordine e' alfabetico: due proposte con gli
         # stessi numeri devono uscire nello stesso ordine a ogni chiamata.
-        classifica = sorted(somma.items(), key=lambda voce: (-voce[1], voce[0]))
-        categoria, quante = classifica[0]
+        classifica = sorted(somma.items(), key=lambda voce_: (-voce_[1], nomi.get(voce_[0], ""), voce_[0]))
+        categoria_id, quante = classifica[0]
+        categoria = nomi.get(categoria_id, "")
         quota = quante / totale
         if quota < QUOTA_INCERTA:
             # Non si propone: e' un problema da guardare, non da automatizzare.
             incoerenti.append({"pattern": descrizione, "occorrenze": totale,
-                               "categorie": [{"category": nome, "count": numero} for nome, numero in classifica]})
+                               "categorie": [voce(i, n) for i, n in classifica]})
             continue
         if coperta(regole, descrizione, list(per_tipo)):
             continue
         # Il tipo si porta solo se tutte le righe del gruppo ne hanno uno solo:
         # altrimenti la regola vale per spese ed entrate, come se non ci fosse.
-        proposte.append({"pattern": descrizione, "category": categoria,
+        proposte.append({"pattern": descrizione, "category": categoria, "categoryId": categoria_id,
                          "transactionType": next(iter(per_tipo)) if len(per_tipo) == 1 else None,
                          "occorrenze": totale, "quota": round(quota, 2),
                          "fiducia": "sicura" if quota >= QUOTA_SICURA else "incerta",
-                         "altre": [{"category": nome, "count": numero} for nome, numero in classifica[1:]]})
+                         "altre": [voce(i, n) for i, n in classifica[1:]]})
     proposte.sort(key=lambda voce: (-voce["occorrenze"], voce["pattern"]))
     incoerenti.sort(key=lambda voce: (-voce["occorrenze"], voce["pattern"]))
     return {"proposte": proposte, "incoerenti": incoerenti}

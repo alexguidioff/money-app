@@ -25,10 +25,14 @@ from app.core_routes import accounts as endpoint_conti
 from app.core_routes import (movimenti_per_saldi, rivalutazioni_per_conto,
                              valutazioni_per_conto)
 from app.database import Base
-from app.models import (Account, AccountValuation, InvestmentInstrument, InvestmentTransaction,
+from app.models import (Account, AccountValuation, Category, InvestmentInstrument, InvestmentTransaction,
                         LiabilityTransactionDetail, MarketPrice, Transaction, TransactionLedgerLink)
+from tests.categorie_fixture import categoria
 
+# `Category` entra nell'elenco perche' le fixture qui sotto creano la categoria
+# prima di nominarla per id: senza la tabella il primo movimento non si scrive.
 TABELLE = [Account.__table__, AccountValuation.__table__, Transaction.__table__,
+           Category.__table__,
            LiabilityTransactionDetail.__table__,
            InvestmentInstrument.__table__, InvestmentTransaction.__table__,
            MarketPrice.__table__, TransactionLedgerLink.__table__]
@@ -58,8 +62,10 @@ class BilancioTests(unittest.TestCase):
     def _collega(self, conto: str) -> None:
         """L'unico modo in cui un conto diventa "di mercato": un suo movimento
         risulta collegato a un'operazione del ledger."""
+        # Un Investment e' uno spostamento fra conti e non ha categoria: la
+        # categoria vuota di prima qui e' un id mancante.
         movimento = Transaction(occurred_on=date(2024, 1, 5), effective_on=date(2024, 1, 5),
-                                transaction_type="Investment", category="", amount=Decimal("0"),
+                                transaction_type="Investment", category_id=None, amount=Decimal("0"),
                                 account_name="Conto", destination_name=conto)
         self._broker(conto)
         self.session.add(movimento)
@@ -152,7 +158,7 @@ class BilancioTests(unittest.TestCase):
         self._conto("asset", "Casa", "100000")
         self._conto("liability", "Mutuo", "-80000")
         self.session.add(Transaction(occurred_on=date(2024, 3, 1), effective_on=date(2024, 3, 1), transaction_type="Expenses",
-                                     category="Casa", amount=Decimal("500"), account_name="Conto"))
+                                     category_id=categoria(self.session, "Casa"), amount=Decimal("500"), account_name="Conto"))
         self.session.commit()
         conti = [c for c in self.session.scalars(select(Account)).all() if c.counts_in_net_worth]
         saldi = account_balances_at(conti, movimenti_per_saldi(self.session), date.today())
@@ -209,7 +215,7 @@ class BilancioTests(unittest.TestCase):
         altrimenti le due meta' della stessa pagina si contraddicono."""
         self._conto("bank", "Conto", "1000")
         self.session.add(Transaction(occurred_on=date(2024, 6, 1), effective_on=date(2024, 6, 1),
-                                     transaction_type="Expenses", category="Casa",
+                                     transaction_type="Expenses", category_id=categoria(self.session, "Casa"),
                                      amount=Decimal("400"), account_name="Conto"))
         self.session.commit()
 
@@ -231,7 +237,7 @@ class BilancioTests(unittest.TestCase):
         # farla seguire il periodo la riempirebbe di differenze inventate.
         self._conto("bank", "Conto", "1000")
         self.session.add(Transaction(occurred_on=date(2024, 6, 1), effective_on=date(2024, 6, 1),
-                                     transaction_type="Expenses", category="Casa",
+                                     transaction_type="Expenses", category_id=categoria(self.session, "Casa"),
                                      amount=Decimal("400"), account_name="Conto"))
         self.session.commit()
         for quando in ("2024-05-31", "2024-07-31"):

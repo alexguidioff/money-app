@@ -14,6 +14,7 @@ from app.database import Base, set_current_user, reset_current_user
 from app.interchange import build_export
 from app.interchange_import import import_data
 from app.models import User, Transaction, TransactionLedgerLink, InvestmentTransaction, InvestmentTransactionDetail
+from tests.categorie_fixture import categoria
 from tests.test_interchange_roundtrip import _populate
 
 
@@ -70,8 +71,12 @@ class PostgresInterchangeTests(unittest.TestCase):
                     self.assertEqual(link.transaction_id, txs[1].id)
                     self.assertEqual(link.ledger_id, detail.transaction_id)
                     # Sequence allocation still works after importing.
+                    # PIANO-B3: la categoria e' una riga; qui serve solo che il
+                    # movimento ne abbia una, per provare la sequenza dopo
+                    # l'import.
                     session.add(Transaction(occurred_on=txs[1].occurred_on, effective_on=txs[1].effective_on,
-                                            transaction_type="Income", category="Test", amount=1))
+                                            transaction_type="Income",
+                                            category_id=categoria(session, "Test"), amount=1))
                     session.commit()
             finally:
                 reset_current_user(token)

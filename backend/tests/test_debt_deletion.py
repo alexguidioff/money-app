@@ -9,6 +9,7 @@ from app.database import Base
 from app.main import (LiabilityDeletePayload, TransactionPayload, create_transaction,
                       delete_account, delete_liability, liabilities)
 from app.models import Account, LiabilityProfile, LiabilityTransactionDetail, Transaction
+from tests.categorie_fixture import categoria
 
 
 class DebtDeletionTests(TestCase):
@@ -26,8 +27,10 @@ class DebtDeletionTests(TestCase):
                                         end_date=date(2030, 1, 1))
         self.session.add(self.profile)
         self.session.commit()
+        # La categoria si nomina per id: `categoria` la crea e torna l'id.
         create_transaction(TransactionPayload(occurred_on=date.today().isoformat(),
-                           transaction_type="Expenses", amount=10, category="Interessi",
+                           transaction_type="Expenses", amount=10,
+                           categoryId=categoria(self.session, "Interessi"),
                            account_name=self.account.name, debt_interest=10), self.session)
         self.backup = mock.patch("app.main.create_backup",
                                  return_value={"success": True, "filename": "test.dump"})

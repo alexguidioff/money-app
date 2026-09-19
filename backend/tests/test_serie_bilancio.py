@@ -73,8 +73,10 @@ class SerieBilancioTests(unittest.TestCase):
         collegando un suo movimento a un'operazione del ledger. Il bonifico
         parte da una banca e arriva sul conto titoli, come nella realta'."""
         self._broker(conto)
+        # PIANO-B3: un versamento sul conto titoli non ha categoria - la
+        # vecchia stringa vuota adesso e' un id vuoto.
         movimento = Transaction(occurred_on=date(2024, 1, 5), effective_on=date(2024, 1, 5),
-                                transaction_type="Investment", category="", amount=Decimal("1000"),
+                                transaction_type="Investment", category_id=None, amount=Decimal("1000"),
                                 account_name="Conto", destination_name=conto)
         self.session.add(movimento)
         self.session.flush()
@@ -184,7 +186,7 @@ class SerieBilancioTests(unittest.TestCase):
         secondo = self.session.scalars(
             select(InvestmentTransaction).where(InvestmentTransaction.name == "Secondo")).one()
         movimento = Transaction(occurred_on=date(2024, 1, 6), effective_on=date(2024, 1, 6),
-                                transaction_type="Investment", category="", amount=Decimal("200"),
+                                transaction_type="Investment", category_id=None, amount=Decimal("200"),
                                 account_name="Conto", destination_name="Titoli 2")
         self.session.add(movimento)
         self.session.flush()
@@ -214,7 +216,7 @@ class SerieBilancioTests(unittest.TestCase):
 
         from app.transaction_rules import validate_movement
         movimento = Transaction(occurred_on=date(2024, 3, 1), effective_on=date(2024, 3, 1),
-                                transaction_type="Investment", category="", amount=Decimal("10"),
+                                transaction_type="Investment", category_id=None, amount=Decimal("10"),
                                 account_name="Conto", destination_name="Casa")
         with self.assertRaises(HTTPException) as errore:
             validate_movement(self.session, movimento)

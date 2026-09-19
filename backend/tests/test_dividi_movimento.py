@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.database import Base
 from app.main import SplitPayload, split_transaction
 from app.models import Account, Transaction
+from tests.categorie_fixture import categoria
 
 
 class DividiMovimentoTests(unittest.TestCase):
@@ -29,8 +30,13 @@ class DividiMovimentoTests(unittest.TestCase):
         self.session.close()
 
     def _spesa(self, **campi) -> Transaction:
+        # PIANO-B3: la categoria e' una riga e il movimento la nomina per id.
+        # "_" continua a voler dire "nessuna categoria" - un investimento non
+        # ne ha una - e non deve diventare una categoria vera.
+        nome = campi.pop("category", "Eating out")
         riga = Transaction(**{"occurred_on": date(2026, 7, 26), "effective_on": date(2026, 7, 26), "transaction_type": "Expenses",
-                              "category": "Eating out", "amount": Decimal("27.00"), "account_name": "Carta",
+                              "category_id": None if nome in ("", "_") else categoria(self.session, nome),
+                              "amount": Decimal("27.00"), "account_name": "Carta",
                               "details": "LS Drama bar", **campi})
         self.session.add(riga)
         self.session.commit()
@@ -44,7 +50,10 @@ class DividiMovimentoTests(unittest.TestCase):
         riga = self._spesa()
         esito = self._dividi(riga)
         originale, nuovo = self.session.get(Transaction, riga.id), self.session.get(Transaction, esito["created"]["id"])
-        self.assertEqual((Decimal("13.50"), "Expenses", "Eating out"), (originale.amount, originale.transaction_type, originale.category))
+        # PIANO-B3: la categoria si confronta per id. "Eating out" e' la stessa
+        # categoria che la fixture ha creato, e una volta creata si ritrova.
+        eating_out = categoria(self.session, "Eating out")
+        self.assertEqual((Decimal("13.50"), "Expenses", eating_out), (originale.amount, originale.transaction_type, originale.category_id))
         self.assertEqual((Decimal("13.50"), "Transfers", "Carta", "Splitwise", date(2026, 7, 26), "LS Drama bar"),
                          (nuovo.amount, nuovo.transaction_type, nuovo.account_name, nuovo.destination_name,
                           nuovo.occurred_on, nuovo.details))

@@ -23,12 +23,16 @@ from app.database import Base
 from app.models import Account, Transaction
 from app.transaction_rules import (INCOMPLETE_MOVEMENT, REAL_MOVEMENT,
                                    missing_fields, validate_movement)
+from tests.categorie_fixture import categoria
 
 
-def _senza_conto(accettato: bool = False) -> Transaction:
+def _senza_conto(session: Session, accettato: bool = False) -> Transaction:
+    # La categoria la nomina l'id: senza, il movimento risulterebbe incompleto
+    # anche di categoria e il conto dei "da sistemare" cambierebbe per un
+    # motivo che non c'entra con l'accettazione.
     return Transaction(occurred_on=date(2021, 5, 4), effective_on=date(2021, 5, 4),
-                       transaction_type="Expenses", category="Groceries", amount=Decimal("21"),
-                       account_name=None, is_recurring_template=False,
+                       transaction_type="Expenses", category_id=categoria(session, "Groceries"),
+                       amount=Decimal("21"), account_name=None, is_recurring_template=False,
                        incomplete_accepted=accettato)
 
 
@@ -48,24 +52,24 @@ class IncompletiAccettatiTests(unittest.TestCase):
                                    .where(REAL_MOVEMENT, INCOMPLETE_MOVEMENT))
 
     def test_accettato_non_viene_contato(self) -> None:
-        self.session.add_all([_senza_conto(), _senza_conto(accettato=True)])
+        self.session.add_all([_senza_conto(self.session), _senza_conto(self.session, accettato=True)])
         self.session.commit()
         self.assertEqual(1, self._da_sistemare())
 
     def test_resta_incompleto_davvero(self) -> None:
         # Accettarlo non gli mette un conto: se un giorno chiedi cosa manca, la
         # risposta e' ancora "il conto".
-        self.assertEqual(["account"], missing_fields(_senza_conto(accettato=True)))
+        self.assertEqual(["account"], missing_fields(_senza_conto(self.session, accettato=True)))
 
     def test_non_apre_la_porta_ai_nuovi(self) -> None:
         # Il flag non deve diventare un modo per salvare movimenti a meta': chi
         # ne crea uno nuovo riceve lo stesso rifiuto di prima.
         with self.assertRaises(HTTPException) as errore:
-            validate_movement(self.session, _senza_conto(accettato=True))
+            validate_movement(self.session, _senza_conto(self.session, accettato=True))
         self.assertEqual(422, errore.exception.status_code)
 
     def test_si_torna_indietro(self) -> None:
-        riga = _senza_conto(accettato=True)
+        riga = _senza_conto(self.session, accettato=True)
         self.session.add(riga)
         self.session.commit()
         self.assertEqual(0, self._da_sistemare())

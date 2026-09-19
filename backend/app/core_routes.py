@@ -20,9 +20,10 @@ from sqlalchemy.orm import Session
 
 from .calculation_engine import (account_balances_at, account_balances_series, account_reconciliation,
                                  investment_positions, normalized_name, savings_rate, source_effect)
-from .categorization import MAX_REGOLE, categorie_ammesse, suggest
+from .categorization import MAX_REGOLE, categoria_da_nome, suggest
+from .categorie import GRUPPI, gruppo_di_categoria, nome_di, nomi as nomi_categorie
 from .database import get_session
-from .models import (Account, AppSetting, BudgetPlan, CategorizationRule, Event,
+from .models import (Account, AppSetting, BudgetPlan, CategorizationRule, Category, Event,
                      Goal, InvestmentInstrument, InvestmentTransaction,
                      InvestmentTransactionDetail,
                      InstrumentProfile as InstrumentProfileModel,
@@ -49,6 +50,7 @@ _EVENTO_NON_CHIESTO = object()
 
 def transaction_json(row: Transaction, session: Session | None = None, *,
                      linked: list[dict[str, Any]] | None = None,
+                     categoria: str | None = None,
                      liability: dict[str, Any] | None = None,
                      evento: dict[str, Any] | None | object = _EVENTO_NON_CHIESTO) -> dict[str, Any]:
     """Un movimento come lo vuole l'interfaccia.
@@ -59,6 +61,10 @@ def transaction_json(row: Transaction, session: Session | None = None, *,
     quattromila movimenti sono quattromila interrogazioni. Come ``evento``, che
     per lo stesso motivo accetta ``None``: "non appartiene a nessun evento" e'
     una risposta, "non me l'hai chiesto" e' un'altra.
+
+    ``categoria`` e' il nome che corrisponde all'id del movimento: chi
+    serializza un elenco intero se lo porta dietro dalla mappa caricata una
+    volta, gli altri lasciano che se lo faccia dire dal database.
     """
     amount = num(row.amount)
     signed = amount if row.transaction_type == "Income" else -amount
@@ -69,13 +75,13 @@ def transaction_json(row: Transaction, session: Session | None = None, *,
     # la minuscola di `transactionType`, presa da una tabellina di cinque voci.
     # Quest'ultimo pesava poco ma poteva mentire: il suo ripiego muto avrebbe
     # detto "transfer" per qualunque tipo di movimento aggiunto in futuro.
-    # Spostare denaro fra conti non ha una categoria. Nei dati importati il
-    # posto vuoto e' segnato con un trattino basso: e' un segnaposto del foglio
-    # di calcolo, non una categoria, e mostrarlo fa sembrare che ce ne sia una.
-    categoria = "" if (row.category or "").strip() in {"", "_", "-"} else row.category
+    # Spostare denaro fra conti non ha una categoria, e adesso si vede: il posto
+    # vuoto e' NULL, non piu' il trattino basso del foglio di calcolo che
+    # bisognava togliere in lettura.
+    nome = categoria if categoria is not None else nome_di(session, row.category_id)
     return {
-        "id": str(row.id), "description": row.details or categoria,
-        "category": categoria,
+        "id": str(row.id), "description": row.details or nome,
+        "category": nome, "categoryId": row.category_id,
         "incomplete": bool(missing_fields(row)), "missingFields": missing_fields(row),
         "countsInBudget": row.counts_in_budget, "refundOfId": row.refund_of_id,
         "incompleteAccepted": row.incomplete_accepted,
@@ -195,6 +201,30 @@ def savings_category(session: Session) -> str:
     return (value or SAVINGS_DEFAULT_CATEGORY).strip()
 
 
+def savings_category_id(session: Session) -> int | None:
+    """L'id di quella categoria, se esiste gia'.
+
+    Non la crea: questa la chiamano anche le letture, e un GET non deve
+    scrivere. A crearla e' chi scrive il piano del risparmio, che passa da
+    `categoria_da_nome`.
+    """
+    nome = savings_category(session)
+    return session.scalar(select(Category.id).where(Category.parent_id.is_(None),
+                                                   func.lower(Category.name) == nome.casefold()))
+
+
+def categoria_per_nome(nome: str):
+    """Gli id delle categorie che portano quel nome, sotto qualunque padre.
+
+    L'interfaccia filtra ancora per nome, e due figli sotto padri diversi
+    possono portarlo uguale - "Altro" sotto Alimentari e sotto Trasporti sono
+    due cose diverse. Prenderli tutti e' l'unica risposta onesta finche' la
+    richiesta non dice l'id: sceglierne uno a caso mostrerebbe meta' dei
+    movimenti cercati.
+    """
+    return select(Category.id).where(func.lower(Category.name) == nome.strip().lower())
+
+
 def resolve_compare_period(year: int, month: int | None, compare_to: str | None) -> tuple[int, int | None] | None:
     """Calcola (year, month) del periodo di confronto.
 
@@ -253,20 +283,14 @@ def period_days(session: Session, year: int, month: int | None) -> dict[str, Any
 
 
 
-def nomi_categorie(session: Session) -> dict[str, str]:
-    """Le categorie come le ha scritte l'utente, per chiave minuscola.
-
-    Gli aggregati di `budget_actual_year` normalizzano in minuscolo per sommare
-    "Spesa" e "spesa" insieme; per mostrarle servono i nomi originali.
-    """
-    return {nome.strip().lower(): nome.strip()
-            for nome in session.scalars(select(Transaction.category).distinct()) if nome}
-
-
 def _period_category_breakdown(session: Session, year: int, month: int | None, budget_type: str,
-                              actual_rows: dict[str, float] | None = None) -> list[dict[str, Any]]:
+                              actual_rows: dict[int | None, float] | None = None) -> list[dict[str, Any]]:
     """Categorie pianificate/tracciate per un budget_type (Expenses/Income/Savings)
-    nel periodo dato (mese o anno intero), case-insensitive sulla categoria.
+    nel periodo dato (mese o anno intero).
+
+    Si ragiona sugli id e i nomi si scrivono alla fine: il nome e' un'etichetta,
+    e due categorie possono portare lo stesso nome sotto due radici diverse.
+    Sommare per nome le avrebbe unite in una riga sola.
 
     `actual_rows` permette di passare gli aggregati gia' calcolati da
     `budget_actual_year` (o `derived_savings`): in year mode il chiamante ha
@@ -275,36 +299,40 @@ def _period_category_breakdown(session: Session, year: int, month: int | None, b
     """
     if month is not None:
         plans = session.scalars(select(BudgetPlan).where(BudgetPlan.period == date(year, month, 1), BudgetPlan.budget_type == budget_type)).all()
-        planned_by_category: dict[str, float] = {plan.category: num(plan.amount) for plan in plans}
-        category_groups = {plan.category: plan.category_group for plan in plans}
+        planned_by_category: dict[int | None, float] = {plan.category_id: num(plan.amount) for plan in plans}
     else:
         plans = session.scalars(select(BudgetPlan).where(extract("year", BudgetPlan.period) == year, BudgetPlan.budget_type == budget_type)).all()
         planned_by_category = defaultdict(float)
-        category_groups = {}
         for plan in plans:
-            planned_by_category[plan.category] += num(plan.amount)
-            category_groups[plan.category] = plan.category_group
+            planned_by_category[plan.category_id] += num(plan.amount)
     if actual_rows is None:
         if budget_type == "Savings":
-            actual_rows = {savings_category(session): derived_savings(session, year, month)}
+            actual_rows = {savings_category_id(session): derived_savings(session, year, month)}
         elif month is not None:
             actual_rows = budget_actual(session, year, month, budget_type)
         else:
             per_month = budget_actual_year(session, year, budget_type)
             actual_rows = {category: round(sum(rows.get(category, 0) for rows in per_month.values()), 2)
                            for category in {name for rows in per_month.values() for name in rows}}
-    actual_by_category = {category.strip().lower(): num(amount) for category, amount in actual_rows.items()}
-    categories = [{"name": category, "amount": actual_by_category.get(category.strip().lower(), 0), "budget": budget, "categoryGroup": category_groups.get(category)} for category, budget in planned_by_category.items()]
+    actual_by_category = {category: num(amount) for category, amount in actual_rows.items()}
+    nomi_cat = nomi_categorie(session)
+    gruppi = gruppo_di_categoria(session)
+    categories = [{"name": nome_di(session, category) if category is not None else savings_category(session),
+                   "categoryId": category,
+                   "amount": actual_by_category.get(category, 0), "budget": budget,
+                   "categoryGroup": gruppi.get(category) if category is not None else None}
+                  for category, budget in planned_by_category.items()]
     # La spesa in una categoria senza piano e' spesa lo stesso. Partire solo dal
     # piano la faceva sparire: un anno senza budget (il 2023) mostrava una
     # ripartizione vuota con 9.799 EUR spesi, e le categorie aggiunte dopo aver
     # scritto il budget non comparivano fra le piu' pesanti.
-    pianificate = {category.strip().lower() for category in planned_by_category}
-    extra = {chiave: importo for chiave, importo in actual_by_category.items() if chiave not in pianificate and importo}
+    pianificate = set(planned_by_category)
+    extra = {category: importo for category, importo in actual_by_category.items()
+             if category not in pianificate and importo}
     if extra:
-        nomi = nomi_categorie(session)
-        categories += [{"name": nomi.get(chiave, chiave), "amount": importo, "budget": 0, "categoryGroup": None}
-                       for chiave, importo in extra.items()]
+        categories += [{"name": nomi_cat.get(category, ""), "categoryId": category, "amount": importo,
+                        "budget": 0, "categoryGroup": gruppi.get(category)}
+                       for category, importo in extra.items()]
     categories.sort(key=lambda item: (item["budget"], item["amount"]), reverse=True)
     return categories
 
@@ -633,17 +661,17 @@ def summary_breakdown(
     # `period_total` del blocco `monthly`. Tre round-trip a testa era il
     # collo di bottiglia principale: 36 chiamate per il monthly + 3 groupBy
     # per il breakdown = 39 query, ora 2.
-    speso_anno: dict[str, dict[int, dict[str, float]]] = {}
+    speso_anno: dict[str, dict[int, dict[int, float]]] = {}
     if month is None:
         speso_anno["Income"] = budget_actual_year(session, year, "Income")
         speso_anno["Expenses"] = budget_actual_year(session, year, "Expenses")
 
-    def _actual_per_cat(budget_type: str) -> dict[str, float]:
+    def _actual_per_cat(budget_type: str) -> dict[int | None, float]:
         if budget_type == "Savings":
             entrate = sum(sum(valori.values()) for valori in speso_anno["Income"].values())
             spese = sum(sum(valori.values()) for valori in speso_anno["Expenses"].values())
-            return {savings_category(session): round(entrate - spese, 2)}
-        aggregato: dict[str, float] = defaultdict(float)
+            return {savings_category_id(session): round(entrate - spese, 2)}
+        aggregato: dict[int, float] = defaultdict(float)
         for valori in speso_anno[budget_type].values():
             for cat, val in valori.items():
                 aggregato[cat] += val
@@ -742,22 +770,25 @@ def analysis(
 
     savings_by_month = [{"month": MONTHS[m - 1], "amount": speso_per_tipo["Savings"].get(m, 0.0)} for m in range(1, 13)]
 
+    nomi = nomi_categorie(session)
     category_transactions: list[dict[str, Any]] = []
     if category:
         rows = session.scalars(select(Transaction).where(
             extract("year", Transaction.effective_on) == year,
             Transaction.transaction_type == category_type,
-            func.lower(Transaction.category) == category.strip().lower(),
+            Transaction.category_id.in_(categoria_per_nome(category)),
             BUDGET_MOVEMENT,
         ).order_by(Transaction.amount.desc()).limit(10)).all()
-        category_transactions = [{"date": row.effective_on.isoformat(), "amount": num(row.amount), "description": row.details or row.category} for row in rows]
+        category_transactions = [{"date": row.effective_on.isoformat(), "amount": num(row.amount),
+                                  "description": row.details or nomi.get(row.category_id, "")} for row in rows]
 
     # Le categorie da scegliere sono quelle dell'anno analizzato e del tipo
     # scelto. Il frontend le prendeva dalla Panoramica, cioe' dal mese
     # selezionato li': una categoria senza movimenti in quel mese non c'era.
-    category_options = sorted({nome.strip() for nome in session.scalars(select(Transaction.category).where(
-        extract("year", Transaction.effective_on) == year, Transaction.transaction_type == category_type,
-        BUDGET_MOVEMENT).distinct()) if nome and nome.strip()}, key=str.casefold)
+    category_options = sorted({nomi.get(categoria_id, "") for categoria_id in session.scalars(
+        select(Transaction.category_id).where(
+            extract("year", Transaction.effective_on) == year, Transaction.transaction_type == category_type,
+            BUDGET_MOVEMENT).distinct()) if nomi.get(categoria_id)}, key=str.casefold)
 
     return {
         "year": year,
@@ -817,8 +848,8 @@ def transactions(
         query = query.where(evento_clause)
         count_query = count_query.where(evento_clause)
     if category:
-        query = query.where(func.lower(Transaction.category) == category.strip().lower())
-        count_query = count_query.where(func.lower(Transaction.category) == category.strip().lower())
+        query = query.where(Transaction.category_id.in_(categoria_per_nome(category)))
+        count_query = count_query.where(Transaction.category_id.in_(categoria_per_nome(category)))
     if transaction_type:
         query = query.where(Transaction.transaction_type == transaction_type)
         count_query = count_query.where(Transaction.transaction_type == transaction_type)
@@ -848,9 +879,11 @@ def transactions(
         needle = f"%{search.strip().lower()}%"
         # Le stesse colonne su cui cercava l'interfaccia quando l'elenco era
         # tutto in memoria, piu' la data: chi cerca "2026-07" cerca un mese.
+        # La categoria adesso e' una riga a parte: si cerca sul suo nome e si
+        # tiene il movimento se la categoria che ha lo contiene.
         search_clause = (
             (func.lower(func.coalesce(Transaction.details, "")).like(needle))
-            | (func.lower(Transaction.category).like(needle))
+            | (Transaction.category_id.in_(select(Category.id).where(func.lower(Category.name).like(needle))))
             | (func.lower(func.coalesce(Transaction.account_name, "")).like(needle))
             | (func.lower(func.coalesce(Transaction.destination_name, "")).like(needle))
             | (func.cast(Transaction.effective_on, String).like(needle))
@@ -895,7 +928,9 @@ def transactions(
     # filtrando per un evento sparirebbero gli altri due.
     elenco_eventi = [{"id": riga.id, "name": riga.name, "closed": riga.closed} for riga in session.scalars(
         select(Event).order_by(Event.closed, Event.start_date.is_(None), Event.start_date, Event.id))]
+    nomi_cat = nomi_categorie(session)
     return {"items": [{**transaction_json(row, linked=collegati.get(row.id, []), liability=rate.get(row.id),
+                                          categoria=nomi_cat.get(row.category_id, ""),
                                           evento=eventi_dei_movimenti.get(row.id)), "refundedById": refunds.get(row.id)} for row in rows],
             "total": session.scalar(count_query) or 0,
             "offset": offset, "limit": limit, "years": anni, "goals": obiettivi,
@@ -962,42 +997,43 @@ def _ripartizione_evento(session: Session, event_ids: list[int]) -> dict[int, li
     come non muove niente nel budget: da solo non e' ne' una spesa ne' un
     introito.
 
-    La categoria si legge dal campo che esiste adesso: PIANO-B3 la sta
-    portando a un riferimento, e quando sara' fatto si cambia questa riga.
-    Un movimento senza categoria non si perde: entra nella ripartizione con il
-    nome vuoto, che l'interfaccia sa come chiamare.
+    La categoria e' un id: due categorie con lo stesso nome sotto padri diversi
+    sono due voci distinte, e sommarle per nome le avrebbe fuse in una riga
+    sola. Il nome si scrive alla fine, per chi legge. Un movimento senza
+    categoria non si perde: entra nella ripartizione con il nome vuoto, che
+    l'interfaccia sa come chiamare.
     """
-    voci: dict[int, dict[str, dict[str, float]]] = {event_id: defaultdict(lambda: {"spese": 0.0, "entrate": 0.0})
-                                                    for event_id in event_ids}
+    voci: dict[int, dict[int | None, dict[str, float]]] = {
+        event_id: defaultdict(lambda: {"spese": 0.0, "entrate": 0.0}) for event_id in event_ids}
     if not event_ids:
         return {}
     righe = session.execute(
-        select(TransactionEvent.event_id, Transaction.id, Transaction.category,
+        select(TransactionEvent.event_id, Transaction.id, Transaction.category_id,
                Transaction.transaction_type, Transaction.amount)
         .join(Transaction, Transaction.id == TransactionEvent.transaction_id)
         .where(TransactionEvent.event_id.in_(event_ids), BUDGET_MOVEMENT)).all()
     # Dove sottrarre il rimborso: la categoria e la parte del movimento che
     # rimborsa. Un movimento sta in un evento solo, quindi la mappa non si
     # sovrascrive.
-    originali: dict[int, tuple[int, str, str]] = {}
-    for event_id, tx_id, categoria, tipo, importo in righe:
-        nome = (categoria or "").strip()
+    originali: dict[int, tuple[int, int | None, str]] = {}
+    for event_id, tx_id, categoria_id, tipo, importo in righe:
         chiave = "entrate" if tipo == "Income" else "spese"
-        voci[event_id][nome][chiave] += num(importo)
-        originali[tx_id] = (event_id, nome, chiave)
+        voci[event_id][categoria_id][chiave] += num(importo)
+        originali[tx_id] = (event_id, categoria_id, chiave)
     if originali:
         for rimborso in session.scalars(select(Transaction).where(
                 Transaction.refund_of_id.in_(list(originali)), REAL_MOVEMENT)).all():
-            event_id, nome, chiave = originali[rimborso.refund_of_id]
-            voci[event_id][nome][chiave] -= num(rimborso.amount)
-    return {event_id: [{"name": nome, "spese": num(valori["spese"]), "entrate": num(valori["entrate"])}
-                       for nome, valori in sorted(per_categoria.items(), key=_ordine_ripartizione)]
+            event_id, categoria_id, chiave = originali[rimborso.refund_of_id]
+            voci[event_id][categoria_id][chiave] -= num(rimborso.amount)
+    nomi = nomi_categorie(session)
+    return {event_id: [{"name": nomi.get(categoria_id, ""), "spese": num(valori["spese"]),
+                        "entrate": num(valori["entrate"])}
+                       # Prima le categorie che hanno pesato di piu', e a parita'
+                       # per nome: senza id l'ordine sarebbe quello dei dizionari.
+                       for categoria_id, valori in sorted(
+                           per_categoria.items(),
+                           key=lambda voce: (-voce[1]["spese"], nomi.get(voce[0], "").casefold(), voce[0] or 0))]
             for event_id, per_categoria in voci.items()}
-
-
-def _ordine_ripartizione(voce: tuple[str, dict[str, float]]) -> tuple[float, str]:
-    """Prima le categorie che hanno pesato di piu', e a parita' per nome."""
-    return (-voce[1]["spese"], voce[0].casefold())
 
 
 def _numeri_eventi(session: Session, event_ids: list[int]) -> dict[int, dict[str, Any]]:
@@ -1136,8 +1172,10 @@ def event_detail(event_id: int, session: Session = Depends(get_session)) -> dict
     eventi_dei_movimenti = _eventi_per_movimenti(session, ids)
     rimborsati = dict(session.execute(select(Transaction.refund_of_id, Transaction.id).where(
         Transaction.refund_of_id.in_(ids))).all())
+    nomi_cat = nomi_categorie(session)
     return {"event": _evento_json(riga, _numeri_eventi(session, [riga.id]).get(riga.id)),
             "movements": [{**transaction_json(row, linked=collegati.get(row.id, []), liability=rate.get(row.id),
+                                              categoria=nomi_cat.get(row.category_id, ""),
                                               evento=eventi_dei_movimenti.get(row.id)),
                            "refundedById": rimborsati.get(row.id)} for row in movimenti],
             "categories": _ripartizione_evento(session, [riga.id]).get(riga.id, [])}
@@ -1236,18 +1274,21 @@ def settings(session: Session = Depends(get_session)) -> dict[str, Any]:
     # ha ancora conti, e l'interfaccia ci itera sopra senza chiedere permesso.
     for gruppo in ("colors", "years"):
         options.setdefault(gruppo, [])
-    options["categories"] = [item[0] for item in session.execute(select(Transaction.category).distinct().where(REAL_MOVEMENT).order_by(Transaction.category)).all() if item[0]]
+    # I nomi delle categorie si scrivono solo qui, al confine: dentro l'app sono
+    # id, e l'interfaccia di oggi conosce ancora i nomi.
+    nomi = nomi_categorie(session)
+    options["categories"] = sorted((nome for nome in nomi.values() if nome), key=str.casefold)
     # Le categorie appartengono a un tipo: una spesa non puo' essere "Stipendio".
     # L'elenco unisce quelle gia' usate nei movimenti e quelle pianificate a
     # budget, altrimenti una categoria appena creata nel budget non sarebbe
     # selezionabile su nessun movimento e quindi non potrebbe mai essere usata.
     by_type: dict[str, set[str]] = {kind: set() for kind in ("Income", "Expenses", "Savings")}
-    for kind, category in session.execute(select(Transaction.transaction_type, Transaction.category).distinct().where(REAL_MOVEMENT)).all():
-        if category and kind in by_type:
-            by_type[kind].add(category.strip())
-    for kind, category in session.execute(select(BudgetPlan.budget_type, BudgetPlan.category).distinct()).all():
-        if category and kind in by_type:
-            by_type[kind].add(category.strip())
+    for kind, category_id in session.execute(select(Transaction.transaction_type, Transaction.category_id).distinct().where(REAL_MOVEMENT)).all():
+        if kind in by_type and nomi.get(category_id):
+            by_type[kind].add(nomi[category_id])
+    for kind, category_id in session.execute(select(BudgetPlan.budget_type, BudgetPlan.category_id).distinct()).all():
+        if kind in by_type and nomi.get(category_id):
+            by_type[kind].add(nomi[category_id])
     # Il vocabolario di partenza di ogni account: senza, chi comincia da zero
     # non troverebbe nessuna categoria da scegliere sul primo movimento.
     for kind, gruppo in (("Expenses", "categories_expenses"), ("Income", "categories_income"),
@@ -1287,28 +1328,31 @@ def settings(session: Session = Depends(get_session)) -> dict[str, Any]:
     return {"settings": {row.key: row.value for row in setting_rows}, "labels": {row.key: row.label for row in setting_rows}, "options": options, "categoriesByType": categories_by_type, "budgetYearsByType": budget_years_by_type}
 
 
-def budget_actual(session: Session, year: int, month: int, budget_type: str = "Expenses") -> dict[str, float]:
+def budget_actual(session: Session, year: int, month: int, budget_type: str = "Expenses") -> dict[int, float]:
+    """Quanto si e' speso (o incassato) per categoria in un mese.
+
+    Le chiavi sono id di categoria: il confronto con il pianificato e' allora
+    esatto, senza dover abbassare le maiuscole per sommare insieme "Spesa" e
+    "spesa" - che adesso sono la stessa riga, scritta una volta sola.
+    """
     if budget_type == "Savings":
         # Il risparmio effettivo e' calcolato, non sommato dai movimenti.
-        return {savings_category(session).lower(): derived_savings(session, year, month)}
-    # Aggregazione case-insensitive sulla categoria: Excel confronta il testo
-    # ignorando maiuscole/minuscole (operatore =), quindi facciamo lo stesso qui
-    # per non perdere spesa se un futuro import porta un casing diverso da
-    # quello canonico del budget.
+        return {savings_category_id(session): derived_savings(session, year, month)}
     rows = session.scalars(select(Transaction).where(
         extract("year", Transaction.effective_on) == year,
         extract("month", Transaction.effective_on) == month,
         Transaction.transaction_type == budget_type, BUDGET_MOVEMENT)).all()
-    totals: dict[str, float] = defaultdict(float)
+    totals: dict[int, float] = defaultdict(float)
     for row in rows:
-        if row.category:
-            totals[row.category.strip().lower()] += float(row.amount)
+        if row.category_id is not None:
+            totals[row.category_id] += float(row.amount)
     if budget_type in {"Income", "Expenses"} and rows:
         refunds = session.execute(select(Transaction.refund_of_id, Transaction.amount).where(
             Transaction.refund_of_id.in_([row.id for row in rows]), REAL_MOVEMENT)).all()
         for original_id, amount in refunds:
             original = next(row for row in rows if row.id == original_id)
-            totals[original.category.strip().lower()] -= float(amount)
+            if original.category_id is not None:
+                totals[original.category_id] -= float(amount)
     return {key: round(value, 2) for key, value in totals.items()}
 
 
@@ -1317,23 +1361,9 @@ def budget_actual(session: Session, year: int, month: int, budget_type: str = "E
 
 # "Other" non e' una terza categoria di spesa: e' dove finisce cio' che non hai
 # ancora classificato. Tenerla visibile serve proprio a farla svuotare.
-CATEGORY_GROUPS = ("Needs", "Wants", "Other")
-
-
-def category_groups(session: Session) -> dict[str, str]:
-    """Il gruppo (bisogno/piacere) di ogni categoria, indicizzato senza maiuscole.
-
-    Il gruppo e' scritto sulle righe di budget, una per mese, ma descrive la
-    categoria e non il mese: la spesa non e' un bisogno a gennaio e un piacere
-    a febbraio. Quando le righe non concordano vince la piu' recente, che e'
-    l'ultima volta che qualcuno ha detto la sua.
-    """
-    righe = session.execute(
-        select(BudgetPlan.category, BudgetPlan.category_group)
-        .where(BudgetPlan.category_group.is_not(None))
-        .order_by(BudgetPlan.period)
-    ).all()
-    return {categoria.strip().lower(): gruppo for categoria, gruppo in righe if categoria}
+# Le tre parole stanno in `categorie.GRUPPI`, che e' dove si legge l'albero:
+# qui restano col nome che l'interfaccia conosce.
+CATEGORY_GROUPS = GRUPPI
 
 
 def _needs_wants(session: Session, year: int, month: int | None) -> list[dict[str, Any]]:
@@ -1341,18 +1371,22 @@ def _needs_wants(session: Session, year: int, month: int | None) -> list[dict[st
 
     Guarda tutta la spesa, non solo quella a budget: una categoria su cui hai
     speso senza averla pianificata e' esattamente quella che vuoi vedere.
+
+    Il gruppo non si legge piu' dalle righe di budget - era la stessa parola
+    ripetuta per mese - ma dall'albero: bisogni e piaceri sono le radici che
+    portano quei nomi, e una categoria sta sotto quella che le somiglia.
     """
-    gruppi = category_groups(session)
+    gruppi = gruppo_di_categoria(session)
     mesi = [month] if month is not None else range(1, 13)
-    speso: dict[str, float] = defaultdict(float)
+    speso: dict[int | None, float] = defaultdict(float)
     for mese in mesi:
         for categoria, valore in budget_actual(session, year, mese, "Expenses").items():
             speso[categoria] += valore
-    pianificato: dict[str, float] = defaultdict(float)
+    pianificato: dict[int | None, float] = defaultdict(float)
     for piano in session.scalars(select(BudgetPlan).where(
             BudgetPlan.period == date(year, month, 1) if month is not None else extract("year", BudgetPlan.period) == year,
             BudgetPlan.budget_type == "Expenses")).all():
-        pianificato[piano.category.strip().lower()] += num(piano.amount)
+        pianificato[piano.category_id] += num(piano.amount)
 
     totali = {gruppo: {"planned": 0.0, "actual": 0.0} for gruppo in CATEGORY_GROUPS}
     for chiave, valore in speso.items():
@@ -1427,14 +1461,15 @@ def sync_savings_plan(session: Session, period: date) -> Decimal:
         if not totali:
             return Decimal(0)
         session.add(BudgetPlan(period=period, budget_type="Savings",
-                               category=savings_category(session), amount=atteso))
+                               category_id=categoria_da_nome(session, savings_category(session)),
+                               amount=atteso))
     else:
         riga.amount = atteso
     return atteso
 
 
 def previous_month_leftover(session: Session, year: int, month: int,
-                            budget_type: str = "Expenses") -> dict[str, float]:
+                            budget_type: str = "Expenses") -> dict[int | None, float]:
     """Quanto era avanzato (o mancato) nel mese precedente, categoria per categoria.
 
     E' un dato che si legge, non un dato che entra nei conti: il budget del mese
@@ -1450,18 +1485,18 @@ def previous_month_leftover(session: Session, year: int, month: int,
     if budget_type != "Expenses" or month <= 1:
         return {}
     precedente = date(year, month - 1, 1)
-    pianificato: dict[str, float] = defaultdict(float)
+    pianificato: dict[int | None, float] = defaultdict(float)
     for piano in session.scalars(select(BudgetPlan).where(
             BudgetPlan.period == precedente, BudgetPlan.budget_type == budget_type)).all():
-        pianificato[piano.category.strip().lower()] += num(piano.amount)
-    effettivo: dict[str, float] = defaultdict(float)
-    for categoria, totale in session.execute(select(Transaction.category, func.sum(Transaction.amount)).where(
+        pianificato[piano.category_id] += num(piano.amount)
+    effettivo: dict[int | None, float] = defaultdict(float)
+    for categoria, totale in session.execute(select(Transaction.category_id, func.sum(Transaction.amount)).where(
             extract("year", Transaction.effective_on) == year,
             extract("month", Transaction.effective_on) == month - 1,
             Transaction.transaction_type == budget_type,
-            BUDGET_MOVEMENT).group_by(Transaction.category)).all():
-        if categoria:
-            effettivo[categoria.strip().lower()] += float(totale or 0)
+            BUDGET_MOVEMENT).group_by(Transaction.category_id)).all():
+        if categoria is not None:
+            effettivo[categoria] += float(totale or 0)
     # I rimborsi nettono dall'importo della categoria dell'originale nello stesso
     # mese dell'originale (non del rimborso: uno puo' rimborsare a gennaio una
     # spesa di novembre, e il netting va applicato dove il budget era stato
@@ -1470,7 +1505,7 @@ def previous_month_leftover(session: Session, year: int, month: int,
     if budget_type in {"Income", "Expenses"}:
         Originale = aliased(Transaction, name="originale")
         rimborsi = session.execute(select(
-            Originale.category, Transaction.amount,
+            Originale.category_id, Transaction.amount,
         ).join(Originale, Transaction.refund_of_id == Originale.id).where(
             REAL_MOVEMENT,
             Transaction.refund_of_id.is_not(None),
@@ -1480,25 +1515,29 @@ def previous_month_leftover(session: Session, year: int, month: int,
             extract("month", Originale.effective_on) == month - 1,
         )).all()
         for categoria_originale, importo in rimborsi:
-            if categoria_originale:
-                effettivo[categoria_originale.strip().lower()] -= float(importo or 0)
+            if categoria_originale is not None:
+                effettivo[categoria_originale] -= float(importo or 0)
     avanzi = {chiave: round(valore - effettivo.get(chiave, 0.0), 2) for chiave, valore in pianificato.items()}
     return {chiave: valore for chiave, valore in avanzi.items() if valore}
 
 
 def _mensili_per_categoria(session: Session, year: int, month: int, budget_type: str,
-                           months_back: int) -> tuple[list[tuple[int, int]], dict[str, dict[tuple[int, int], float]]]:
+                           months_back: int) -> tuple[list[tuple[int, int]],
+                                                     dict[int | None, dict[tuple[int, int], float]]]:
     """Totali mensili per categoria nei mesi che precedono quello indicato.
 
     Serve ai suggerimenti del budget e alla stima di fine mese: sono la stessa
     lettura dello storico, e averne una copia per uso significa poterle far
     dire due cose diverse.
+
+    Le chiavi sono id: due categorie con lo stesso nome sotto padri diversi
+    hanno storici diversi, e sommarle per nome ne avrebbe fatto una sola.
     """
     finestra = [((year * 12 + month - 1) - passo) for passo in range(1, months_back + 1)]
     periodi = [(indice // 12, indice % 12 + 1) for indice in finestra]
-    per_categoria: dict[str, dict[tuple[int, int], float]] = defaultdict(dict)
+    per_categoria: dict[int | None, dict[tuple[int, int], float]] = defaultdict(dict)
     if budget_type == "Savings":
-        categoria = savings_category(session)
+        categoria = savings_category_id(session)
         for anno, mese in periodi:
             per_categoria[categoria][(anno, mese)] = derived_savings(session, anno, mese)
         return periodi, per_categoria
@@ -1509,7 +1548,7 @@ def _mensili_per_categoria(session: Session, year: int, month: int, budget_type:
     fine = date(ultimo_anno + 1, 1, 1) if ultimo_mese == 12 else date(ultimo_anno, ultimo_mese + 1, 1)
     righe = session.execute(select(
         extract("year", Transaction.effective_on), extract("month", Transaction.effective_on),
-        Transaction.category, func.sum(Transaction.amount),
+        Transaction.category_id, func.sum(Transaction.amount),
     ).where(
         Transaction.effective_on >= inizio,
         Transaction.effective_on < fine,
@@ -1517,11 +1556,11 @@ def _mensili_per_categoria(session: Session, year: int, month: int, budget_type:
         BUDGET_MOVEMENT,
     ).group_by(
         extract("year", Transaction.effective_on), extract("month", Transaction.effective_on),
-        Transaction.category,
+        Transaction.category_id,
     )).all()
-    for anno, mese, categoria, totale in righe:
-        if categoria:
-            per_categoria[categoria.strip()][(int(anno), int(mese))] = float(totale or 0)
+    for anno, mese, categoria_id, totale in righe:
+        if categoria_id is not None:
+            per_categoria[categoria_id][(int(anno), int(mese))] = float(totale or 0)
     return periodi, per_categoria
 
 
@@ -1559,8 +1598,8 @@ def stima_fine_periodo(session: Session, year: int, month: int, oggi: date) -> d
     # ancorarla al mese scelto ci infilerebbe dentro mesi ancora vuoti, e le
     # mediane verrebbero schiacciate da una fila di zeri.
     periodi, storico = _mensili_per_categoria(session, oggi.year, oggi.month, "Expenses", 6)
-    mediane = {nome.strip().lower(): _mediana([valori.get(periodo, 0.0) for periodo in periodi])
-               for nome, valori in storico.items()}
+    mediane = {categoria_id: _mediana([valori.get(periodo, 0.0) for periodo in periodi])
+               for categoria_id, valori in storico.items()}
     stima = sum(max(speso_mese.get(chiave, 0.0), mediane.get(chiave, 0.0))
                 for chiave in set(speso_mese) | set(mediane))
     return {"state": "current" if inizio == mese_corrente else "future",
@@ -1582,9 +1621,10 @@ def budget_suggestions(year: int, month: int, budget_type: str = "Expenses", mon
     """
     months_back = max(1, min(int(months_back), 24))
     periodi, per_categoria = _mensili_per_categoria(session, year, month, budget_type, months_back)
+    nomi = nomi_categorie(session)
 
     items = []
-    for categoria, valori in per_categoria.items():
+    for categoria_id, valori in per_categoria.items():
         mensili = [round(valori.get(periodo, 0.0), 2) for periodo in periodi]
         con_spesa = [valore for valore in mensili if valore]
         if not con_spesa:
@@ -1593,7 +1633,12 @@ def budget_suggestions(year: int, month: int, budget_type: str = "Expenses", mon
         meta = len(ordinati) // 2
         mediana = ordinati[meta] if len(ordinati) % 2 else (ordinati[meta - 1] + ordinati[meta]) / 2
         items.append({
-            "category": categoria,
+            # Senza id nel dizionario la categoria del risparmio non esiste
+            # ancora come riga: si mostra il nome che avra'.
+            "category": nomi.get(categoria_id, "") if categoria_id is not None else savings_category(session),
+            # L'id accanto al nome: e' con quello che si scrive la riga di budget,
+            # e due figli omonimi sotto padri diversi hanno nomi uguali.
+            "categoryId": categoria_id,
             "median": round(mediana, 2),
             "average": round(sum(mensili) / len(mensili), 2),
             "max": max(mensili),
@@ -1626,32 +1671,34 @@ def _totali_mensili(session: Session, year: int, budget_type: str) -> dict[int, 
     return {int(mese): float(totale or 0) for mese, totale in righe}
 
 
-def budget_actual_year(session: Session, year: int, budget_type: str = "Expenses") -> dict[int, dict[str, float]]:
+def budget_actual_year(session: Session, year: int, budget_type: str = "Expenses") -> dict[int, dict[int, float]]:
     """Lo speso di un anno intero, mese per mese e categoria per categoria.
 
     Una interrogazione al posto di una per cella: la griglia annuale ne chiedeva
     dodici per ogni categoria, e l'andamento la ricostruiva per ogni anno. Con
     trenta categorie e tre anni erano piu' di mille interrogazioni per disegnare
     una pagina, ed e' il motivo per cui l'app sembrava pensarci su.
+
+    Le chiavi delle categorie sono id, come in `budget_actual`: il confronto con
+    il pianificato e' esatto, e due categorie omonime restano due voci.
     """
     if budget_type == "Savings":
-        categoria = savings_category(session).strip().lower()
+        categoria = savings_category_id(session)
         mensili = _totali_mensili(session, year, "Savings")
         return {mese: {categoria: mensili.get(mese, 0.0)} for mese in range(1, 13)}
-    per_mese: dict[int, dict[str, float]] = {mese: defaultdict(float) for mese in range(1, 13)}
+    per_mese: dict[int, dict[int, float]] = {mese: defaultdict(float) for mese in range(1, 13)}
     # Una query per le transazioni "budgeable" dell'anno, aggregate per mese e
-    # categoria. La category va normalizzata come in `budget_actual` (Excel
-    # paragona il testo case-insensitive, e i budget possono avere casing misto).
+    # categoria.
     righe = session.execute(select(
-        extract("month", Transaction.effective_on), Transaction.category, Transaction.amount,
+        extract("month", Transaction.effective_on), Transaction.category_id, Transaction.amount,
     ).where(
         extract("year", Transaction.effective_on) == year,
         Transaction.transaction_type == budget_type,
         BUDGET_MOVEMENT,
     )).all()
-    for mese, categoria, importo in righe:
-        if categoria:
-            per_mese[int(mese)][categoria.strip().lower()] += float(importo or 0)
+    for mese, categoria_id, importo in righe:
+        if categoria_id is not None:
+            per_mese[int(mese)][categoria_id] += float(importo or 0)
     # I rimborsi nettono dall'importo della categoria dell'originale nello stesso
     # mese dell'originale (non del rimborso: uno puo' rimborsare a gennaio una
     # spesa di novembre, e il netting va applicato dove il budget era stato
@@ -1661,7 +1708,7 @@ def budget_actual_year(session: Session, year: int, budget_type: str = "Expenses
     if budget_type in {"Income", "Expenses"}:
         Originale = aliased(Transaction, name="originale")
         rimborsi = session.execute(select(
-            extract("month", Originale.effective_on), Originale.category, Transaction.amount,
+            extract("month", Originale.effective_on), Originale.category_id, Transaction.amount,
         ).join(Originale, Transaction.refund_of_id == Originale.id).where(
             REAL_MOVEMENT,
             Transaction.refund_of_id.is_not(None),
@@ -1670,22 +1717,30 @@ def budget_actual_year(session: Session, year: int, budget_type: str = "Expenses
             extract("year", Originale.effective_on) == year,
         )).all()
         for mese, categoria_originale, importo in rimborsi:
-            if categoria_originale:
-                per_mese[int(mese)][categoria_originale.strip().lower()] -= float(importo or 0)
+            if categoria_originale is not None:
+                per_mese[int(mese)][categoria_originale] -= float(importo or 0)
     return {mese: {chiave: round(valore, 2) for chiave, valore in valori.items()}
             for mese, valori in per_mese.items()}
 
 
 @router.get("/api/budgets")
 def budgets(year: int, month: int, budget_type: str = "Expenses", session: Session = Depends(get_session)) -> dict[str, Any]:
-    plans = session.scalars(select(BudgetPlan).where(BudgetPlan.period == date(year, month, 1), BudgetPlan.budget_type == budget_type).order_by(BudgetPlan.category)).all(); actual = budget_actual(session, year, month, budget_type)
-    gruppi = category_groups(session)
+    # In ordine d'albero, non d'alfabeto: la griglia del budget deve leggersi
+    # come la tendina delle categorie, con i figli sotto il loro padre.
+    plans = session.scalars(select(BudgetPlan).outerjoin(Category, Category.id == BudgetPlan.category_id)
+                            .where(BudgetPlan.period == date(year, month, 1),
+                                   BudgetPlan.budget_type == budget_type)
+                            .order_by(Category.position, Category.name, BudgetPlan.id)).all()
+    actual = budget_actual(session, year, month, budget_type)
+    nomi = nomi_categorie(session)
+    gruppi = gruppo_di_categoria(session)
     avanzi = previous_month_leftover(session, year, month, budget_type)
-    items = [{"id": plan.id, "category": plan.category, "categoryLabel": plan.category,
-              "categoryGroup": plan.category_group or gruppi.get(plan.category.strip().lower()),
-              "amount": num(plan.amount), "actual": actual.get(plan.category.strip().lower(), 0),
+    items = [{"id": plan.id, "category": nomi.get(plan.category_id, ""), "categoryId": plan.category_id,
+              "categoryLabel": nomi.get(plan.category_id, ""),
+              "categoryGroup": gruppi.get(plan.category_id),
+              "amount": num(plan.amount), "actual": actual.get(plan.category_id, 0),
               # Solo informativo: non entra in nessun totale.
-              "previousLeftover": avanzi.get(plan.category.strip().lower(), 0.0)}
+              "previousLeftover": avanzi.get(plan.category_id, 0.0)}
              for plan in plans]
     actual_total = sum(item["actual"] for item in items)
     if budget_type == "Savings":
@@ -1728,16 +1783,25 @@ def calculations(year: int, month: int, session: Session = Depends(get_session))
 
 @router.get("/api/budget-annual")
 def budget_annual(year: int, budget_type: str = "Expenses", session: Session = Depends(get_session)) -> dict[str, Any]:
-    plans = session.scalars(select(BudgetPlan).where(extract("year", BudgetPlan.period) == year, BudgetPlan.budget_type == budget_type)).all(); by_category: dict[str, list[BudgetPlan]] = defaultdict(list)
-    for plan in plans: by_category[plan.category].append(plan)
+    plans = session.scalars(select(BudgetPlan).outerjoin(Category, Category.id == BudgetPlan.category_id)
+                            .where(extract("year", BudgetPlan.period) == year,
+                                   BudgetPlan.budget_type == budget_type)
+                            .order_by(Category.position, Category.name, BudgetPlan.id)).all()
+    by_category: dict[int | None, list[BudgetPlan]] = defaultdict(list)
+    for plan in plans: by_category[plan.category_id].append(plan)
+    nomi = nomi_categorie(session)
+    gruppi = gruppo_di_categoria(session)
     items = []
     speso = budget_actual_year(session, year, budget_type)
-    for category, rows in by_category.items():
-        chiave = category.strip().lower()
+    for category_id, rows in by_category.items():
         indexed = {row.period.month: row for row in rows}; months = []
         for month in range(1, 13):
-            row = indexed.get(month); actual = speso.get(month, {}).get(chiave, 0); months.append({"month": month, "id": row.id if row else None, "amount": num(row.amount) if row else 0, "actual": actual})
-        items.append({"category": category, "categoryLabel": category, "categoryGroup": rows[0].category_group, "months": months, "plannedTotal": sum(value["amount"] for value in months), "actualTotal": sum(value["actual"] for value in months)})
+            row = indexed.get(month); actual = speso.get(month, {}).get(category_id, 0); months.append({"month": month, "id": row.id if row else None, "amount": num(row.amount) if row else 0, "actual": actual})
+        items.append({"category": nomi.get(category_id, ""), "categoryId": category_id,
+                      "categoryLabel": nomi.get(category_id, ""),
+                      "categoryGroup": gruppi.get(category_id), "months": months,
+                      "plannedTotal": sum(value["amount"] for value in months),
+                      "actualTotal": sum(value["actual"] for value in months)})
     # I `monthTotals` devono riflettere lo speso reale del mese, non solo quello
     # delle categorie che hanno un BudgetPlan: per un anno senza piano serve
     # comunque vedere la linea dei movimenti reali, altrimenti le tendenze
@@ -2948,7 +3012,11 @@ def notes(session: Session = Depends(get_session)) -> dict[str, Any]: return {"i
 class RulePayload(BaseModel):
     pattern: str
     is_regex: bool = False
-    category: str
+    # Il nome resta per l'interfaccia di oggi, che manda ancora quello; l'id, se
+    # arriva, vince: e' l'unico che distingue due figli omonimi sotto padri
+    # diversi.
+    category: str = ""
+    categoryId: int | None = None
     # I tipi che hanno una categoria. Uno spostamento fra conti non ce l'ha, e
     # gli altri tipi li rifiuta gia' il modello prima di arrivare qui.
     transaction_type: Literal["Expenses", "Income"] | None = None
@@ -2968,9 +3036,13 @@ class RuleBulkPayload(BaseModel):
     rules: list[RulePayload]
 
 
-def _regola_json(riga: CategorizationRule) -> dict[str, Any]:
+def _regola_json(riga: CategorizationRule, nomi: dict[int, str]) -> dict[str, Any]:
+    """La regola come la vuole l'interfaccia: il nome per leggerla, l'id per
+    riscriverla. Il nome e' quello di adesso, non quello di quando e' stata
+    creata: una categoria rinominata non deve lasciare indietro le regole."""
     return {"id": riga.id, "position": riga.position, "pattern": riga.pattern, "isRegex": riga.is_regex,
-            "category": riga.category, "transactionType": riga.transaction_type,
+            "category": nomi.get(riga.category_id, ""), "categoryId": riga.category_id,
+            "transactionType": riga.transaction_type,
             "minAmount": num(riga.min_amount) if riga.min_amount is not None else None,
             "maxAmount": num(riga.max_amount) if riga.max_amount is not None else None,
             "active": riga.active}
@@ -2980,8 +3052,34 @@ def _importo(valore: float | None) -> Decimal | None:
     return None if valore is None else Decimal(str(valore)).quantize(Decimal("0.01"))
 
 
-def _valida_regola(payload: RulePayload, session: Session, *, esistente: CategorizationRule | None = None) -> None:
-    """Rifiuta una regola che l'anteprima non saprebbe applicare.
+def _categoria_regola(session: Session, category_id: int | None, nome: str) -> int:
+    """L'id della categoria che una regola decide, senza inventarne una.
+
+    Il nome deve essere di una categoria che esiste: una regola che nomina una
+    categoria mai vista scriverebbe nei movimenti una categoria che non sta in
+    nessun elenco, e chi la trova non sa da dove sia uscita. Per questo non si
+    crea, al contrario dell'import di un estratto conto, che un nome lo accetta
+    perche' arriva da un file scritto prima che le categorie fossero un albero.
+    """
+    if category_id is not None:
+        if session.get(Category, category_id) is None:
+            raise HTTPException(status_code=404, detail="categoryNotFound")
+        return category_id
+    pulito = (nome or "").strip()
+    trovate = session.scalars(select(Category.id).where(func.lower(Category.name) == pulito.casefold())).all()
+    if not trovate:
+        raise HTTPException(status_code=422, detail="ruleCategoryUnknown")
+    if len(trovate) > 1:
+        # Due figli omonimi sotto padri diversi: il nome da solo non dice quale
+        # dei due, e indovinare scriverebbe la regola sulla categoria sbagliata.
+        raise HTTPException(status_code=422, detail="ruleCategoryAmbiguous")
+    return trovate[0]
+
+
+def _valida_regola(payload: RulePayload, session: Session, *,
+                   esistente: CategorizationRule | None = None) -> int:
+    """Rifiuta una regola che l'anteprima non saprebbe applicare, e dice su
+    quale categoria e' stata scritta.
 
     Sono i controlli di un confine: una regex che non si compila fermerebbe
     l'import di un estratto conto intero, e un pattern vuoto combacerebbe con
@@ -2996,8 +3094,7 @@ def _valida_regola(payload: RulePayload, session: Session, *, esistente: Categor
             re.compile(pattern)
         except re.error as error:
             raise HTTPException(status_code=422, detail="ruleRegexInvalid") from error
-    if payload.category.strip() not in categorie_ammesse(session):
-        raise HTTPException(status_code=422, detail="ruleCategoryUnknown")
+    categoria_id = _categoria_regola(session, payload.categoryId, payload.category)
     minimo, massimo = _importo(payload.min_amount), _importo(payload.max_amount)
     if minimo is not None and massimo is not None and minimo > massimo:
         raise HTTPException(status_code=422, detail="ruleAmountRange")
@@ -3016,22 +3113,24 @@ def _valida_regola(payload: RulePayload, session: Session, *, esistente: Categor
         quante = session.scalar(select(func.count(CategorizationRule.id))) or 0
         if quante >= MAX_REGOLE:
             raise HTTPException(status_code=422, detail="ruleLimitReached")
+    return categoria_id
 
 
 @router.get("/api/categorization-rules")
 def categorization_rules(session: Session = Depends(get_session)) -> dict[str, Any]:
     righe = session.scalars(select(CategorizationRule)
                             .order_by(CategorizationRule.position, CategorizationRule.id)).all()
-    return {"items": [_regola_json(riga) for riga in righe]}
+    nomi = nomi_categorie(session)
+    return {"items": [_regola_json(riga, nomi) for riga in righe]}
 
 
 @router.post("/api/categorization-rules", status_code=201)
 def create_categorization_rule(payload: RulePayload, session: Session = Depends(get_session)) -> dict[str, Any]:
     """Crea una regola in coda alle altre: l'ordine e' la priorita'."""
-    _valida_regola(payload, session)
+    categoria_id = _valida_regola(payload, session)
     ultima = session.scalar(select(func.max(CategorizationRule.position))) or 0
     riga = CategorizationRule(position=ultima + 1, pattern=payload.pattern.strip(), is_regex=payload.is_regex,
-                              category=payload.category.strip(), transaction_type=payload.transaction_type,
+                              category_id=categoria_id, transaction_type=payload.transaction_type,
                               min_amount=_importo(payload.min_amount), max_amount=_importo(payload.max_amount),
                               active=payload.active)
     session.add(riga)
@@ -3040,7 +3139,7 @@ def create_categorization_rule(payload: RulePayload, session: Session = Depends(
     except IntegrityError as error:
         session.rollback()
         raise HTTPException(status_code=422, detail="ruleDuplicate") from error
-    return _regola_json(riga)
+    return _regola_json(riga, nomi_categorie(session))
 
 
 # Prima di "/{rule_id}": il percorso con l'identificativo e' un intero, e una
@@ -3081,9 +3180,9 @@ def create_categorization_rules(payload: RuleBulkPayload,
     posizione = session.scalar(select(func.max(CategorizationRule.position))) or 0
     try:
         for indice, regola in enumerate(payload.rules, start=1):
-            _valida_regola(regola, session)
+            categoria_id = _valida_regola(regola, session)
             riga = CategorizationRule(position=posizione + indice, pattern=regola.pattern.strip(),
-                                      is_regex=False, category=regola.category.strip(),
+                                      is_regex=False, category_id=categoria_id,
                                       transaction_type=regola.transaction_type,
                                       min_amount=_importo(regola.min_amount), max_amount=_importo(regola.max_amount),
                                       active=regola.active)
@@ -3107,9 +3206,9 @@ def update_categorization_rule(rule_id: int, payload: RulePayload,
     riga = session.get(CategorizationRule, rule_id)
     if riga is None:
         raise HTTPException(status_code=404, detail="ruleNotFound")
-    _valida_regola(payload, session, esistente=riga)
+    categoria_id = _valida_regola(payload, session, esistente=riga)
     riga.pattern, riga.is_regex = payload.pattern.strip(), payload.is_regex
-    riga.category, riga.transaction_type = payload.category.strip(), payload.transaction_type
+    riga.category_id, riga.transaction_type = categoria_id, payload.transaction_type
     riga.min_amount, riga.max_amount = _importo(payload.min_amount), _importo(payload.max_amount)
     riga.active = payload.active
     try:
@@ -3117,7 +3216,7 @@ def update_categorization_rule(rule_id: int, payload: RulePayload,
     except IntegrityError as error:
         session.rollback()
         raise HTTPException(status_code=422, detail="ruleDuplicate") from error
-    return _regola_json(riga)
+    return _regola_json(riga, nomi_categorie(session))
 
 
 @router.delete("/api/categorization-rules/{rule_id}")
