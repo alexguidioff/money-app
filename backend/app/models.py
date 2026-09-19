@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import (Boolean, Date, DateTime, Integer, Numeric, String, Text,
+from sqlalchemy import (Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text,
                         UniqueConstraint, func, text)
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -502,3 +502,55 @@ class CategorizationRule(Base):
     # Spenta resta nell'elenco e non si applica: e' il modo di mettere da parte
     # una regola senza perdere il pattern scritto.
     active: Mapped[bool] = mapped_column(default=True)
+
+
+class Event(Base):
+    """Una cosa che e' successa e che taglia le categorie: un viaggio, un
+    trasloco, un periodo vissuto in un'altra citta'.
+
+    Non e' il campo ``goal`` dei movimenti. Un obiettivo e' una cosa verso cui
+    vai ("Investire 150.000 euro"), un evento e' una cosa che e' successa: si
+    somigliano solo perche' entrambi raccolgono movimenti, e tenere un elenco
+    solo riempirebbe gli obiettivi di viaggi.
+
+    Le date servono a proporre i movimenti del periodo, non a filtrarli: un
+    acconto pagato tre mesi prima della partenza fa parte del viaggio lo
+    stesso, quindi l'appartenenza e' una riga in ``transaction_events`` e non
+    una condizione sulla data.
+    """
+
+    __tablename__ = "events"
+    __table_args__ = (UniqueConstraint("user_id", "name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, default=current_user_id)
+    name: Mapped[str] = mapped_column(String(255))
+    notes: Mapped[str | None] = mapped_column(Text)
+    start_date: Mapped[date | None] = mapped_column(Date)
+    end_date: Mapped[date | None] = mapped_column(Date)
+    # Chiuso vuol dire finito: resta con i suoi numeri nella card e esce dalla
+    # tendina del modulo, dove servono solo gli eventi a cui stai lavorando.
+    closed: Mapped[bool] = mapped_column(default=False)
+
+
+class TransactionEvent(Base):
+    """Di quale evento fa parte un movimento. Uno solo per movimento.
+
+    La chiave primaria e' ``transaction_id``: un movimento che starebbe in due
+    viaggi e' un movimento da dividere, non da etichettare due volte, e la
+    divisione in due movimenti questa app la sa gia' fare.
+
+    Tabella a parte e non una colonna su ``transactions``: quella e' larga
+    ventidue colonne ed e' il cuore dell'app, e un concetto che riguarda solo
+    alcune spese non deve allargarla. Un evento cancellato porta via le sue
+    righe, non i movimenti che gli appartenevano.
+
+    L'aggancio sparisce da solo con il movimento o con l'evento: una riga
+    orfana conterebbe un movimento che non c'e' piu' fra quelli dell'evento.
+    """
+
+    __tablename__ = "transaction_events"
+
+    transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id", ondelete="CASCADE"), primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, default=current_user_id)

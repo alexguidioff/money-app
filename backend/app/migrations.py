@@ -204,6 +204,10 @@ PER_UTENTE = [
     # un'altra. Non va confusa con "category_rules", la tabella cancellata a
     # ogni avvio piu' sotto in questo file.
     "categorization_rules",
+    # Un evento e' di chi l'ha creato, agganci compresi: senza l'isolamento il
+    # viaggio di una persona comparirebbe nella card di un'altra.
+    "events",
+    "transaction_events",
 ]
 
 # Tabelle condivise di proposito: una quotazione e il profilo di uno strumento

@@ -27,12 +27,13 @@ from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import (Account, AccountValuation, AppSetting, BudgetPlan, CategorizationRule, Goal, IncomeStream,
+from .models import (Account, AccountValuation, AppSetting, BudgetPlan, CategorizationRule, Event, Goal, IncomeStream,
                      RetirementProfile, InvestmentInstrument, InvestmentTransaction,
                      InvestmentTransactionDetail,
-                     LiabilityProfile, LiabilityTransactionDetail, LookupOption, Note, Transaction, TransactionLedgerLink)
+                     LiabilityProfile, LiabilityTransactionDetail, LookupOption, Note, Transaction, TransactionEvent,
+                     TransactionLedgerLink)
 
-FORMAT_VERSION = "1.8"
+FORMAT_VERSION = "1.9"
 
 
 def _cell(value: Any) -> Any:
@@ -83,6 +84,10 @@ SHEETS: dict[str, tuple[Any, list[str]]] = {
     "Note": (Note, ["id", "section", "title", "body", "status"]),
     "Impostazioni": (AppSetting, ["key", "label", "value"]),
     "Opzioni": (LookupOption, ["id", "option_group", "position", "value"]),
+    # L'aggancio non ha un id suo: la chiave e' il movimento, quindi il foglio
+    # porta due riferimenti e nessuna riga da rimappare.
+    "Eventi": (Event, ["id", "name", "notes", "start_date", "end_date", "closed"]),
+    "EventiMovimenti": (TransactionEvent, ["transaction_id", "event_id"]),
 }
 
 
