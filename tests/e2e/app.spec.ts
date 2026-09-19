@@ -314,3 +314,51 @@ test('Obiettivi: una tappa si aggiunge dall\'elenco, resta dopo il ricarico e si
   await expect(dopo.getByText('Una tappa non può valere più dell’obiettivo.')).toBeVisible();
   await expect(dopo.getByText('Troppo grande e2e')).toHaveCount(0);
 });
+
+test('Analisi: il periodo si dichiara, e cambiandolo i totali cambiano', async ({ page }) => {
+  // La scena che tiene insieme il periodo nuovo: la pagina si apre sugli ultimi
+  // dodici mesi, dice quali sono, e cambiando periodo i numeri cambiano davvero.
+  // Per vederlo serve una spesa che cade dentro una finestra e non nell'altra:
+  // qui sono due, una nel mese di oggi e una nello stesso mese dell'anno scorso.
+  // La prima sta in tutte e due le finestre; la seconda sta nell'anno e mai
+  // negli ultimi dodici mesi, che sono dodici esatti - dicembre compreso, il
+  // mese in cui le due finestre si toccano. I numeri sono tondi e inventati.
+  const errori = raccogliErrori(page);
+  const oggi = new Date();
+  const anno = oggi.getFullYear();
+  const mese = String(oggi.getMonth() + 1).padStart(2, '0');
+  // La riga vecchia serve solo a dire che i dati cominciano prima del periodo
+  // precedente: senza, il confronto non si fa e la tabella mostra dei trattini.
+  const righe = [[`${anno - 3}-01-10`, 1], [`${anno - 1}-${mese}-05`, 500], [`${anno}-${mese}-05`, 300]] as const;
+  for (const [giorno, importo] of righe) {
+    const risposta = await page.request.post('/api/transactions', { data: {
+      occurred_on: giorno, transaction_type: 'Expenses', category: 'Housing', amount: importo, account_name: 'Banca' } });
+    expect(risposta.ok(), await risposta.text()).toBe(true);
+  }
+
+  await avvia(page);
+  await page.getByRole('button', { name: 'Andamento annuale' }).click();
+  const anni = page.getByLabel('Anno', { exact: true });
+  await expect(anni).toHaveValue('last12');
+  // E la finestra la dichiara con le sue due date: dodici mesi che finiscono con
+  // il mese di oggi, e non l'anno solare in corso. E' la riga che il test
+  // controlla con un conto suo, senza chiedere al backend quali date fossero.
+  const giorno = (data: Date) => `${String(data.getDate()).padStart(2, '0')}/${String(data.getMonth() + 1).padStart(2, '0')}/${data.getFullYear()}`;
+  const inizio = new Date(anno, oggi.getMonth() - 11, 1);
+  const fine = new Date(anno, oggi.getMonth() + 1, 0);
+  await expect(page.getByText(`dal ${giorno(inizio)} al ${giorno(fine)}`)).toBeVisible();
+  const confronto = page.locator('[data-slot="card"]', { has: page.getByText('Le categorie, confrontate') });
+  const casa = confronto.getByRole('row', { name: /Housing/ });
+  await expect(casa.getByRole('cell').nth(1)).toHaveText(/^300\s*€$/);
+  // La mediana e' quella degli ultimi dodici mesi, e viaggia con quanti mesi
+  // l'hanno formata: un mese su dodici lo si legge invece di dedurlo.
+  await expect(casa).toContainText('mesi con movimenti: 1/12');
+
+  await anni.selectOption(String(anno - 1));
+  await expect(page.getByText(`dal 01/01/${anno - 1} al 31/12/${anno - 1}`)).toBeVisible();
+  await expect(casa.getByRole('cell').nth(1)).toHaveText(/^500\s*€$/);
+
+  await anni.selectOption('last12');
+  await expect(casa.getByRole('cell').nth(1)).toHaveText(/^300\s*€$/);
+  expect(errori).toEqual([]);
+});
