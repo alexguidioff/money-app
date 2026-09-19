@@ -323,9 +323,14 @@ def _gestori(session: Session) -> dict[str, tuple[type[BaseModel], Any]]:
         "categorizationRule": (RulePayload, lambda p: create_categorization_rule(p, session)),
         "categorizationBulk": (RuleBulkPayload, lambda p: create_categorization_rules(p, session)),
         "event": (EventPayload, lambda p: create_event(p, session)),
+        # L'id del corpo dice solo se agganciare o sganciare: il numero non
+        # conta, perche' l'evento del seme ha un id che dipende da quante righe
+        # sono state scritte prima. Al contratto interessa la forma del corpo.
         "eventAttach": (TransactionEventPayload, lambda p: set_transaction_event(
             session.scalars(select(Transaction.id).where(Transaction.transaction_type == "Expenses")
-                            .order_by(Transaction.id)).first(), p, session)),
+                            .order_by(Transaction.id)).first(),
+            TransactionEventPayload(event_id=session.scalar(select(Event.id).where(Event.name == "Trasloco")))
+            if p.event_id is not None else TransactionEventPayload(), session)),
         "split": (SplitPayload, lambda p: split_transaction(session.scalars(select(Transaction.id).where(
             Transaction.transaction_type == "Expenses", Transaction.category == "Housing")).first(), p, session)),
     }

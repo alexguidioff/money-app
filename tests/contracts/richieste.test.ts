@@ -2,7 +2,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { expect, it } from 'vitest';
 import type { RetirementProfile } from '@/components/settings/retirement-profile-form';
-import { accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, expenseRulesPayload,
+import { accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, eventAttachPayload,
+  eventPayload, expenseRulesPayload,
   goalPayload, incomeStreamPayload,
   ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, splitPayload, transactionPayload } from '@/lib/payloads';
 
@@ -96,6 +97,12 @@ const richieste = [
   { endpoint: 'categorizationBulk', case: 'due proposte accettate', body: categorizationBulkPayload([
     { pattern: 'spesa lidl', category: 'Groceries', transactionType: 'Expenses' },
     { pattern: 'affitto', category: 'Housing' }]) },
+  // Un nome diverso da quello del seme: lo stesso nome lo rifiuterebbe, ed e'
+  // giusto cosi' - il caso "nome gia' usato" sta nei test del backend.
+  { endpoint: 'event', case: 'evento con le date', body: eventPayload(modulo({
+    name: 'Ferie in montagna', notes: 'Settimana bianca', start_date: '2025-01-04', end_date: '2025-01-11' })) },
+  { endpoint: 'eventAttach', case: 'aggancia il movimento a un evento', body: eventAttachPayload(1) },
+  { endpoint: 'eventAttach', case: 'sgancia: il movimento resta dov\'era', body: eventAttachPayload(null) },
 ];
 
 it('i corpi delle richieste sono costruiti e scritti per il backend', () => {

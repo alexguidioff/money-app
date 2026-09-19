@@ -1275,6 +1275,13 @@ const it = {
   ruleInconsistent: 'Descrizioni incoerenti',
   ruleAcceptChecked: 'Accetta le spuntate ({{count}})',
   ruleNoneFound: 'Non c\'è ancora niente da imparare: servono almeno tre movimenti con la stessa descrizione e la stessa categoria.',
+  eventField: 'Evento',
+  eventNone: 'Nessuno',
+  eventNew: '＋ nuovo evento…',
+  eventName: 'Nome dell\'evento',
+  eventNewPlaceholder: 'Es. Viaggio a Lisbona',
+  eventAll: 'Tutti gli eventi',
+  eventAttachFailed: 'Movimento salvato, ma l\'evento non è stato agganciato: riapri il movimento e riprova.',
 
 };
 
@@ -2515,6 +2522,13 @@ const en: TranslationTable = {
   ruleInconsistent: 'Inconsistent descriptions',
   ruleAcceptChecked: 'Accept the checked ones ({{count}})',
   ruleNoneFound: 'Nothing to learn yet: it takes at least three transactions with the same description and the same category.',
+  eventField: 'Event',
+  eventNone: 'None',
+  eventNew: '＋ new event…',
+  eventName: 'Event name',
+  eventNewPlaceholder: 'E.g. Trip to Lisbon',
+  eventAll: 'All events',
+  eventAttachFailed: 'Transaction saved, but the event was not attached: reopen the transaction and try again.',
 
 };
 
@@ -3752,6 +3766,13 @@ const de: TranslationTable = {
   ruleInconsistent: 'Widersprüchliche Beschreibungen',
   ruleAcceptChecked: 'Ausgewählte übernehmen ({{count}})',
   ruleNoneFound: 'Noch nichts zu lernen: es braucht mindestens drei Buchungen mit derselben Beschreibung und derselben Kategorie.',
+  eventField: 'Ereignis',
+  eventNone: 'Keins',
+  eventNew: '＋ neues Ereignis…',
+  eventName: 'Name des Ereignisses',
+  eventNewPlaceholder: 'Z. B. Reise nach Lissabon',
+  eventAll: 'Alle Ereignisse',
+  eventAttachFailed: 'Buchung gespeichert, das Ereignis wurde aber nicht angehängt: öffne die Buchung erneut und versuche es noch einmal.',
 
 };
 
@@ -4989,6 +5010,13 @@ const es: TranslationTable = {
   ruleInconsistent: 'Descripciones incoherentes',
   ruleAcceptChecked: 'Aceptar las marcadas ({{count}})',
   ruleNoneFound: 'Todavía no hay nada que aprender: hacen falta al menos tres movimientos con la misma descripción y la misma categoría.',
+  eventField: 'Evento',
+  eventNone: 'Ninguno',
+  eventNew: '＋ nuevo evento…',
+  eventName: 'Nombre del evento',
+  eventNewPlaceholder: 'Ej. Viaje a Lisboa',
+  eventAll: 'Todos los eventos',
+  eventAttachFailed: 'Movimiento guardado, pero el evento no se ha vinculado: vuelve a abrir el movimiento e inténtalo de nuevo.',
 
 };
 
@@ -6246,6 +6274,13 @@ const fr: TranslationTable = {
   ruleInconsistent: 'Descriptions incohérentes',
   ruleAcceptChecked: 'Accepter les cochées ({{count}})',
   ruleNoneFound: 'Rien à apprendre pour l\'instant : il faut au moins trois mouvements avec la même description et la même catégorie.',
+  eventField: 'Événement',
+  eventNone: 'Aucun',
+  eventNew: '＋ nouvel événement…',
+  eventName: 'Nom de l\'événement',
+  eventNewPlaceholder: 'Ex. Voyage à Lisbonne',
+  eventAll: 'Tous les événements',
+  eventAttachFailed: 'Mouvement enregistré, mais l\'événement n\'a pas été rattaché : rouvre le mouvement et réessaie.',
 
 };
 

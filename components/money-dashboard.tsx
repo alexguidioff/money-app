@@ -3,7 +3,7 @@
 import { campiMancanti, downloadFile, responseError } from '@/lib/download';
 import { previewEffectiveDate } from '@/lib/effective-date';
 import { LEDGER_SENZA_QUOTE, nettoOperazioni } from '@/lib/ledger-preview';
-import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
+import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, eventAttachPayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
 import { messaggioErroreRegola } from '@/lib/rule-errors';
 import { SyntheticEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Flame,
@@ -151,6 +151,37 @@ export type AnalysisData = {
   categoryOptions: string[];
 };
 
+/* Un evento: quanto e' costato il viaggio, tutto compreso. `spese` ed `entrate`
+   restano due numeri separati e `netto` e' la differenza; `movimenti` conta
+   anche quelli che nei due importi non entrano, perche' dice quanto materiale
+   c'e' dentro. */
+export type EventData = {
+  id: number;
+  name: string;
+  notes: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  closed: boolean;
+  movimenti: number;
+  spese: number;
+  entrate: number;
+  netto: number;
+};
+
+export type EventsData = { items: EventData[] };
+
+/* Il dettaglio di un evento: i suoi movimenti e la ripartizione per categoria,
+   che sono due viste della stessa cosa - la somma delle voci di categoria e'
+   il totale dell'evento. */
+export type EventDetailData = {
+  event: EventData;
+  movements: Transaction[];
+  categories: Array<{ name: string; spese: number; entrate: number }>;
+};
+
+/** Quello che basta alla pastiglia e alle tendine: senza importi. */
+export type EventSummary = { id: number; name: string; closed: boolean };
+
 export type Transaction = {
   countsInBudget?: boolean;
   refundOfId?: number | null;
@@ -170,6 +201,7 @@ export type Transaction = {
   destinationName: string | null;
   goal: string | null;
   details: string | null;
+  event?: EventSummary | null;
   linkedLedger?: LinkedLedgerSummary[];
   liabilitySplit?: { id: number; kind: 'repayment' | 'drawdown' | 'charge'; principal: number; interest: number; classified: boolean } | null;
 };
@@ -210,7 +242,7 @@ type LinkedLedgerDraft = {
 
 type AccountValuation = { id: number; observedOn: string; value: number; notes: string | null };
 
-export type TransactionsPage = { items: Transaction[]; total: number; offset: number; years: string[]; goals: string[] };
+export type TransactionsPage = { items: Transaction[]; total: number; offset: number; years: string[]; goals: string[]; events: EventSummary[] };
 export type AccountsResponse = { items: Account[] };
 
 export type Account = {
@@ -539,6 +571,10 @@ const MESE_CORRENTE = { anno: new Date().getFullYear(), mese: new Date().getMont
 const OGGI = new Date();
 type PeriodSelection = { year: number; month: number; scope: 'month' | 'year' };
 
+// La voce in fondo alla tendina "Evento": un valore che un id non puo' avere,
+// cosi' la scelta di crearlo non si confonde con un evento che esiste.
+const EVENTO_NUOVO = '__nuovo__';
+
 // Dove eravamo rimasti. Sta nel browser, non nel database: e' una comodita' di
 // questo schermo, non un dato dell'account.
 const CHIAVE_VISTA = 'money.ultima-vista';
@@ -866,6 +902,11 @@ function MoneyDashboardInner() {
   const [movementAccount, setMovementAccount] = useState('');
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [duplicatingTransaction, setDuplicatingTransaction] = useState<Transaction | null>(null);
+  // Gli eventi della tendina del modulo e la voce scelta: un id, oppure la
+  // richiesta di crearne uno nuovo. Serve lo stato e non il solo FormData
+  // perche' scegliendo "nuovo" deve comparire il campo del nome.
+  const [eventi, setEventi] = useState<EventSummary[]>([]);
+  const [eventChoice, setEventChoice] = useState('');
   const [linkLedgerOpen, setLinkLedgerOpen] = useState(false);
   const movementFormRef = useRef<HTMLFormElement>(null);
   const [linkedLedgerRows, setLinkedLedgerRows] = useState<LinkedLedgerDraft[]>([]);
@@ -1183,6 +1224,20 @@ function MoneyDashboardInner() {
   useEffect(() => activeSection === 'Panoramica' && overviewView === 'analisi' ? caricaAmbito(['analysis']) : undefined,
     [activeSection, overviewView, caricaAmbito, analysisYear, analysisCategoryType, analysisCategory]);
 
+  // La tendina "Evento" del modulo: si carica aprendo il modulo, cosi' un
+  // evento creato poco fa c'e' gia', e chi non apre mai il modulo non la
+  // scarica. `movimentiVersione` cambia a ogni salvataggio, che e' anche il
+  // momento in cui un evento nuovo puo' essere comparso.
+  useEffect(() => {
+    if (!newTransactionOpen) return undefined;
+    const controller = new AbortController();
+    fetch(`${apiUrl}/api/events`, { signal: controller.signal })
+      .then((risposta) => risposta.ok ? risposta.json() as Promise<EventsData> : Promise.reject(new Error('eventi')))
+      .then((dati) => setEventi(dati.items))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [apiUrl, newTransactionOpen, movimentiVersione]);
+
   // Il salvataggio deve aspettare il ripristino: partendo subito scriverebbe i
   // valori di partenza sopra quelli appena letti, e non ricorderebbe niente.
   const [vistaRipristinata, setVistaRipristinata] = useState(false);
@@ -1239,6 +1294,34 @@ function MoneyDashboardInner() {
   async function handleSaveTransaction(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     await salvaMovimento(new FormData(event.currentTarget), true);
+  }
+
+  /* L'evento del movimento, dopo che il movimento esiste.
+     "＋ nuovo evento…" crea l'evento qui: creare un evento e' proprio quello
+     che si vuole fare mentre si sta guardando la prima spesa che gli
+     appartiene. Non solleva mai: il movimento e' gia' salvato, e un guasto
+     dell'aggancio non deve far credere che il salvataggio sia fallito. */
+  async function aggiornaEvento(form: FormData, txId: string): Promise<void> {
+    try {
+      const scelta = String(form.get('event_id') ?? '');
+      let eventId: number | null = scelta && scelta !== EVENTO_NUOVO ? Number(scelta) : null;
+      if (scelta === EVENTO_NUOVO) {
+        const nome = String(form.get('nuovo_evento') ?? '').trim();
+        if (!nome) return;
+        const creazione = await fetch(`${apiUrl}/api/events`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: nome }) });
+        if (!creazione.ok) throw new Error('evento');
+        eventId = Number((await creazione.json() as { id: number }).id);
+      }
+      // Un movimento appena creato senza evento non ha niente da sganciare:
+      // solo in modifica la scelta vuota vuol dire "toglilo dall'evento".
+      if (eventId === null && !editingTransaction) return;
+      const risposta = await fetch(`${apiUrl}/api/transactions/${txId}/event`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(eventAttachPayload(eventId)) });
+      if (!risposta.ok) throw new Error('aggancio');
+    } catch {
+      setImportFeedback({ ok: false, message: t('eventAttachFailed') });
+    }
   }
 
   /* Salva il movimento del modulo. `chiudi` falso lo lascia aperto: serve a
@@ -1305,6 +1388,18 @@ function MoneyDashboardInner() {
         // impostato, e al suo posto compariva sempre quello generico.
         throw new SaveFailed(Boolean(detail));
       }
+      // L'evento si aggancia dopo: la rotta vuole un movimento che esista, e
+      // per agganciarlo bisogna prima sapere che id ha preso. Prima di
+      // ricaricare, o la pastiglia nella lista arriverebbe un giro dopo. La
+      // lettura della risposta non deve far fallire un salvataggio riuscito:
+      // senza id l'evento resta da agganciare, il movimento e' salvato.
+      let salvatoId = editingTransaction ? String(editingTransaction.id) : '';
+      if (!salvatoId) {
+        try {
+          salvatoId = String((await response.json() as { id?: number | string }).id ?? '');
+        } catch { salvatoId = ''; }
+      }
+      if (salvatoId) await aggiornaEvento(form, salvatoId);
       if (chiudi) {
         // Chiudo prima di ricaricare: il movimento e' gia' salvato, e aspettare
         // il giro completo delle chiamate lasciava il dialogo fermo per secondi.
@@ -1861,6 +1956,7 @@ function MoneyDashboardInner() {
     setEditingTransaction(null);
     setDuplicatingTransaction(null);
     setSaveError('');
+    setEventChoice('');
     setNewTransactionOpen(true);
   }
 
@@ -1882,6 +1978,7 @@ function MoneyDashboardInner() {
     setLinkLedgerOpen(false);
     setLinkedLedgerRows([]);
     setLinkPickerOpen(false);
+    setEventChoice(transaction.event ? String(transaction.event.id) : '');
     setNewTransactionOpen(true);
     // Carica i link in background: la sezione "Operazioni collegate" si popola
     // appena la risposta arriva. Niente loading visibile: l'utente intanto
@@ -1894,6 +1991,7 @@ function MoneyDashboardInner() {
     setEditingTransaction(null);
     setDuplicatingTransaction(transaction);
     setSaveError('');
+    setEventChoice(transaction.event ? String(transaction.event.id) : '');
     setNewTransactionOpen(true);
   }, []);
 
@@ -2527,6 +2625,12 @@ function MoneyDashboardInner() {
             {!isSpostamento && <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="exclude_budget" defaultChecked={formTransaction?.countsInBudget === false} />{t('excludeBudget')}</label>}
             {(movementType === 'Income' || movementType === 'Expenses') && <RefundPicker apiUrl={apiUrl} initialId={editingTransaction?.refundOfId ?? null} transactionType={movementType} />}
             <label htmlFor="movement-goal" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldGoal')}<select id="movement-goal" name="goal" defaultValue={formTransaction?.goal ?? ''} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"><option value="">{t('noGoal')}</option>{uniqueOptions(formTransaction?.goal ?? '', goalsData.items.map((goal) => goal.name)).map((goal) => <option key={goal} value={goal}>{goal}</option>)}</select></label>
+            {/* L'evento e' un contenitore che taglia le categorie, non una
+                categoria: sta qui accanto al goal perche' e' un'altra
+                etichetta del movimento. Gli eventi chiusi non si offrono: un
+                evento finito non e' piu' qualcosa a cui si sta lavorando. */}
+            <label htmlFor="movement-event" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('eventField')}<select id="movement-event" name="event_id" value={eventChoice} onChange={(event) => setEventChoice(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"><option value="">{t('eventNone')}</option>{eventi.filter((evento) => !evento.closed).map((evento) => <option key={evento.id} value={String(evento.id)}>{evento.name}</option>)}<option value={EVENTO_NUOVO}>{t('eventNew')}</option></select></label>
+            {eventChoice === EVENTO_NUOVO && <label htmlFor="movement-event-name" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('eventName')}<Input id="movement-event-name" name="nuovo_evento" required placeholder={t('eventNewPlaceholder')} className="h-10 bg-white" /></label>}
             <label htmlFor="movement-details" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDescription')}<Input id="movement-details" name="details" defaultValue={formTransaction?.details ?? ''} placeholder={t('optionalNote')} className="h-10 bg-white" /></label>
             {/* Solo un Investimento si collega al ledger, e conta il tipo scelto
                 ora nel modulo: la casella compariva anche su spese ed entrate,
@@ -3144,6 +3248,7 @@ function SectionView({
     if (transactionTypeFilter !== 'all') params.set('transaction_type', transactionTypeFilter);
     if (accountFilter !== 'all') params.set('account_name', accountFilter);
     if (goalFilter !== 'all') params.set('goal', goalFilter);
+    if (eventFilter !== 'all') params.set('event_id', eventFilter);
     if (yearFilter !== 'all') params.set('year', yearFilter);
     if (monthFilter !== 'all') params.set('month', String(Number(monthFilter)));
     if (incompleteOnly) params.set('incomplete', 'true');
@@ -3187,6 +3292,10 @@ function SectionView({
   // trovarli, visto che il campo e' vuoto e la ricerca testuale non li vede.
   const [goalFilter, setGoalFilter] = useState('all');
   const [transactionGoals, setTransactionGoals] = useState<string[]>([]);
+  // Come gli obiettivi: l'elenco lo manda il server con la pagina, e non
+  // dipende dai filtri attivi, o filtrando per un evento sparirebbero gli altri.
+  const [eventFilter, setEventFilter] = useState('all');
+  const [transactionEvents, setTransactionEvents] = useState<EventSummary[]>([]);
   const [yearFilter, setYearFilter] = useState('all');
   const [monthFilter, setMonthFilter] = useState('all');
   // I movimenti non stanno piu' tutti in memoria: si chiede al server la pagina
@@ -3204,7 +3313,7 @@ function SectionView({
   // viene annullata dal cleanup, quindi non puo' arrivare in coda a quella nuova.
   useEffect(() => {
     setPagina(0); setSelection(new Set()); setSelezioneTroncata(0);
-  }, [ricerca, transactionTypeFilter, accountFilter, goalFilter, yearFilter, monthFilter, incompleteOnly, movimentiVersione]);
+  }, [ricerca, transactionTypeFilter, accountFilter, goalFilter, eventFilter, yearFilter, monthFilter, incompleteOnly, movimentiVersione]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -3221,11 +3330,12 @@ function SectionView({
         setTotaleMovimenti(dati.total);
         setTransactionYears(dati.years);
         setTransactionGoals(dati.goals ?? []);
+        setTransactionEvents(dati.events ?? []);
       })
       .catch(() => undefined)
       .finally(() => setCaricandoMovimenti(false));
     return () => controller.abort();
-  }, [apiUrl, ricerca, transactionTypeFilter, accountFilter, goalFilter, yearFilter, monthFilter, incompleteOnly, pagina, movimentiVersione]);
+  }, [apiUrl, ricerca, transactionTypeFilter, accountFilter, goalFilter, eventFilter, yearFilter, monthFilter, incompleteOnly, pagina, movimentiVersione]);
   const [movementsView, setMovementsView] = useState<'list' | 'recurring' | 'rules'>('list');
   // Il periodo scelto e' il mese corrente? Solo li' le azioni sui conti hanno
   // senso: piu' indietro i saldi sono quelli di allora e non si modificano.
@@ -3270,6 +3380,9 @@ function SectionView({
               <FilterSelect label={t('filterByType')} value={transactionTypeFilter} onChange={setTransactionTypeFilter} options={[["all", t('allTypes')], ["Income", t('incomeType')], ["Expenses", t('expensesType')], ["Transfers", t('transfersType')], ["Investment", t('investmentType')], ["Debt", t('debtTypeMovement')]]} />
               <FilterSelect label={t('filterByAccount')} value={accountFilter} onChange={setAccountFilter} options={[["all", t('allAccounts')], ...accounts.map((account) => [account.name, account.name] as [string, string])]} />
               {transactionGoals.length > 0 && <FilterSelect label={t('filterByGoal')} value={goalFilter} onChange={setGoalFilter} options={[["all", t('allGoals')], ["-", t('withoutGoal')], ...transactionGoals.map((nome) => [nome, nome] as [string, string])]} />}
+              {/* Gli eventi chiusi restano filtrabili: le spese di un viaggio
+                  finito si riguardano, ed e' il server a metterli in fondo. */}
+              {transactionEvents.length > 0 && <FilterSelect label={t('eventField')} value={eventFilter} onChange={setEventFilter} options={[["all", t('eventAll')], ...transactionEvents.map((evento) => [String(evento.id), evento.name] as [string, string])]} />}
               <FilterSelect label={t('year')} value={yearFilter} onChange={setYearFilter} options={[["all", t('allYears')], ...transactionYears.map((year) => [year, year] as [string, string])]} />
               <FilterSelect label={t('filterByPeriod')} value={monthFilter} onChange={setMonthFilter} options={[["all", t('allMonths')], ...monthNames.map((name, index) => [String(index + 1).padStart(2, '0'), name] as [string, string])]} />
             </div>
@@ -6434,7 +6547,7 @@ const TransactionRow = memo(function TransactionRow({ transaction, onEdit, onDup
     : linkedCount === 1
       ? `${transaction.linkedLedger?.[0]?.name ?? ''} (${transaction.linkedLedger?.[0]?.transactionType ?? ''})`
       : transaction.linkedLedger?.map((item) => `${item.name} (${item.transactionType})`).join(', ');
-  return <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3.5 sm:flex-nowrap"><span className={`grid size-9 shrink-0 place-items-center rounded-xl ${style.className}`}><Icon className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{transaction.description}</p><div className="flex gap-2 text-[11px]">{transaction.incomplete && <span className="text-[#a05f4e]">{t('incompleteMovements')}</span>}{transaction.countsInBudget === false && !['Transfers', 'Investment', 'Debt'].includes(transaction.transactionType) && <span className="text-[#87918e]">{t('excludeBudget')}</span>}{transaction.refundedById && <button type="button" className="text-[#2d7b65] underline" onClick={() => onRefund?.(transaction)}>{t('refunded')}</button>}{transaction.liabilitySplit && <span className={transaction.liabilitySplit.classified ? 'text-[#8a5a46]' : 'text-[#a05f4e]'}>{transaction.liabilitySplit.classified ? t('debtSplitSummary', { principal: formatEuro(transaction.liabilitySplit.principal), interest: formatEuro(transaction.liabilitySplit.interest) }) : t('debtUnclassified')}</span>}</div><p className="mt-0.5 truncate text-xs text-[#87918e]">{transaction.category}{transaction.accountName ? ` · ${transaction.accountName}` : ''}{transaction.destinationName ? ` → ${transaction.destinationName}` : ''}</p></div><div className="hidden text-right text-xs text-[#87918e] sm:block"><p>{formatDate(`${transaction.effectiveOn}T12:00:00`, { day: 'numeric', month: 'short' })}</p>{transaction.effectiveOn !== transaction.occurredOn && <p className="mt-0.5 text-[11px] text-[#a0a8a5]">{t('occurredOnNote', { date: formatDate(`${transaction.occurredOn}T12:00:00`, { day: 'numeric', month: 'short' }) })}</p>}</div><p className={`w-24 text-right text-sm font-semibold tabular-nums ${!spostamento && transaction.amount > 0 ? 'text-[#2d7b65]' : 'text-[#28312f]'}`}>{spostamento ? '' : transaction.amount > 0 ? '+' : '−'}{formatEuro(Math.abs(transaction.amount))}</p>{linkedCount > 0 && <span title={linkedTooltip} aria-label={linkedCount === 1 ? t('ledgerLinkedCount_one') : t('ledgerLinkedCount_other', { count: linkedCount })} className="grid size-7 shrink-0 place-items-center rounded-full bg-[#e5f3ed] text-[#2d7b65]"><LineChartIcon className="size-3.5" /></span>}{onEdit && onDuplicate && onDelete && <div className="flex shrink-0 basis-full justify-end sm:basis-auto"><Button type="button" size="icon" variant="ghost" title={t('edit')} aria-label={`${t('edit')} ${transaction.description}`} onClick={() => onEdit(transaction)}><Pencil className="size-4" /></Button><Button type="button" size="icon" variant="ghost" title={t('duplicate')} aria-label={`${t('duplicate')} ${transaction.description}`} onClick={() => onDuplicate(transaction)}><Copy className="size-4" /></Button>{onSplit && divisibile(transaction) && <Button type="button" size="icon" variant="ghost" title={t('splitRow')} aria-label={`${t('splitRow')} ${transaction.description}`} onClick={() => onSplit(transaction)}><Split className="size-4" /></Button>}<Button type="button" size="icon" variant="ghost" title={t('delete')} aria-label={`${t('delete')} ${transaction.description}`} onClick={() => onDelete(transaction)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button></div>}</div>;
+  return <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3.5 sm:flex-nowrap"><span className={`grid size-9 shrink-0 place-items-center rounded-xl ${style.className}`}><Icon className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{transaction.description}</p><div className="flex gap-2 text-[11px]">{transaction.incomplete && <span className="text-[#a05f4e]">{t('incompleteMovements')}</span>}{transaction.countsInBudget === false && !['Transfers', 'Investment', 'Debt'].includes(transaction.transactionType) && <span className="text-[#87918e]">{t('excludeBudget')}</span>}{transaction.refundedById && <button type="button" className="text-[#2d7b65] underline" onClick={() => onRefund?.(transaction)}>{t('refunded')}</button>}{transaction.event && <span className="rounded-full bg-[#eef1ec] px-1.5 text-[#52615d]">{transaction.event.name}</span>}{transaction.liabilitySplit && <span className={transaction.liabilitySplit.classified ? 'text-[#8a5a46]' : 'text-[#a05f4e]'}>{transaction.liabilitySplit.classified ? t('debtSplitSummary', { principal: formatEuro(transaction.liabilitySplit.principal), interest: formatEuro(transaction.liabilitySplit.interest) }) : t('debtUnclassified')}</span>}</div><p className="mt-0.5 truncate text-xs text-[#87918e]">{transaction.category}{transaction.accountName ? ` · ${transaction.accountName}` : ''}{transaction.destinationName ? ` → ${transaction.destinationName}` : ''}</p></div><div className="hidden text-right text-xs text-[#87918e] sm:block"><p>{formatDate(`${transaction.effectiveOn}T12:00:00`, { day: 'numeric', month: 'short' })}</p>{transaction.effectiveOn !== transaction.occurredOn && <p className="mt-0.5 text-[11px] text-[#a0a8a5]">{t('occurredOnNote', { date: formatDate(`${transaction.occurredOn}T12:00:00`, { day: 'numeric', month: 'short' }) })}</p>}</div><p className={`w-24 text-right text-sm font-semibold tabular-nums ${!spostamento && transaction.amount > 0 ? 'text-[#2d7b65]' : 'text-[#28312f]'}`}>{spostamento ? '' : transaction.amount > 0 ? '+' : '−'}{formatEuro(Math.abs(transaction.amount))}</p>{linkedCount > 0 && <span title={linkedTooltip} aria-label={linkedCount === 1 ? t('ledgerLinkedCount_one') : t('ledgerLinkedCount_other', { count: linkedCount })} className="grid size-7 shrink-0 place-items-center rounded-full bg-[#e5f3ed] text-[#2d7b65]"><LineChartIcon className="size-3.5" /></span>}{onEdit && onDuplicate && onDelete && <div className="flex shrink-0 basis-full justify-end sm:basis-auto"><Button type="button" size="icon" variant="ghost" title={t('edit')} aria-label={`${t('edit')} ${transaction.description}`} onClick={() => onEdit(transaction)}><Pencil className="size-4" /></Button><Button type="button" size="icon" variant="ghost" title={t('duplicate')} aria-label={`${t('duplicate')} ${transaction.description}`} onClick={() => onDuplicate(transaction)}><Copy className="size-4" /></Button>{onSplit && divisibile(transaction) && <Button type="button" size="icon" variant="ghost" title={t('splitRow')} aria-label={`${t('splitRow')} ${transaction.description}`} onClick={() => onSplit(transaction)}><Split className="size-4" /></Button>}<Button type="button" size="icon" variant="ghost" title={t('delete')} aria-label={`${t('delete')} ${transaction.description}`} onClick={() => onDelete(transaction)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button></div>}</div>;
 })
 function CategoryRulesCard({ rules, categories, apiUrl, onChanged }: {
   rules: CategorizationRuleData[]; categories: string[]; apiUrl: string; onChanged: () => void;

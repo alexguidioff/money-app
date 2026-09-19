@@ -43,6 +43,9 @@ class SemeDeiContrattiTests(unittest.TestCase):
             "ricorrenze": r["recurring"], "backup": r["backups"]["items"],
             "categorie dell'analisi": r["analysis"]["categoryOptions"],
             "transazioni dell'analisi": r["analysis"]["categoryTransactions"],
+            "eventi": r["events"]["items"],
+            "movimenti dell'evento": r["eventDetail"]["movements"],
+            "categorie dell'evento": r["eventDetail"]["categories"],
         }.items():
             self.assertTrue(elenco, f"{nome}: vuoto, il contratto non lo controllerebbe")
 

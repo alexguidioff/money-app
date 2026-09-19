@@ -194,3 +194,19 @@ export function categorizationBulkPayload(proposte: Array<{
 }>) {
   return { rules: proposte.map((proposta) => categorizationRulePayload(proposta)) };
 }
+
+/** Un evento. Solo il nome e' obbligatorio: le date propongono i movimenti, non li decidono. */
+export function eventPayload(form: FormData) {
+  return {
+    name: testo(form, 'name').trim(),
+    notes: testo(form, 'notes').trim() || null,
+    start_date: testo(form, 'start_date') || null,
+    end_date: testo(form, 'end_date') || null,
+    closed: form.get('closed') !== null,
+  };
+}
+
+/** Agganciare un movimento a un evento, o sganciarlo con `null` senza toccarlo. */
+export function eventAttachPayload(eventId: number | null) {
+  return { event_id: eventId };
+}

@@ -34,6 +34,8 @@ const CONTRATTI: Array<{ risposta: string; tipo: string; da: string }> = [
   { risposta: 'netWorth', tipo: 'NetWorthData', da: '@/components/money-dashboard' },
   { risposta: 'accounts', tipo: 'AccountsResponse', da: '@/components/money-dashboard' },
   { risposta: 'transactions', tipo: 'TransactionsPage', da: '@/components/money-dashboard' },
+  { risposta: 'events', tipo: 'EventsData', da: '@/components/money-dashboard' },
+  { risposta: 'eventDetail', tipo: 'EventDetailData', da: '@/components/money-dashboard' },
   { risposta: 'summary', tipo: 'Summary', da: '@/components/money-dashboard' },
   { risposta: 'summaryBreakdownMonth', tipo: 'SummaryBreakdown', da: '@/components/money-dashboard' },
   { risposta: 'summaryBreakdownYear', tipo: 'SummaryBreakdown', da: '@/components/money-dashboard' },
