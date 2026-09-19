@@ -21,8 +21,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, replace
 from datetime import date
-from decimal import Decimal
-from typing import Any
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any, Callable, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 
 from .core_routes import _net_worth_breakdown, _summary_core, budget_actual_year, net_worth_series, nomi_categorie
 from .database import get_session
-from .fire_engine import ETA_FINE_PROIEZIONE, Flusso, piano_fire
+from .fire_engine import ETA_FINE_PROIEZIONE, Flusso, PianoFire, piano_fire
 from .fire_montecarlo import EsitoMonteCarlo, simula
 from .models import IncomeStream, RetirementProfile
 
@@ -65,6 +65,17 @@ ETA_FINE_GRAFICO = 90
 
 # I tassi di risparmio della tabella della leva, attorno a quello reale.
 TASSI_LEVA = tuple(range(5, 65, 5))
+
+# Il rendimento reale, un punto per riga: sotto l'1% il capitale non cresce
+# abbastanza perche' la domanda abbia un senso, sopra il 12% non e' piu' un
+# piano ma una scommessa.
+RENDIMENTI_LEVA = tuple(range(1, 13))
+
+# Le spese in pensione, dal -20% al +20% in passi del 10%: sono la variabile
+# che si controlla meno, e il passo dice la differenza fra vivere come oggi e
+# vivere un po' diversamente.
+PASSI_SPESE_LEVA = (Decimal("-0.2"), Decimal("-0.1"), Decimal("0"), Decimal("0.1"), Decimal("0.2"))
+
 RIGHE_LEVA = 5
 
 
@@ -266,22 +277,35 @@ def fire(session: Session = Depends(get_session)) -> dict[str, Any]:
         piano = _piano(c)
         esito = _montecarlo(c, piano)
         scenari = {"p10": esito.percentili[10], "p90": esito.percentili[90]}
-        leva = _leva(c, piano)
+        leve = _leve(c, piano)
     except ValueError as errore:
         raise _errore_motore(errore) from errore
-    return _risposta(c, piano, esito, scenari, _storico_patrimonio(session, c.oggi), leva)
+    return _risposta(c, piano, esito, scenari, _storico_patrimonio(session, c.oggi),
+                     _leva_del_risparmio(leve[0]))
 
 
 def _piano(c: _Contesto, versamenti: Decimal | None = None, rendimento: Decimal | None = None,
-           flussi: list[Flusso] | None = None):
+           flussi: list[Flusso] | None = None, eta_ritiro: int | None = None,
+           spese_annue_ritiro: Decimal | None = None) -> PianoFire:
+    """Il motore chiamato con il profilo dell'utente, o con un'ipotesi diversa.
+
+    Ogni parametro facoltativo e' un'ipotesi: quello che non si passa viene dal
+    profilo. Il piano e le sue leve passano di qui, ed e' l'unico posto in cui
+    il piano si calcola: e' quello che impedisce a una leva di diventare un
+    secondo calcolo che col tempo diverge dal primo.
+    """
     lean = c.profilo.lean_annual_expenses
+    # Il ritiro non puo' precedere oggi: chi ha gia' passato l'eta obiettivo e'
+    # in ritiro adesso, e il motore rifiuterebbe un orizzonte al contrario.
+    ritiro = max(c.profilo.target_retirement_age, c.eta) if eta_ritiro is None else eta_ritiro
+    spese_ritiro = c.spese_pensione if spese_annue_ritiro is None else spese_annue_ritiro
     return piano_fire(
         capitale=Decimal(str(c.patrimonio["total"])),
         spese_annue=c.spese,
-        spese_annue_ritiro=c.spese_pensione,
+        spese_annue_ritiro=spese_ritiro,
         flussi=flussi if flussi is not None else [flusso_da_riga(riga) for riga in c.flussi_righe],
         eta_oggi=c.eta,
-        eta_ritiro=max(c.profilo.target_retirement_age, c.eta),
+        eta_ritiro=ritiro,
         rendimento_reale=rendimento if rendimento is not None else _frazione(c.profilo.real_return, "4"),
         swr=_frazione(c.profilo.withdrawal_rate, "4"),
         aliquota_prelievo=_frazione(c.profilo.withdrawal_tax_rate),
@@ -292,9 +316,12 @@ def _piano(c: _Contesto, versamenti: Decimal | None = None, rendimento: Decimal 
         versamenti_annui=c.versamenti if versamenti is None else versamenti,
         # Il motore rifiuta spese lean piu' alte di quelle in pensione, ma
         # queste cambiano con la storia: un profilo salvato ieri non deve
-        # rompere la pagina oggi. Lean pari alle spese equivale a FI.
-        spese_lean_annue=None if lean is None else min(Decimal(lean), c.spese_pensione),
+        # rompere la pagina oggi. Lean pari alle spese equivale a FI. Il tetto
+        # segue le spese della riga: la leva che le abbassa le abbassa anche a
+        # lui, o il motore rifiuterebbe l'ipotesi che l'utente sta guardando.
+        spese_lean_annue=None if lean is None else min(Decimal(lean), spese_ritiro),
     )
+
 
 
 def _montecarlo(c: _Contesto, piano) -> EsitoMonteCarlo:
@@ -326,25 +353,107 @@ def _montecarlo(c: _Contesto, piano) -> EsitoMonteCarlo:
     )
 
 
-def _leva(c: _Contesto, piano) -> list[dict[str, Any]]:
-    """Quanti anni al piano a tassi di risparmio diversi, calcolati dal motore.
+def _al_centinaio(valore: Decimal) -> Decimal:
+    """Arrotondato al centinaio: 14.732 non e' una cifra che si sceglie."""
+    return (valore / CENTO).quantize(Decimal("1"), rounding=ROUND_HALF_UP) * CENTO
+
+
+@dataclass(frozen=True)
+class _Leva:
+    """Una leva: cosa si muove, e come si chiede al motore di muoverlo.
+
+    `griglia` sono i valori che si provano, `corrente` quello dell'utente, e
+    `prova` chiama il motore con quel valore. La riga dell'utente non passa da
+    `prova`: e' il piano che la pagina ha gia' calcolato.
+    """
+
+    chiave: str
+    griglia: Callable[[_Contesto], Sequence[Decimal]]
+    corrente: Callable[[_Contesto], Decimal]
+    prova: Callable[[_Contesto, Decimal], PianoFire]
+    # Il risparmio annuo lo mostra solo la leva che lo muove: sulle altre
+    # sarebbe lo stesso numero cinque volte.
+    risparmio: bool = False
+
+
+def _prova_risparmio(c: _Contesto, tasso: Decimal) -> PianoFire:
+    return _piano(c, versamenti=_versamenti(c.spese, float(tasso)))
+
+
+def _prova_rendimento(c: _Contesto, rendimento: Decimal) -> PianoFire:
+    return _piano(c, rendimento=_frazione(rendimento))
+
+
+def _prova_eta(c: _Contesto, eta: Decimal) -> PianoFire:
+    return _piano(c, eta_ritiro=int(eta))
+
+
+def _prova_spese(c: _Contesto, spese: Decimal) -> PianoFire:
+    return _piano(c, spese_annue_ritiro=spese)
+
+
+# Le quattro leve, nell'ordine in cui il selettore le mostra: si parte da
+# quella che si controlla di piu' - quanto si mette da parte - e si finisce con
+# quella che si controlla di meno.
+LEVE = (
+    _Leva("savingsRate", lambda c: tuple(Decimal(tasso) for tasso in TASSI_LEVA),
+          lambda c: Decimal(str(c.tasso)), _prova_risparmio, risparmio=True),
+    _Leva("return", lambda c: tuple(Decimal(tasso) for tasso in RENDIMENTI_LEVA),
+          lambda c: Decimal(c.profilo.real_return), _prova_rendimento),
+    _Leva("retirementAge", lambda c: tuple(Decimal(eta) for eta in range(c.eta, ETA_FINE_PROIEZIONE)),
+          lambda c: Decimal(max(c.profilo.target_retirement_age, c.eta)), _prova_eta),
+    _Leva("retirementExpenses",
+          lambda c: tuple(_al_centinaio(c.spese_pensione * (1 + passo)) for passo in PASSI_SPESE_LEVA),
+          lambda c: c.spese_pensione, _prova_spese),
+)
+
+
+def _leve(c: _Contesto, piano: PianoFire) -> list[dict[str, Any]]:
+    """Le quattro leve del piano, calcolate dal motore.
 
     Una formula a parte nel browser dava 24 anni dove il piano ne diceva 29:
     due calcoli dello stesso numero finiscono sempre per divergere. La riga
-    dell'utente e' il piano stesso, non una sua approssimazione al 5%.
+    dell'utente e' il piano stesso, non una sua approssimazione al 5%. Vale per
+    tutte e quattro: ogni riga e' `_piano(c, ...)` con un parametro cambiato, e
+    chi prova a scrivere una formula approssimata se ne accorge dal primo test.
+
+    Cinque righe centrate sul valore dell'utente, che resta quella evidenziata
+    anche quando e' fuori griglia o al bordo: agli estremi si mostra la griglia
+    che c'e', non si inventano valori per farlo stare in mezzo.
     """
-    vicino = min(TASSI_LEVA, key=lambda t: abs(t - c.tasso))
-    inizio = max(0, min(TASSI_LEVA.index(vicino) - RIGHE_LEVA // 2, len(TASSI_LEVA) - RIGHE_LEVA))
-    righe = []
-    for tasso in TASSI_LEVA[inizio:inizio + RIGHE_LEVA]:
-        if tasso == vicino:
-            righe.append({"savingsRate": c.tasso, "current": True,
-                          "annualSavings": float(c.versamenti), "yearsLeft": piano.anni_mancanti})
-            continue
-        versamenti = _versamenti(c.spese, tasso)
-        righe.append({"savingsRate": tasso, "current": False, "annualSavings": float(versamenti),
-                      "yearsLeft": _piano(c, versamenti=versamenti).anni_mancanti})
-    return righe
+    leve = []
+    for leva in LEVE:
+        griglia = leva.griglia(c)
+        corrente = leva.corrente(c)
+        vicino = min(griglia, key=lambda valore: abs(valore - corrente))
+        inizio = max(0, min(griglia.index(vicino) - RIGHE_LEVA // 2, len(griglia) - RIGHE_LEVA))
+        righe = []
+        for valore in griglia[inizio:inizio + RIGHE_LEVA]:
+            if valore == vicino:
+                righe.append({"value": float(corrente), "current": True,
+                              "yearsLeft": piano.anni_mancanti,
+                              "capitalNeeded": float(piano.capitale_necessario),
+                              "annualSavings": float(c.versamenti) if leva.risparmio else None})
+                continue
+            calcolato = leva.prova(c, valore)
+            righe.append({"value": float(valore), "current": False,
+                          "yearsLeft": calcolato.anni_mancanti,
+                          "capitalNeeded": float(calcolato.capitale_necessario),
+                          "annualSavings": float(_versamenti(c.spese, float(valore))) if leva.risparmio else None})
+        leve.append({"key": leva.chiave, "rows": righe})
+    return leve
+
+
+def _leva_del_risparmio(leva: dict[str, Any]) -> list[dict[str, Any]]:
+    """La leva del risparmio con i nomi che la risposta usa oggi.
+
+    Le altre tre, e `value` al posto di `savingsRate`, arrivano al passo dopo:
+    il contratto col browser cambia una volta sola, quando la pagina sa
+    leggere tutte e quattro.
+    """
+    return [{"savingsRate": riga["value"], "current": riga["current"],
+             "annualSavings": riga["annualSavings"], "yearsLeft": riga["yearsLeft"]}
+            for riga in leva["rows"]]
 
 
 def _storico_patrimonio(session: Session, oggi: date) -> list[dict[str, Any]]:
