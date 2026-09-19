@@ -6110,9 +6110,17 @@ function SettingCurrencies({ label, value, saving, onChange }: {
   );
 }
 
-function SettingSelect({ label, value, options, saving, onChange, disabled, hint, labels }: { label: string; value: string; options: string[]; saving: boolean; onChange: (value: string) => void; disabled?: boolean; hint?: string; labels?: Record<string, string> }) {
+function SettingSelect({ label, value, options, saving, onChange, disabled, hint, labels, unset }: { label: string; value: string; options: string[]; saving: boolean; onChange: (value: string) => void; disabled?: boolean; hint?: string; labels?: Record<string, string>; unset?: string }) {
   const { t } = useI18n();
-  return <label className="block space-y-1.5 text-xs font-medium text-[#52615d]"><span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[#71807c]">{t('savingEllipsis')}</span>}</span><select value={value} onChange={(event) => onChange(event.target.value)} disabled={saving || disabled} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm text-[#17211f] outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-[#f4f5f1] disabled:opacity-60">{uniqueOptions(value, options).map((option) => <option key={option} value={option}>{labels?.[option] ?? option}</option>)}</select>{hint && <p className="font-normal leading-4 text-[#87918e]">{hint}</p>}</label>;
+  // `unset` = questo selettore ha uno stato vuoto con un nome suo ("non
+  // dichiarato"). Senza, la voce vuota non si disegna: `uniqueOptions` la scarta
+  // apposta, perche' negli altri selettori il vuoto e' gia' la voce "nessuno"
+  // che il campo si scrive da solo. E il valore vuoto va mostrato sempre, anche
+  // quando sta in fondo all'elenco: un selettore che tace il dato e mostra la
+  // prima voce dell'elenco dice una cosa che nel database non c'e'.
+  const voci = unset === undefined ? uniqueOptions(value, options) : ['', ...uniqueOptions(value, options)];
+  const etichette = unset === undefined ? labels : { '': unset, ...labels };
+  return <label className="block space-y-1.5 text-xs font-medium text-[#52615d]"><span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[#71807c]">{t('savingEllipsis')}</span>}</span><select value={value} onChange={(event) => onChange(event.target.value)} disabled={saving || disabled} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm text-[#17211f] outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-[#f4f5f1] disabled:opacity-60">{voci.map((option) => <option key={option} value={option}>{etichette?.[option] ?? option}</option>)}</select>{hint && <p className="font-normal leading-4 text-[#87918e]">{hint}</p>}</label>;
 }
 
 // Il paese dove sono tassati gli investimenti. Serve a mostrare la nota che
@@ -6123,15 +6131,14 @@ function SettingSelect({ label, value, options, saving, onChange, disabled, hint
 function SettingCountry({ label, value, saving, onChange, hint }: { label: string; value: string; saving: boolean; onChange: (value: string) => void; hint: string }) {
   const { t, lang } = useI18n();
   const nota = value ? taxNoteFor(value, lang) : undefined;
-  return <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
-    <span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[#71807c]">{t('savingEllipsis')}</span>}</span>
-    <select value={value} onChange={(event) => onChange(event.target.value)} disabled={saving} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm text-[#17211f] outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-[#f4f5f1] disabled:opacity-60">
-      <option value="">{t('taxCountryUnset')}</option>
-      {COUNTRIES.map((paese) => <option key={paese.code} value={paese.code}>{countryLabel(paese.code, lang)}</option>)}
-    </select>
-    <p className="font-normal leading-4 text-[#87918e]">{hint}</p>
+  // E' il selettore comune, con in piu' la nota del paese sotto: la tendina,
+  // l'etichetta, il "sto salvando" e le classi stanno in un posto solo.
+  return <div className="space-y-1.5">
+    <SettingSelect label={label} value={value} saving={saving} onChange={onChange} hint={hint} unset={t('taxCountryUnset')}
+      options={COUNTRIES.map((paese) => paese.code)}
+      labels={Object.fromEntries(COUNTRIES.map((paese) => [paese.code, countryLabel(paese.code, lang)]))} />
     {nota && <p className="rounded-xl border border-black/[0.06] bg-[#fafaf8] px-3 py-2 font-normal leading-relaxed text-[#52615d]">{nota.body}</p>}
-  </label>;
+  </div>;
 }
 
 // L'indice di confronto si sceglie, non si scrive. Un ticker digitato a mano e
