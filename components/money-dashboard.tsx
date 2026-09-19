@@ -130,7 +130,11 @@ export type Summary = {
 type BreakdownSection = {
   categories: Array<{ name: string; categoryId: number | null; parentId: number | null; tracked: number;
                       budget: number; completion: number | null; remaining: number; excess: number;
-                      trackedWithChildren: number; budgetWithChildren: number }>;
+                      trackedWithChildren: number; budgetWithChildren: number;
+                      /** Quanto era avanzato il mese scorso su questa categoria. E' una
+                       *  riga da leggere: non entra in nessuno dei totali qui sopra, e vale
+                       *  zero dove il mese prima non esiste (gennaio, o l'anno intero). */
+                      previousLeftover: number }>;
   plannedTotal: number;
   actualTotal: number;
 };
@@ -6628,15 +6632,25 @@ function PeriodBreakdownTable({ breakdown }: { breakdown: SummaryBreakdown | nul
                         const coloreBarra = key === 'expenses' ? (over ? '#bd5e46' : '#47a889') : (over ? stile.accento : '#8aa8a0');
                         const remaining = budget - tracked > 0 ? Math.round((budget - tracked) * 100) / 100 : 0;
                         const excess = tracked - budget > 0 ? Math.round((tracked - budget) * 100) / 100 : 0;
+                        // L'avanzo del mese scorso si legge sotto il nome, come
+                        // nel piano del budget: e' un'informazione, non una
+                        // cifra che entra in una colonna. Solo sulle uscite, che
+                        // sono l'unico tipo per cui il mese prima si guarda.
+                        const avanzo = key === 'expenses' ? category.previousLeftover : 0;
                         return <tr key={category.categoryId ?? category.name}>
-                          <td className="py-2.5 truncate font-medium">{profondita > 0
+                          <td className="py-2.5 font-medium"><span className="block truncate">{profondita > 0
                             ? <span className="pl-5 text-[#52615d]">{category.name}</span>
                             : figli.length
                               ? <button type="button" onClick={() => setChiuse((precedenti) => ({ ...precedenti, [`${key}:${category.categoryId ?? category.name}`]: !precedenti[`${key}:${category.categoryId ?? category.name}`] }))} className="flex items-center gap-1.5 text-left">
                                   <ChevronRight className={`size-3.5 shrink-0 text-[#87918e] transition-transform ${chiusa ? '' : 'rotate-90'}`} />
                                   {category.name}
                                 </button>
-                              : category.name}</td>
+                              : category.name}</span>
+                            {avanzo !== 0 && <span className={`block truncate text-[11px] font-normal text-[#87918e] ${profondita > 0 ? 'pl-5' : ''}`}>
+                              {avanzo > 0 ? t('budgetPreviousLeft', { amount: formatCompactEuro(avanzo) })
+                                : t('budgetPreviousOver', { amount: formatCompactEuro(Math.abs(avanzo)) })}
+                            </span>}
+                          </td>
                           <td className="py-2.5 text-right tabular-nums">{formatCompactEuro(tracked)}</td>
                           <td className="py-2.5 text-right tabular-nums text-[#71807c]">{formatCompactEuro(budget)}</td>
                           <td className="py-2.5 pl-4">

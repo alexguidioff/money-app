@@ -645,7 +645,8 @@ def _pie_breakdown(categories: list[dict[str, Any]]) -> dict[str, Any]:
     return {"items": items, "total": round(sum(item["value"] for item in items), 2)}
 
 
-def _section_breakdown(categories: list[dict[str, Any]]) -> dict[str, Any]:
+def _section_breakdown(categories: list[dict[str, Any]],
+                       avanzi: dict[int | None, float] | None = None) -> dict[str, Any]:
     """Righe Tracked/Budget/% Compl./Remaining/Excess per una sezione
     (Income/Expenses/Savings), come le colonne X:AD di Budget Dashboard.
 
@@ -653,6 +654,12 @@ def _section_breakdown(categories: list[dict[str, Any]]) -> dict[str, Any]:
     mostrare un padre con i figli sotto invece di un elenco piatto in cui due
     righe sembrano due spese diverse. I due totali della sezione restano quelli
     di prima: si sommano i valori propri, non quelli del sottoalbero.
+
+    `avanzi` e' quello che era rimasto del mese prima, categoria per categoria
+    (`previous_month_leftover`): sta nella riga perche' e' li' che si legge, ma
+    non entra in nessuna delle colonne qui sopra e non tocca i totali. Assente
+    (o zero) dove il mese prima non c'e': gennaio, l'anno intero, o un tipo di
+    budget che non guarda indietro.
     """
     rows = []
     for item in categories:
@@ -663,7 +670,8 @@ def _section_breakdown(categories: list[dict[str, Any]]) -> dict[str, Any]:
         rows.append({"name": item["name"], "categoryId": item["categoryId"], "parentId": item["parentId"],
                      "tracked": tracked, "budget": budget, "completion": completion, "remaining": remaining,
                      "excess": excess, "trackedWithChildren": item["amountWithChildren"],
-                     "budgetWithChildren": item["budgetWithChildren"]})
+                     "budgetWithChildren": item["budgetWithChildren"],
+                     "previousLeftover": (avanzi or {}).get(item["categoryId"], 0.0)})
     return {"categories": rows, "plannedTotal": round(sum(item["budget"] for item in categories), 2), "actualTotal": round(sum(item["amount"] for item in categories), 2)}
 
 
@@ -704,7 +712,13 @@ def summary_breakdown(
         breakdowns = {t: _period_category_breakdown(session, year, month, t, actual_rows=actuals[t]) for t in types}
     else:
         breakdowns = {t: _period_category_breakdown(session, year, month, t) for t in types}
-    sections = {t.lower(): _section_breakdown(breakdowns[t]) for t in types}
+    # L'avanzo del mese prima si legge accanto al nome della categoria, come nel
+    # piano del budget, invece di lasciarlo vedere solo a chi apre il budget. Si
+    # calcola qui e non nel browser perche' serve il netto dei rimborsi, che e'
+    # una lettura del database. Nell'anno intero non si guarda indietro: "il mese
+    # scorso" di dodici mesi non e' un mese.
+    avanzi = {t: previous_month_leftover(session, year, month, t) for t in types} if month is not None else {}
+    sections = {t.lower(): _section_breakdown(breakdowns[t], avanzi.get(t)) for t in types}
     pie = {t.lower(): _pie_breakdown(breakdowns[t]) for t in types}
 
     # Il "budget contro tracciato mese per mese" dell'anno sta in Andamento annuale:

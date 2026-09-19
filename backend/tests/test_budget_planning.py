@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core_routes import (_budget_balance, _needs_wants, _totali_mensili, budget_annual, budget_dashboard,
                              budget_suggestions, budget_trends, budget_trends_available_years,
-                             previous_month_leftover, settings, sync_savings_plan)
+                             previous_month_leftover, settings, summary_breakdown, sync_savings_plan)
 from app.database import Base
 from app.models import AppSetting, BudgetPlan, Transaction
 from app.notifications import _sforamenti_budget
@@ -203,6 +203,38 @@ class AvanzoDelMesePrecedenteTests(BudgetBase):
         self.session.commit()
         # Luglio netto = 300 + 500 - 200 = 600. Avanzo = 400 - 600 = -200.
         self.assertEqual(previous_month_leftover(self.session, 2026, 8), {self.spesa: -200.0})
+
+    def test_l_avanzo_arriva_anche_nella_panoramica(self) -> None:
+        # La tabella per categoria della Panoramica non passa da `budgets`: si
+        # riempie da `_section_breakdown`. Se il campo non viaggiasse anche di
+        # li', la stessa categoria direbbe una cosa nel budget e un'altra nella
+        # Panoramica, e nessuna delle due pagine avrebbe torto da sola.
+        righe = summary_breakdown(2026, 9, session=self.session)["sections"]["expenses"]["categories"]
+        voce = next(riga for riga in righe if riga["categoryId"] == self.spesa)
+
+        self.assertEqual(-50.0, voce["previousLeftover"])
+        # E resta una riga da leggere: non entra nel tracciato ne' nel pianificato.
+        self.assertEqual(0.0, voce["tracked"])
+        self.assertEqual(400.0, voce["budget"])
+
+    def test_nella_panoramica_l_anno_intero_e_le_entrate_non_hanno_avanzo(self) -> None:
+        # Due zeri diversi, e servono entrambi: "il mese scorso" di dodici mesi
+        # non e' un mese, e le entrate non guardano indietro. E' il modo in cui
+        # la pagina sa di non dover stampare la riga.
+        self.session.add_all([
+            _piano(self.session, 7, "Stipendio", "500", tipo="Income"),
+            _tx(self.session, date(2026, 7, 1), "Stipendio", "900", "Income"),
+            _piano(self.session, 9, "Stipendio", "500", tipo="Income"),
+        ])
+        self.session.commit()
+
+        anno = summary_breakdown(2026, None, session=self.session)["sections"]
+        entrate = summary_breakdown(2026, 9, session=self.session)["sections"]["income"]["categories"]
+        righe_anno = [riga for sezione in anno.values() for riga in sezione["categories"]]
+
+        # Senza le due righe qui sotto l'assert sarebbe vero a vuoto.
+        self.assertTrue(righe_anno and entrate)
+        self.assertTrue(all(riga["previousLeftover"] == 0 for riga in righe_anno + entrate))
 
 
 class AndamentoStoricoTests(BudgetBase):
