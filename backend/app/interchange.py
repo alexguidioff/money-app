@@ -28,13 +28,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import (Account, AccountValuation, AppSetting, BudgetPlan, Category, CategorizationRule, Event, Goal,
-                     GoalMilestone, IncomeStream,
+                     GoalMilestone, ImportBatch, IncomeStream,
                      RetirementProfile, InvestmentInstrument, InvestmentTransaction,
                      InvestmentTransactionDetail,
                      LiabilityProfile, LiabilityTransactionDetail, LookupOption, Note, Transaction, TransactionEvent,
                      TransactionLedgerLink)
 
-FORMAT_VERSION = "1.11"
+FORMAT_VERSION = "1.12"
 
 
 def _cell(value: Any) -> Any:
@@ -42,7 +42,10 @@ def _cell(value: Any) -> Any:
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value.date().isoformat()
+        # Un istante va scritto per intero: la sola data perderebbe l'ora, e
+        # nello storico degli import l'ora e' l'unica cosa che distingue due
+        # import dello stesso giorno.
+        return value.isoformat(timespec="seconds")
     if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, Decimal):
@@ -96,6 +99,13 @@ SHEETS: dict[str, tuple[Any, list[str]]] = {
     # porta due riferimenti e nessuna riga da rimappare.
     "Eventi": (Event, ["id", "name", "notes", "start_date", "end_date", "closed"]),
     "EventiMovimenti": (TransactionEvent, ["transaction_id", "event_id"]),
+    # Lo storico degli import viaggia con il backup: e' quello che dice da dove
+    # vengono i movimenti che il file riporta. `imported_at` si scrive per
+    # intero (vedi ``_cell``): due import dello stesso giorno si distinguono
+    # dall'ora, e senza quella il foglio sarebbe una fila di date uguali.
+    "StoricoImport": (ImportBatch, ["id", "kind", "source_name", "source_modified_at", "imported_at",
+                                    "transaction_count", "account_count", "budget_count",
+                                    "rows_accepted", "rows_rejected", "rejected_reasons"]),
 }
 
 

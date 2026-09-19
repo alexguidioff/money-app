@@ -42,7 +42,7 @@ from .models import ImportBatch
 WRITE_ORDER = ["Categorie", "Conti", "ValutazioniConti", "Debiti", "Movimenti", "RateDebiti", "Budget", "Obiettivi", "Tappe",
                "LedgerInvestimenti", "DettagliLedger", "CollegamentiLedger",
                "Strumenti", "RegoleCategoria", "Note", "Impostazioni", "Opzioni", "ProfiloPensione", "FlussiPensione",
-               "Eventi", "EventiMovimenti"]
+               "Eventi", "EventiMovimenti", "StoricoImport"]
 
 # Il nome della colonna che portava la categoria quando non era ancora una riga
 # sua. Un file senza la colonna nuova ma con questa si legge lo stesso, e il
@@ -233,6 +233,11 @@ def read_and_validate(source: str | Path | BinaryIO) -> tuple[dict, dict]:
         # il nome scritto dentro movimenti, budget e regole, e di quel nome si
         # occupa ``_read_sheet``.
         senza_albero = tuple(int(parte) for parte in str(meta["versione"]).split(".")) < (1, 10)
+        # Lo storico degli import e' nato con la 1.12: un file piu' vecchio non
+        # lo ha, e non per questo e' rotto. Vuol dire anche che ripristinandolo
+        # lo storico si svuota - come per ogni altro foglio che il file non
+        # trasporta: il file descrive lo stato completo, non una fusione.
+        prima_dello_storico = tuple(int(parte) for parte in str(meta["versione"]).split(".")) < (1, 12)
         data = {title: ([] if title not in workbook.sheetnames
                         and (title == "CollegamentiLedger" and str(meta["versione"]) == "1.0"
                              or title == "Categorie" and senza_albero
@@ -248,7 +253,9 @@ def read_and_validate(source: str | Path | BinaryIO) -> tuple[dict, dict]:
                              and str(meta["versione"]) in {"1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8"}
                              # Le tappe sono nate con la 1.11.
                              or title == "Tappe"
-                             and str(meta["versione"]) in {"1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10"})
+                             and str(meta["versione"]) in {"1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10"}
+                             # Lo storico degli import e' nato con la 1.12.
+                             or title == "StoricoImport" and prima_dello_storico)
                         else _read_sheet(workbook, title, *SHEETS[title], version=str(meta["versione"]))) for title in WRITE_ORDER}
         _check_declared_counts(meta, data)
         if len(data["ProfiloPensione"]) > 1:
@@ -364,12 +371,19 @@ def write_imported_data(session: Session, meta: dict, data: dict, *, source_name
     from .main import recompute_effective_dates
     recompute_effective_dates(session)
 
+    # Il ripristino registra anche se' stesso: e' l'unico modo per sapere, dopo,
+    # che a un certo punto i dati sono stati riportati a un file. `kind` lo
+    # tiene distinto dagli import di un estratto conto, che si leggono
+    # diversamente: li' contano accettate e scartate, qui quante righe sono
+    # tornate dentro.
     batch = ImportBatch(
+        kind="interchange",
         source_name=source_name or "money-interchange",
         source_modified_at=datetime.fromisoformat(str(meta["esportato_il"])) if meta.get("esportato_il") else None,
         transaction_count=len(data["Movimenti"]),
         account_count=len(data["Conti"]),
         budget_count=len(data["Budget"]),
+        rows_accepted=sum(len(records) for records in data.values()),
     )
     session.add(batch)
     session.flush()

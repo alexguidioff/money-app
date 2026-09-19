@@ -63,15 +63,33 @@ class DismissedNotification(Base):
 
 
 class ImportBatch(Base):
+    """Un import fatto: quando, da che file, e com'e' andato.
+
+    Non e' un fatto condiviso come una quotazione: e' la storia di quello che
+    questa persona ha importato, e si legge accanto ai suoi movimenti. Per
+    questo la tabella sta in ``PER_UTENTE`` (vedi ``migrations``).
+    """
+
     __tablename__ = "import_batches"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, default=current_user_id)
+    # 'interchange' e' il ripristino di un backup completo, 'statement' l'import
+    # di un estratto conto: due cose che non si leggono allo stesso modo, e in
+    # un elenco solo sembrerebbero la stessa.
+    kind: Mapped[str] = mapped_column(String(20), default="interchange")
     source_name: Mapped[str] = mapped_column(String(255))
     source_modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     transaction_count: Mapped[int] = mapped_column(default=0)
     account_count: Mapped[int] = mapped_column(default=0)
     budget_count: Mapped[int] = mapped_column(default=0)
+    rows_accepted: Mapped[int] = mapped_column(default=0)
+    rows_rejected: Mapped[int] = mapped_column(default=0)
+    # I motivi di scarto con quante volte ciascuno, come JSON: sapere che sono
+    # state scartate dodici righe non aiuta, sapere che dodici erano senza conto
+    # dice cosa sistemare.
+    rejected_reasons: Mapped[str | None] = mapped_column(Text)
 
 
 class Account(Base):

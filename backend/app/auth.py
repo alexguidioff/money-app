@@ -388,6 +388,9 @@ TABELLE_PERSONALI = [
     "account_valuations", "liability_transaction_details", "liability_profiles",
     "income_streams", "retirement_profiles", "categorization_rules",
     "events", "transaction_events", "goal_milestones",
+    # Lo storico degli import: cancellando una persona resterebbe a dire che
+    # qualcuno ha importato dei file, senza nessuno a cui appartengano.
+    "import_batches",
 ]
 
 

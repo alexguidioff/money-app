@@ -107,6 +107,23 @@ def tracked_changes(engine: Engine) -> None:
             if "return_volatility" not in profilo_cols:
                 conn.execute(text("ALTER TABLE retirement_profiles "
                                   "ADD COLUMN return_volatility NUMERIC(5, 2) NOT NULL DEFAULT 15"))
+        # Lo storico degli import: prima lo scriveva solo il ripristino di un
+        # backup, e nessuno lo leggeva. Le 27 righe che esistono sono tutte
+        # ripristini, quindi nascono 'interchange' - il valore che descrive
+        # quello che sono davvero - e non un valore nuovo da indovinare.
+        if inspect(conn).has_table("import_batches"):
+            batch_cols = {c["name"] for c in inspect(conn).get_columns("import_batches")}
+            if "kind" not in batch_cols:
+                conn.execute(text("ALTER TABLE import_batches "
+                                  "ADD COLUMN kind VARCHAR(20) NOT NULL DEFAULT 'interchange'"))
+            if "rows_accepted" not in batch_cols:
+                conn.execute(text("ALTER TABLE import_batches "
+                                  "ADD COLUMN rows_accepted INTEGER NOT NULL DEFAULT 0"))
+            if "rows_rejected" not in batch_cols:
+                conn.execute(text("ALTER TABLE import_batches "
+                                  "ADD COLUMN rows_rejected INTEGER NOT NULL DEFAULT 0"))
+            if "rejected_reasons" not in batch_cols:
+                conn.execute(text("ALTER TABLE import_batches ADD COLUMN rejected_reasons TEXT"))
         # Resti del workbook Excel che nessuna parte dell'app legge piu': elenchi
         # di opzioni (i conti veri stanno nella tabella dei conti, e quello era
         # un elenco di nomi fermo a un anno fa), un'impostazione senza effetto e
@@ -567,11 +584,16 @@ PER_UTENTE = [
     # l'isolamento le tappe di una persona comparirebbero sotto gli obiettivi
     # di un'altra, che hanno lo stesso nome e si leggerebbero come sue.
     "goal_milestones",
+    # Lo storico degli import e' la storia di chi ha importato: senza
+    # l'isolamento, il ripristino di una persona comparirebbe nell'elenco di
+    # un'altra. Stava fra le condivise perche' nessuno lo leggeva: appena
+    # diventa una pagina, "condiviso" non vuol dire piu' niente.
+    "import_batches",
 ]
 
 # Tabelle condivise di proposito: una quotazione e il profilo di uno strumento
 # sono gli stessi per tutti, e scaricarli una volta sola e' un vantaggio.
-CONDIVISE = ["market_prices", "instrument_profiles", "import_batches"]
+CONDIVISE = ["market_prices", "instrument_profiles"]
 
 # I vincoli di unicita' che devono valere per utente e non per tutti: senza
 # questo, due persone non potrebbero avere entrambe un conto "Banca".

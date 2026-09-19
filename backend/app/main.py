@@ -37,7 +37,7 @@ from .transaction_rules import (REAL_MOVEMENT, BUDGET_MOVEMENT, SPOSTAMENTI, TIP
 from .market_data import MarketDataError, fetch_instrument_profile, fetch_price_history, fetch_yahoo_quote, search_yahoo_symbols
 from .yahoo_profile import YahooProfileError, YahooRateLimited, fetch_profile
 from .market_cache import get_or_fetch_price, list_cached_symbols
-from .models import Account, AccountValuation, AppSetting, BudgetPlan, Category, InstrumentProfile, LiabilityProfile, LiabilityTransactionDetail, MarketPrice, Goal, InvestmentInstrument, InvestmentTransaction, InvestmentTransactionDetail, Note, Transaction, TransactionLedgerLink
+from .models import Account, AccountValuation, AppSetting, BudgetPlan, Category, ImportBatch, InstrumentProfile, LiabilityProfile, LiabilityTransactionDetail, MarketPrice, Goal, InvestmentInstrument, InvestmentTransaction, InvestmentTransactionDetail, Note, Transaction, TransactionLedgerLink
 from .interchange import FORMAT_VERSION, build_export
 from .interchange_import import InterchangeError, read_and_validate, write_imported_data, summarize_state
 from .models import User
@@ -403,8 +403,14 @@ async def import_pdf_statement(file: UploadFile = File(...), session: Session = 
 
 
 @app.post("/api/transactions/pdf-import")
-async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Session = Depends(get_session)):
-    """Salva solo righe valide; restituisce gli indici per ritentare solo quelle fallite."""
+async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Session = Depends(get_session),
+                                source: str = ""):
+    """Salva solo righe valide; restituisce gli indici per ritentare solo quelle fallite.
+
+    ``source`` e' il nome del file da cui vengono le righe: e' facoltativo
+    perche' un client che non lo manda deve continuare a funzionare come prima,
+    e serve solo a scrivere una riga leggibile nello storico degli import.
+    """
     saved_count = 0
     errors = []
     accounts = {a.name: a for a in session.scalars(select(Account)).all()}
@@ -457,6 +463,21 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
                 "statementInvalidType", "statementInvalidAmount", "statementAccountRequired",
                 "statementDestinationRequired", "investmentNeedsBroker", "debtNeedsLiability"} else "statementRowInvalid"
             errors.append({"index": index, "code": code})
+    # Lo storico si scrive anche quando non si salva niente: "zero accettate" e'
+    # un'informazione - e' l'import andato storto - non un non-evento. E i
+    # motivi si contano per codice, perche' sapere che dodici righe sono state
+    # scartate non dice cosa sistemare, sapere che erano tutte senza conto si'.
+    motivi: dict[str, int] = {}
+    for errore in errors:
+        motivi[errore["code"]] = motivi.get(errore["code"], 0) + 1
+    session.add(ImportBatch(
+        kind="statement",
+        source_name=(source.strip()[:255] or "estratto-conto"),
+        rows_accepted=saved_count,
+        rows_rejected=len(errors),
+        rejected_reasons=json.dumps(motivi) if motivi else None,
+    ))
+    session.commit()
     return {"success": not errors, "saved": saved_count, "errors": errors}
 
 

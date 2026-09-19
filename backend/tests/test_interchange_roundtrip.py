@@ -8,7 +8,7 @@ database SQLite temporanei, quindi non tocca nulla di reale.
 from __future__ import annotations
 
 import unittest
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO
 
@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.database import Base
 from app.interchange import SHEETS, build_export
 from app.interchange_import import InterchangeError, import_data
-from app.models import (Account, AppSetting, BudgetPlan, Category, Goal,
+from app.models import (Account, AppSetting, BudgetPlan, Category, Goal, ImportBatch,
                         InvestmentInstrument, InvestmentTransaction, InvestmentTransactionDetail,
                         LookupOption, Note, Transaction)
 
@@ -65,6 +65,13 @@ def _populate(session: Session) -> None:
     session.add(AppSetting(key="late_income_shift", label="Shift entrate", value="Active"))
     session.add(AppSetting(key="late_income_day", label="Giorno", value="20"))
     session.add(LookupOption(option_group="accounts", position=1, value="Conto corrente"))
+    # Una riga di storico con l'ora piena: e' l'unico foglio che porta un
+    # istante, ed e' li' che scrivere la sola data perderebbe il resto -
+    # l'ora e' l'unica cosa che distingue due import dello stesso giorno.
+    session.add(ImportBatch(kind="statement", source_name="estratto.csv",
+                            imported_at=datetime(2026, 2, 3, 18, 45, 7),
+                            rows_accepted=12, rows_rejected=2,
+                            rejected_reasons='{"statementAccountRequired": 2}'))
     session.commit()
 
 
@@ -92,6 +99,13 @@ class InterchangeRoundTripTests(unittest.TestCase):
             query = text(f'select {fields} from {model.__table__.name} order by "{order}"')
             before = [tuple(row) for row in self.source.execute(query)]
             after = [tuple(row) for row in self.target.execute(query)]
+            if title == "StoricoImport":
+                # Il ripristino registra se' stesso nello storico, ed e' l'unica
+                # riga che il file non poteva portare: l'operazione appena fatta
+                # esiste solo da questa parte. Il resto - le righe importate,
+                # con la loro ora - deve tornare identico.
+                self.assertEqual(len(after), len(before) + 1, "lo storico degli import non torna")
+                after = after[:-1]
             self.assertEqual(before, after, f"il foglio {title} non torna identico")
 
     def test_i_padri_si_riattaccano_agli_id_nuovi(self) -> None:
