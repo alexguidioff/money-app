@@ -37,7 +37,7 @@ from .transaction_rules import (REAL_MOVEMENT, BUDGET_MOVEMENT, SPOSTAMENTI, TIP
 from .market_data import MarketDataError, fetch_instrument_profile, fetch_price_history, fetch_yahoo_quote, search_yahoo_symbols
 from .yahoo_profile import YahooProfileError, YahooRateLimited, fetch_profile
 from .market_cache import get_or_fetch_price, list_cached_symbols
-from .models import Account, AccountValuation, AppSetting, BudgetPlan, Category, ImportBatch, InstrumentProfile, LiabilityProfile, LiabilityTransactionDetail, MarketPrice, Goal, InvestmentInstrument, InvestmentTransaction, InvestmentTransactionDetail, Note, Transaction, TransactionLedgerLink
+from .models import Account, AccountValuation, AppSetting, BudgetPlan, Category, ImportBatch, ImportTemplate, InstrumentProfile, LiabilityProfile, LiabilityTransactionDetail, MarketPrice, Goal, InvestmentInstrument, InvestmentTransaction, InvestmentTransactionDetail, Note, Transaction, TransactionLedgerLink
 from .interchange import FORMAT_VERSION, build_export
 from .interchange_import import InterchangeError, read_and_validate, write_imported_data, summarize_state
 from .models import User
@@ -3666,6 +3666,67 @@ async def import_csv_statement(file: UploadFile = File(...), session: Session = 
     except Exception as error:
         logger.exception("Parsing CSV fallito")
         raise HTTPException(422, detail="statementParseFailed") from error
+
+
+class ImportTemplatePayload(BaseModel):
+    """Il modello cosi' come lo manda la pagina: la mappatura e' la stessa
+    stringa JSON che manda all'import, perche' passi dalle stesse regole."""
+
+    name: str
+    mapping: str
+    delimiter: str = ""
+
+
+def _modello_per_la_pagina(modello: ImportTemplate) -> dict[str, Any]:
+    return {"id": modello.id, "name": modello.name,
+            "mapping": json.loads(modello.mapping), "delimiter": modello.delimiter}
+
+
+@app.get("/api/import/templates")
+def list_import_templates(session: Session = Depends(get_session)):
+    """I modelli salvati, dal piu' recente: l'ultimo salvato e' quello che serve."""
+    modelli = session.scalars(select(ImportTemplate)
+                              .order_by(ImportTemplate.created_at.desc(), ImportTemplate.id.desc())).all()
+    return {"items": [_modello_per_la_pagina(modello) for modello in modelli]}
+
+
+@app.post("/api/import/templates")
+def create_import_template(payload: ImportTemplatePayload, session: Session = Depends(get_session)):
+    """Salva la mappatura scelta adesso, con un nome per ritrovarla.
+
+    La mappatura passa dalle stesse regole dell'import - e dalla stessa scelta
+    del taglio - perche' un modello non puo' essere piu' permissivo di una
+    mappatura scritta a mano: sarebbe una seconda strada per far entrare indici
+    che l'import rifiuta.
+    """
+    nome = payload.name.strip()
+    if not nome or len(nome) > 255:
+        raise HTTPException(422, detail="statementTemplateNameRequired")
+    mappatura = mappatura_colonne(payload.mapping)
+    if mappatura is None:
+        raise HTTPException(422, detail="statementMappingInvalid")
+    # Il confronto ignora maiuscole e minuscole: due modelli che differiscono
+    # solo per quelle sono lo stesso modello scritto due volte, e chi li vede
+    # nell'elenco non sa quale dei due stava usando.
+    gemello = session.scalar(select(ImportTemplate)
+                             .where(func.lower(ImportTemplate.name) == nome.lower()))
+    if gemello is not None:
+        raise HTTPException(409, detail="statementTemplateNameTaken")
+    modello = ImportTemplate(name=nome, mapping=json.dumps(mappatura),
+                             delimiter=delimitatore_colonne(payload.delimiter))
+    session.add(modello)
+    session.commit()
+    return _modello_per_la_pagina(modello)
+
+
+@app.delete("/api/import/templates/{template_id}")
+def delete_import_template(template_id: int, session: Session = Depends(get_session)):
+    modello = session.get(ImportTemplate, template_id)
+    if modello is None:
+        raise HTTPException(404, detail="statementTemplateMissing")
+    session.delete(modello)
+    session.commit()
+    return {"success": True}
 
 
 # ===== RECURRING TRANSACTIONS =====

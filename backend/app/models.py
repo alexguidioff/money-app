@@ -92,6 +92,27 @@ class ImportBatch(Base):
     rejected_reasons: Mapped[str | None] = mapped_column(Text)
 
 
+class ImportTemplate(Base):
+    """Una mappatura di colonne scelta una volta, con un nome per ritrovarla.
+
+    Lo stesso estratto conto torna ogni mese con le stesse colonne, e ogni
+    volta si ricorreggerebbe da capo. Il taglio viaggia con la mappatura
+    perche' gli indici valgono solo nella divisione da cui sono stati contati:
+    salvarla senza il taglio vorrebbe dire riapplicare indici di un'altra
+    divisione, che e' un modo silenzioso di leggere le colonne sbagliate.
+    """
+
+    __tablename__ = "import_templates"
+    __table_args__ = (UniqueConstraint("user_id", "name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, default=current_user_id)
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    mapping: Mapped[str] = mapped_column(Text)
+    delimiter: Mapped[str | None] = mapped_column(String(4))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Account(Base):
     __tablename__ = "accounts"
     __table_args__ = (UniqueConstraint("user_id", "source_group", "name"),)

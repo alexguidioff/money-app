@@ -64,6 +64,9 @@ const CONTRATTI: Array<{ risposta: string; tipo: string; da: string }> = [
   { risposta: 'importBatches', tipo: '{ items: ImportBatchRow[] }', da: '@/components/import-history-card' },
   // Le colonne che la pagina dell'import legge per riempire i selettori.
   { risposta: 'statementColumns', tipo: 'StatementColumns', da: '@/components/money-dashboard' },
+  // I modelli di mappatura: un campo rinominato qui vuol dire modelli che
+  // arrivano vuoti, e la pagina li mostra senza accorgersene.
+  { risposta: 'importTemplates', tipo: '{ items: ImportTemplateRow[] }', da: '@/components/ui/pdf-import-preview' },
   { risposta: 'backups', tipo: '{ items?: BackupItem[] }', da: '@/components/money-dashboard' },
 ];
 

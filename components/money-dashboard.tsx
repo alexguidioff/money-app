@@ -69,7 +69,7 @@ import {
 } from '@/components/ui/dialog';
 import { ImportHistoryCard } from '@/components/import-history-card';
 import { Input } from '@/components/ui/input';
-import { PDFImportPreview, type PDFTransaction } from '@/components/ui/pdf-import-preview';
+import { PDFImportPreview, type PDFTransaction, type ImportTemplateRow, type ModelliDiMappatura } from '@/components/ui/pdf-import-preview';
 import { RefundPicker } from '@/components/ui/refund-picker';
 import {
   ChartConfig,
@@ -1040,6 +1040,10 @@ function MoneyDashboardInner() {
   // correggere una colonna vuol dire rileggere il file, e l'anteprima non ce l'ha.
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvColonne, setCsvColonne] = useState<StatementColumns | null>(null);
+  // I modelli di mappatura salvati. Si leggono all'apertura di un CSV, che e'
+  // l'unico momento in cui servono: chiederli a ogni apertura dell'app sarebbe
+  // una richiesta per una cosa che si usa una volta al mese.
+  const [modelliMappatura, setModelliMappatura] = useState<ImportTemplateRow[]>([]);
   const [settingSaving, setSettingSaving] = useState('');
   const [settingError, setSettingError] = useState('');
   const [auth, setAuth] = useState<{ user: AccountSummary & { sharesTotals: boolean } | null; users: AccountSummary[]; loginRequired: boolean; canManageBackups: boolean } | null>(null);
@@ -2157,17 +2161,54 @@ function MoneyDashboardInner() {
 
   /** Correggere una colonna rifa' l'anteprima: e' l'unico modo di vedere se la
    *  scelta e' quella giusta. Le righe che non si leggono arrivano segnate. */
-  async function ricaricaCsv(mappatura: Record<string, number>) {
+  async function ricaricaCsv(mappatura: Record<string, number>, delimitatore?: string) {
     if (!csvFile || !csvColonne) return;
+    // Un modello porta con se' il taglio su cui sono stati contati i suoi
+    // indici: senza, una mappatura buona letta con un taglio diverso leggerebbe
+    // le colonne sbagliate senza dirlo.
+    const taglio = delimitatore ?? csvColonne.delimiter;
     setPdfImporting(true);
     setImportFeedback(null);
     try {
-      const result = await anteprimaCsv(csvFile, mappatura, csvColonne.delimiter);
-      setCsvColonne({ ...csvColonne, mapping: mappatura });
+      const result = await anteprimaCsv(csvFile, mappatura, taglio);
+      setCsvColonne({ ...csvColonne, mapping: mappatura, delimiter: taglio });
       setPdfPreviewTransactions(result.transactions);
     } catch (error) {
       setImportFeedback({ ok: false, message: error instanceof Error ? error.message : t('statementParseFailed') });
     } finally { setPdfImporting(false); }
+  }
+
+  /** I modelli salvati: l'ultimo salvato e' il primo dell'elenco, perche' e'
+   *  quello che serve piu' spesso. Un errore qui non ferma l'import: senza
+   *  modelli si corregge a mano come prima. */
+  async function caricaModelli() {
+    try {
+      const response = await fetch(`${apiUrl}/api/import/templates`);
+      if (!response.ok) return;
+      const dati = await response.json() as { items: ImportTemplateRow[] };
+      setModelliMappatura(dati.items);
+    } catch { /* l'elenco resta quello che c'era */ }
+  }
+
+  /** Salva la mappatura che si sta guardando con il nome che si e' scritto. */
+  async function salvaModello(nome: string) {
+    try {
+      const response = await fetch(`${apiUrl}/api/import/templates`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nome, mapping: JSON.stringify(csvColonne?.mapping ?? {}),
+                               delimiter: csvColonne?.delimiter ?? '' }),
+      });
+      if (!response.ok) throw new Error(await responseError(response, t));
+      setImportFeedback({ ok: true, message: t('csvTemplateSaved', { name: nome }) });
+      await caricaModelli();
+    } catch (error) {
+      setImportFeedback({ ok: false, message: error instanceof Error ? error.message : t('importExportFailed') });
+    }
+  }
+
+  async function cancellaModello(modello: ImportTemplateRow) {
+    await fetch(`${apiUrl}/api/import/templates/${modello.id}`, { method: 'DELETE' });
+    await caricaModelli();
   }
 
   async function importStatement(kind: 'pdf' | 'csv') {
@@ -2189,6 +2230,7 @@ function MoneyDashboardInner() {
         const colonne = kind === 'csv' ? await colonneDelCsv(file) : null;
         setCsvFile(kind === 'csv' ? file : null);
         setCsvColonne(colonne);
+        if (kind === 'csv') void caricaModelli();
         const result = kind === 'csv'
           ? await anteprimaCsv(file, colonne!.mapping, colonne!.delimiter)
           : await anteprimaPdf(file);
@@ -2740,7 +2782,9 @@ function MoneyDashboardInner() {
                 setCsvColonne(null);
               }}
               colonne={csvColonne}
-              onCambiaColonne={(mappatura) => void ricaricaCsv(mappatura)}
+              onCambiaColonne={(mappatura, delimitatore) => void ricaricaCsv(mappatura, delimitatore)}
+              modelli={{ items: modelliMappatura, onSalva: salvaModello,
+                         onCancella: (modello) => void cancellaModello(modello) }}
               connected={connected}
               trendYearsAvailable={trendYearsAvailable}
               trendYears={trendYears}
@@ -3323,6 +3367,7 @@ function SectionView({
   onPdfImportCancel,
   colonne,
   onCambiaColonne,
+  modelli,
   connected,
   trendYearsAvailable,
   trendYears,
@@ -3419,7 +3464,9 @@ function SectionView({
   onPdfImportCancel: () => void;
   /** Le colonne del CSV in anteprima. Niente per un PDF: li' non si sceglie. */
   colonne: StatementColumns | null;
-  onCambiaColonne: (mapping: Record<string, number>) => void;
+  onCambiaColonne: (mapping: Record<string, number>, delimiter?: string) => void;
+  /** I modelli di mappatura salvati, con i gesti per salvarne e cancellarne uno. */
+  modelli: ModelliDiMappatura;
   connected: boolean;
   trendYearsAvailable: number[];
   trendYears: number[];
@@ -3704,7 +3751,7 @@ function SectionView({
       <Dialog open={showPdfPreview} onOpenChange={open => { if (!open && !pdfImporting) onPdfImportCancel(); }}>
         {showPdfPreview && <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-[95vw]" showCloseButton={false}>
           <PDFImportPreview transactions={pdfPreviewTransactions} accounts={accounts.filter(a => a.isActive !== false)} categoriesByType={settingsData.categoriesByType} categoryTree={settingsData.categoryTree} feedback={importFeedback}
-            colonne={colonne ?? undefined} onCambiaColonne={onCambiaColonne}
+            colonne={colonne ?? undefined} onCambiaColonne={onCambiaColonne} modelli={modelli}
             onConfirm={onPdfImportConfirm} onCancel={onPdfImportCancel} />
         </DialogContent>}
       </Dialog>

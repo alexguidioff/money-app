@@ -595,6 +595,10 @@ PER_UTENTE = [
     # un'altra. Stava fra le condivise perche' nessuno lo leggeva: appena
     # diventa una pagina, "condiviso" non vuol dire piu' niente.
     "import_batches",
+    # I modelli di mappatura sono di chi li ha salvati: senza l'isolamento, il
+    # modello di una persona comparirebbe nell'elenco di un'altra e le sue
+    # colonne finirebbero in un import che non e' il suo.
+    "import_templates",
 ]
 
 # Tabelle condivise di proposito: una quotazione e il profilo di uno strumento

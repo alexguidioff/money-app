@@ -53,11 +53,12 @@ from app.core_routes import (EventPayload, GoalMilestonePayload, RuleBulkPayload
 from app.database import Base
 from app.fire_routes import (FlussoPayload, ProfiloPayload, RegolePayload, crea_flusso, elenco_flussi, fire,
                              leggi_profilo, leggi_regole, salva_profilo, salva_regole, spostamento_pensioni)
-from app.main import (AccountPayload, BudgetCreatePayload, BudgetUpdatePayload, GoalPayload, InvestmentTxPayload,
+from app.main import (AccountPayload, BudgetCreatePayload, BudgetUpdatePayload, GoalPayload, ImportTemplatePayload,
+                      InvestmentTxPayload,
                       LiabilityPayload, NotePayload, RecurringTransactionCreate, SettingValueUpdate, SplitPayload, TransactionPayload,
-                      create_account, create_budget, create_goal, create_investment_tx, create_note,
+                      create_account, create_budget, create_goal, create_import_template, create_investment_tx, create_note,
                       create_recurring_transaction, create_transaction, import_batches, import_csv_columns,
-                      liabilities, list_backups_endpoint,
+                      liabilities, list_backups_endpoint, list_import_templates,
                       list_recurring_transactions, save_liability, split_transaction, update_budget, update_setting)
 from app.models import (Account, AccountValuation, AppSetting, BudgetPlan, CategorizationRule, Category, Event, Goal,
                         GoalMilestone, ImportBatch, IncomeStream, InvestmentInstrument,
@@ -272,6 +273,19 @@ def _colonne_di_prova() -> dict[str, Any]:
     return asyncio.run(import_csv_columns(UploadFile(filename="estratto.csv", file=BytesIO(contenuto))))
 
 
+def _modelli_di_prova(session: Session) -> dict[str, Any]:
+    """Un modello di mappatura salvato e riletto: numeri tondi e inventati.
+
+    Passa dal contratto come le colonne: un campo rinominato qui vorrebbe dire
+    modelli che arrivano vuoti alla pagina, e nessun test del backend se ne
+    accorgerebbe.
+    """
+    create_import_template(ImportTemplatePayload(name="Estratto di prova",
+                                                 mapping='{"date_cols": 0, "amount_cols": 2}',
+                                                 delimiter=";"), session)
+    return list_import_templates(session)
+
+
 def risposte() -> dict[str, Any]:
     session = _sessione()
     _semina(session)
@@ -314,6 +328,7 @@ def risposte() -> dict[str, Any]:
         "recurring": asyncio.run(list_recurring_transactions(session)),
         "importBatches": import_batches(20, session),
         "statementColumns": _colonne_di_prova(),
+        "importTemplates": _modelli_di_prova(session),
         "notifications": notifiche(session),
         "backups": _backup_di_prova(),
     }

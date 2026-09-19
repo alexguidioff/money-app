@@ -28,6 +28,28 @@ export type PDFTransaction = {
   errorCode?: string;
 };
 
+/** Una mappatura di colonne salvata con un nome.
+
+ *  Serve a non ricorreggere lo stesso estratto conto ogni mese: si sceglie una
+ *  volta, le si da' un nome, e il mese dopo si riapplica. Il taglio sta dentro
+ *  perche' gli indici valgono solo nella divisione da cui sono stati contati.
+ */
+export type ImportTemplateRow = {
+  id: number;
+  name: string;
+  mapping: Record<string, number>;
+  delimiter: string | null;
+};
+
+/** I modelli salvati, con i due gesti che si fanno da qui: salvarne uno nuovo
+ *  e cancellarne uno che non serve piu'. Applicarli e' sceglierli nell'elenco,
+ *  e lo fa chi tiene la mappatura corrente. */
+export type ModelliDiMappatura = {
+  items: ImportTemplateRow[];
+  onSalva: (nome: string) => Promise<void>;
+  onCancella: (modello: ImportTemplateRow) => void;
+};
+
 type Riga = PDFTransaction & { selected: boolean; chiave: number; divisa?: { gruppo: number; totale: number } };
 
 const centesimi = (valore: number) => Math.round(valore * 100) / 100;
@@ -66,13 +88,16 @@ function Colonna({ etichetta, valore, headers, disabled, onChange }: {
  * perche' e' l'unico modo di vedere se la scelta e' quella giusta - e le righe
  * che non si leggono arrivano segnate, non spariscono.
  */
-function ColonneDelFile({ headers, mapping, onChange, disabled }: {
+function ColonneDelFile({ headers, mapping, onChange, disabled, modelli }: {
   headers: string[];
   mapping: Record<string, number>;
-  onChange: (mapping: Record<string, number>) => void;
+  onChange: (mapping: Record<string, number>, delimiter?: string) => void;
   disabled: boolean;
+  modelli?: ModelliDiMappatura;
 }) {
   const { t } = useI18n();
+  const [scelto, setScelto] = useState<number | ''>('');
+  const [nome, setNome] = useState('');
   // Un importo solo (col segno) o uscita ed entrata in due colonne: sono due
   // modi di scrivere la stessa cosa, e la proposta dice gia' quale usa il file.
   const separato = mapping.debit_cols !== undefined || mapping.credit_cols !== undefined;
@@ -84,9 +109,36 @@ function ColonneDelFile({ headers, mapping, onChange, disabled }: {
   const cambiaModo = (due: boolean) => aggiorna(due
     ? { amount_cols: undefined, debit_cols: mapping.debit_cols ?? 0, credit_cols: mapping.credit_cols ?? 0 }
     : { debit_cols: undefined, credit_cols: undefined, amount_cols: mapping.amount_cols ?? 0 });
+  const sceltoOra = modelli?.items.find((modello) => modello.id === scelto);
+  // Scegliere un modello vuol dire applicarlo subito: e' l'unico motivo per
+  // cui sta li'. Il taglio va con lui, perche' gli indici valgono solo nella
+  // divisione da cui sono stati contati.
+  const scegliModello = (id: number | '') => {
+    setScelto(id);
+    const modello = modelli?.items.find((item) => item.id === id);
+    if (modello) onChange(modello.mapping, modello.delimiter ?? undefined);
+  };
 
   return <div className="rounded-lg border border-black/8 bg-[#fafaf8] p-3">
     <p className="text-xs font-medium text-[#52615d]">{t('csvColumnsTitle')}</p>
+    {modelli && <div className="mt-2 flex flex-wrap items-end gap-3 border-b border-black/6 pb-3">
+      <label className="space-y-1 text-xs font-medium text-[#52615d]">{t('csvTemplatePick')}
+        <select aria-label={t('csvTemplatePick')} disabled={disabled} value={scelto}
+          className="block h-9 w-full min-w-36 rounded-lg border border-input bg-white px-2 text-sm"
+          onChange={(event) => scegliModello(event.target.value === '' ? '' : Number(event.target.value))}>
+          <option value="">{t('csvTemplateNone')}</option>
+          {modelli.items.map((modello) => <option key={modello.id} value={modello.id}>{modello.name}</option>)}
+        </select>
+      </label>
+      {sceltoOra && <Button type="button" variant="outline" size="sm" disabled={disabled}
+        onClick={() => { modelli.onCancella(sceltoOra); setScelto(''); }}>{t('delete')}</Button>}
+      <label className="space-y-1 text-xs font-medium text-[#52615d]">{t('csvTemplateName')}
+        <Input aria-label={t('csvTemplateName')} value={nome} disabled={disabled} maxLength={255}
+          className="block h-9 w-full min-w-36" onChange={(event) => setNome(event.target.value)} />
+      </label>
+      <Button type="button" variant="outline" size="sm" disabled={disabled || !nome.trim()}
+        onClick={async () => { await modelli.onSalva(nome.trim()); setNome(''); }}>{t('csvTemplateSave')}</Button>
+    </div>}
     <div className="mt-2 flex flex-wrap items-end gap-3">
       <Colonna etichetta={t('csvColumnDate')} valore={mapping.date_cols} headers={headers} disabled={disabled}
         onChange={(indice) => aggiorna({ date_cols: indice })} />
@@ -111,7 +163,7 @@ function ColonneDelFile({ headers, mapping, onChange, disabled }: {
   </div>;
 }
 
-export function PDFImportPreview({ transactions, accounts, categoriesByType, categoryTree, onConfirm, onCancel, feedback, colonne, onCambiaColonne }: {
+export function PDFImportPreview({ transactions, accounts, categoriesByType, categoryTree, onConfirm, onCancel, feedback, colonne, onCambiaColonne, modelli }: {
   transactions: PDFTransaction[];
   accounts: { name: string }[];
   categoriesByType: Record<string, string[]>;
@@ -122,9 +174,12 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, cat
   /** Le colonne del file da cui vengono le righe: solo per un CSV, dove la
    *  lettura si puo' ancora correggere. Da un PDF non c'e' niente da scegliere. */
   colonne?: { headers: string[]; mapping: Record<string, number> };
-  /** Cambiata una colonna, le righe si rileggono dal file: chi tiene il file lo
-   *  sa, qui si dice solo cosa e' cambiato. */
-  onCambiaColonne?: (mapping: Record<string, number>) => void;
+  /** Cambiata una colonna - o scelto un modello - le righe si rileggono dal
+   *  file: chi tiene il file lo sa, qui si dice solo cosa e' cambiato. Il
+   *  taglio arriva con la mappatura quando a cambiarla e' stato un modello. */
+  onCambiaColonne?: (mapping: Record<string, number>, delimiter?: string) => void;
+  /** I modelli salvati: niente per un PDF, dove non c'e' niente da scegliere. */
+  modelli?: ModelliDiMappatura;
 }) {
   const { t, formatEuro, formatDate } = useI18n();
   // La chiave resta con la riga anche quando se ne inseriscono altre: con
@@ -177,7 +232,8 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, cat
   return <div className="flex min-h-0 flex-col gap-4">
     <DialogTitle>{t('statementPreview')}</DialogTitle>
     <DialogDescription>{t('statementPreviewHint', { count: rows.length })}</DialogDescription>
-    {colonne && onCambiaColonne && <ColonneDelFile headers={colonne.headers} mapping={colonne.mapping} onChange={onCambiaColonne} disabled={isSaving} />}
+    {colonne && onCambiaColonne && <ColonneDelFile headers={colonne.headers} mapping={colonne.mapping}
+      onChange={onCambiaColonne} disabled={isSaving} modelli={modelli} />}
     <p className="text-sm">{t('duplicateSummary', { count: rows.length, duplicates: rows.filter(row => row.duplicate).length })}</p>
     <label className="text-sm">{t('statementAccountAll')}
       <select aria-label={t('statementAccountAll')} disabled={isSaving} value={allAccount} className="ml-3 rounded border p-2"

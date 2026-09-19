@@ -25,7 +25,8 @@ class SemeDeiContrattiTests(unittest.TestCase):
                           "budgetTrends", "budgetSuggestions", "goals", "investmentsDashboard", "investmentsLedger",
                           "investmentsAllocation", "instrumentHistory", "balanceSheetSeries", "notes", "recurring",
                           "categorizationRules", "categorizationSuggestions", "notifications", "backups",
-                          "events", "eventDetail", "categories", "importBatches", "statementColumns"},
+                          "events", "eventDetail", "categories", "importBatches", "statementColumns",
+                          "importTemplates"},
                          set(self.risposte))
 
     def test_gli_elenchi_non_sono_vuoti(self) -> None:
@@ -53,6 +54,7 @@ class SemeDeiContrattiTests(unittest.TestCase):
             "storico degli import": r["importBatches"]["items"],
             "colonne dell'estratto conto": r["statementColumns"]["headers"],
             "righe d'esempio dell'estratto conto": r["statementColumns"]["sample"],
+            "modelli di mappatura": r["importTemplates"]["items"],
         }.items():
             self.assertTrue(elenco, f"{nome}: vuoto, il contratto non lo controllerebbe")
 

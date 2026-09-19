@@ -391,6 +391,9 @@ TABELLE_PERSONALI = [
     # Lo storico degli import: cancellando una persona resterebbe a dire che
     # qualcuno ha importato dei file, senza nessuno a cui appartengano.
     "import_batches",
+    # I modelli di mappatura: cancellando una persona resterebbero a dire come
+    # si leggeva un file, senza nessuno a cui appartengano.
+    "import_templates",
 ]
 
 
