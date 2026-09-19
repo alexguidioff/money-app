@@ -84,7 +84,6 @@ import { SharedTotalsView } from '@/components/shared-totals';
 import { FirePage } from '@/components/fire-page';
 import { CategoryOptions, type CategoryNode } from '@/components/category-options';
 import { CategoryTreeCard } from '@/components/settings/category-tree';
-import { FireSettingsSection } from '@/components/settings/fire-settings-section';
 import { AccountSettings, type AccountState } from '@/components/account-settings';
 import { NotificationsPanel, type Notification } from '@/components/notifications-panel';
 import { PageHelp } from '@/components/page-help';
@@ -3480,7 +3479,7 @@ function SectionView({
         </>}
       </div>}
 
-      {section === 'FIRE' && <FirePage apiUrl={apiUrl} onOpenSettings={() => onNavigate('Impostazioni')} />}
+      {section === 'FIRE' && <FirePage apiUrl={apiUrl} />}
       {section === 'Insieme' && <SharedTotalsView apiUrl={apiUrl} year={selectedYear} month={period.scope === 'year' ? null : selectedMonth} />}
       {section === 'Appunti' && <NotesView notes={notesData} onSave={onNoteSave} onDelete={onNoteDelete} />}
 
@@ -3543,7 +3542,6 @@ function SectionView({
           </CardContent></Card>
           </div>
         </div>
-        <FireSettingsSection apiUrl={apiUrl} />
       </div>}
       <Dialog open={showPdfPreview} onOpenChange={open => { if (!open && !pdfImporting) onPdfImportCancel(); }}>
         {showPdfPreview && <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-[95vw]" showCloseButton={false}>
