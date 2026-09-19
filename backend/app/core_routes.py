@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from .calculation_engine import (account_balances_at, account_balances_series, account_reconciliation,
                                  investment_positions, normalized_name, savings_rate, source_effect)
 from .categorization import MAX_REGOLE, categoria_da_nome, suggest
-from .categorie import GRUPPI, gruppo_di_categoria, nome_di, nomi as nomi_categorie
+from .categorie import GRUPPI, con_i_figli, gruppo_di_categoria, nome_di, nomi as nomi_categorie, padri
 from .database import get_session
 from .models import (Account, AppSetting, BudgetPlan, CategorizationRule, Category, Event,
                      Goal, InvestmentInstrument, InvestmentTransaction,
@@ -317,23 +317,35 @@ def _period_category_breakdown(session: Session, year: int, month: int | None, b
     actual_by_category = {category: num(amount) for category, amount in actual_rows.items()}
     nomi_cat = nomi_categorie(session)
     gruppi = gruppo_di_categoria(session)
-    categories = [{"name": nome_di(session, category) if category is not None else savings_category(session),
-                   "categoryId": category,
-                   "amount": actual_by_category.get(category, 0), "budget": budget,
-                   "categoryGroup": gruppi.get(category) if category is not None else None}
-                  for category, budget in planned_by_category.items()]
+    # Ogni riga porta due numeri: il suo e quello del sottoalbero. Quello che si
+    # legge accanto al nome e' il secondo - "Alimentari" dice anche quanto hanno
+    # speso i suoi figli - mentre i valori propri restano su `amount` e `budget`,
+    # ed e' su quelli che si somma un totale: il totale di un padre contiene gia'
+    # i figli, e sommarli tutti conterebbe due volte la stessa spesa.
+    con_figli_pianificato = con_i_figli(session, planned_by_category)
+    con_figli_effettivo = con_i_figli(session, actual_by_category)
+    genitori = padri(session)
+
+    def _riga(category: int | None, budget: float) -> dict[str, Any]:
+        return {"name": nomi_cat.get(category, "") if category is not None else savings_category(session),
+                "categoryId": category, "parentId": genitori.get(category),
+                "amount": actual_by_category.get(category, 0), "budget": budget,
+                "amountWithChildren": con_figli_effettivo.get(category, 0),
+                "budgetWithChildren": con_figli_pianificato.get(category, 0),
+                "categoryGroup": gruppi.get(category) if category is not None else None}
+
     # La spesa in una categoria senza piano e' spesa lo stesso. Partire solo dal
     # piano la faceva sparire: un anno senza budget (il 2023) mostrava una
     # ripartizione vuota con 9.799 EUR spesi, e le categorie aggiunte dopo aver
-    # scritto il budget non comparivano fra le piu' pesanti.
-    pianificate = set(planned_by_category)
-    extra = {category: importo for category, importo in actual_by_category.items()
-             if category not in pianificate and importo}
-    if extra:
-        categories += [{"name": nomi_cat.get(category, ""), "categoryId": category, "amount": importo,
-                        "budget": 0, "categoryGroup": gruppi.get(category)}
-                       for category, importo in extra.items()]
-    categories.sort(key=lambda item: (item["budget"], item["amount"]), reverse=True)
+    # scritto il budget non comparivano fra le piu' pesanti. Un padre entra qui
+    # anche quando non ha un piano suo: il totale dei figli e' un numero che si
+    # vuole leggere, ed e' la riga sotto cui quegli stessi figli si ordinano.
+    per_categoria = dict(planned_by_category)
+    for category, importo in con_figli_effettivo.items():
+        if category not in per_categoria and importo:
+            per_categoria[category] = 0
+    categories = [_riga(category, budget) for category, budget in per_categoria.items()]
+    categories.sort(key=lambda item: (item["budgetWithChildren"], item["amountWithChildren"]), reverse=True)
     return categories
 
 
@@ -634,14 +646,23 @@ def _pie_breakdown(categories: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _section_breakdown(categories: list[dict[str, Any]]) -> dict[str, Any]:
     """Righe Tracked/Budget/% Compl./Remaining/Excess per una sezione
-    (Income/Expenses/Savings), come le colonne X:AD di Budget Dashboard."""
+    (Income/Expenses/Savings), come le colonne X:AD di Budget Dashboard.
+
+    La riga porta il padre e i figli insieme al resto, cosi' la tabella puo'
+    mostrare un padre con i figli sotto invece di un elenco piatto in cui due
+    righe sembrano due spese diverse. I due totali della sezione restano quelli
+    di prima: si sommano i valori propri, non quelli del sottoalbero.
+    """
     rows = []
     for item in categories:
         tracked, budget = item["amount"], item["budget"]
         completion = round(tracked / budget, 4) if budget else None
         remaining = round(budget - tracked, 2) if budget - tracked > 0 else 0
         excess = round(tracked - budget, 2) if budget - tracked < 0 else 0
-        rows.append({"name": item["name"], "tracked": tracked, "budget": budget, "completion": completion, "remaining": remaining, "excess": excess})
+        rows.append({"name": item["name"], "categoryId": item["categoryId"], "parentId": item["parentId"],
+                     "tracked": tracked, "budget": budget, "completion": completion, "remaining": remaining,
+                     "excess": excess, "trackedWithChildren": item["amountWithChildren"],
+                     "budgetWithChildren": item["budgetWithChildren"]})
     return {"categories": rows, "plannedTotal": round(sum(item["budget"] for item in categories), 2), "actualTotal": round(sum(item["amount"] for item in categories), 2)}
 
 

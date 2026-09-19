@@ -14,8 +14,9 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session
 
-from app.categorie import (CategoryPayload, aggiorna_categoria, cancella_categoria, crea_categoria,
-                           elenco_categorie)
+from app.categorie import (CategoryPayload, aggiorna_categoria, cancella_categoria, con_i_figli,
+                           crea_categoria, elenco_categorie)
+from app.core_routes import summary_breakdown
 from app.database import Base, reset_current_user, set_current_user
 from app.models import BudgetPlan, Category, Transaction, User
 
@@ -99,6 +100,48 @@ class CategorieTests(unittest.TestCase):
         self.session.commit()
         self.assertEqual(cancella_categoria(alimentari["id"], self.session), {"success": True})
         self.assertEqual(elenco_categorie(self.session)["items"], [])
+
+    def spesa(self, category_id, importo, tipo="Expenses"):
+        self.session.add(Transaction(occurred_on=date(2026, 4, 1), effective_on=date(2026, 4, 1),
+                                     transaction_type=tipo, category_id=category_id,
+                                     amount=Decimal(importo), account_name="Conto"))
+
+    def righe_spese(self, anno=2026, mese=4):
+        """Le righe di spesa come le legge la Panoramica, per nome."""
+        sezione = summary_breakdown(anno, mese, self.session)["sections"]["expenses"]
+        return sezione, {riga["name"]: riga for riga in sezione["categories"]}
+
+    def test_7_i_totali_risalgono_dai_figli_alla_radice(self):
+        alimentari = self.crea("Alimentari")
+        supermercato = self.crea("Supermercato", alimentari["id"])
+        mensa = self.crea("Mensa", alimentari["id"])
+        self.spesa(supermercato["id"], "30.00")
+        self.spesa(mensa["id"], "20.00")
+        self.session.commit()
+
+        self.assertEqual(con_i_figli(self.session, {supermercato["id"]: 30, mensa["id"]: 20}),
+                         {supermercato["id"]: 30, mensa["id"]: 20, alimentari["id"]: 50})
+
+        sezione, righe = self.righe_spese()
+        self.assertEqual(righe["Supermercato"]["trackedWithChildren"], 30)
+        self.assertEqual(righe["Mensa"]["parentId"], alimentari["id"])
+        self.assertEqual(righe["Alimentari"]["trackedWithChildren"], 50)
+        # Il padre non ha speso niente per se': i suoi cinquanta sono dei figli,
+        # ed e' la ragione per cui il totale della sezione somma i valori propri.
+        self.assertEqual(righe["Alimentari"]["tracked"], 0)
+        self.assertIsNone(righe["Alimentari"]["parentId"])
+        self.assertEqual(sezione["actualTotal"], 50)
+
+    def test_8_una_radice_senza_figli_conta_per_se(self):
+        trasporti = self.crea("Trasporti")
+        self.spesa(trasporti["id"], "12.00")
+        self.session.commit()
+
+        # Nessun figlio: il totale e' il suo, e non sparisce dalla ripartizione.
+        self.assertEqual(con_i_figli(self.session, {trasporti["id"]: 12}), {trasporti["id"]: 12})
+        sezione, righe = self.righe_spese()
+        self.assertEqual((righe["Trasporti"]["tracked"], righe["Trasporti"]["trackedWithChildren"]), (12, 12))
+        self.assertEqual(sezione["actualTotal"], 12)
 
     def test_lo_spostamento_non_crea_nipoti_e_il_nome_si_cambia(self):
         alimentari, trasporti = self.crea("Alimentari"), self.crea("Trasporti")

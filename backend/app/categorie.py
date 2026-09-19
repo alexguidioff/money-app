@@ -117,6 +117,40 @@ def radici(session: Session) -> dict[int, str]:
     return {riga.id: nome_radice.get(riga.parent_id) or riga.name for riga in righe}
 
 
+def padri(session: Session) -> dict[int, int | None]:
+    """Da ogni categoria al suo padre: l'albero nudo, per chi deve percorrerlo.
+
+    ``None`` vale per le radici e per un id che non e' una categoria: chi lo usa
+    non deve distinguere "e' una radice" da "non lo conosco", perche' in
+    entrambi i casi non c'e' nessun padre sotto cui sommare.
+    """
+    return dict(session.execute(select(Category.id, Category.parent_id)).all())
+
+
+def con_i_figli(session: Session, totali: dict[int | None, Any]) -> dict[int | None, Any]:
+    """I totali per categoria, piu' il totale di ogni padre con i figli dentro.
+
+    Una funzione sola perche' ogni report deve rispondere alle stesse due
+    domande: quanto ho speso in Supermercato, e quanto in Alimentari tutto
+    compreso. Chi ha gia' i suoi totali per categoria li passa qui e riceve la
+    stessa mappa con in piu' le voci dei padri: trenta in Supermercato e venti in
+    Mensa fanno cinquanta in Alimentari. Una radice senza figli resta quella che
+    era - conta per se', non sparisce - e un id che non e' nell'albero non entra
+    in nessuna somma.
+
+    Chi somma le righe di un report somma i valori **propri**, quelli passati
+    qui dentro: il totale di un padre contiene gia' i suoi figli, e sommare
+    anche quelli conterebbe due volte la stessa spesa.
+    """
+    genitori = padri(session)
+    risultato = dict(totali)
+    for categoria_id, valore in totali.items():
+        genitore = genitori.get(categoria_id) if categoria_id is not None else None
+        if genitore is not None:
+            risultato[genitore] = risultato.get(genitore, 0) + valore
+    return risultato
+
+
 def gruppo_di_categoria(session: Session) -> dict[int, str]:
     """Bisogni, piaceri, o il resto: il gruppo di ogni categoria.
 
