@@ -39,7 +39,8 @@ from .models import ImportBatch
 # il file resta leggibile anche da uno strumento che controlla i riferimenti.
 # Le categorie stanno in testa: le nominano movimenti, budget e regole, e
 # l'ordine inverso le cancella per ultime, quando nessuno le punta piu'.
-WRITE_ORDER = ["Categorie", "Conti", "ValutazioniConti", "Debiti", "Movimenti", "RateDebiti", "Budget", "Obiettivi", "LedgerInvestimenti", "DettagliLedger", "CollegamentiLedger",
+WRITE_ORDER = ["Categorie", "Conti", "ValutazioniConti", "Debiti", "Movimenti", "RateDebiti", "Budget", "Obiettivi", "Tappe",
+               "LedgerInvestimenti", "DettagliLedger", "CollegamentiLedger",
                "Strumenti", "RegoleCategoria", "Note", "Impostazioni", "Opzioni", "ProfiloPensione", "FlussiPensione",
                "Eventi", "EventiMovimenti"]
 
@@ -206,6 +207,10 @@ REFERENCES = {
     "RegoleCategoria": {"category_id": "Categorie"},
     "DettagliLedger": {"transaction_id": "LedgerInvestimenti"},
     "CollegamentiLedger": {"transaction_id": "Movimenti", "ledger_id": "LedgerInvestimenti"},
+    # L'obiettivo di una tappa e' un id interno: reimportando in un altro
+    # account, senza rimappatura la tappa finirebbe sotto l'obiettivo di
+    # qualcun altro, o sotto nessuno.
+    "Tappe": {"goal_id": "Obiettivi"},
     "EventiMovimenti": {"transaction_id": "Movimenti", "event_id": "Eventi"},
 }
 
@@ -240,7 +245,10 @@ def read_and_validate(source: str | Path | BinaryIO) -> tuple[dict, dict]:
                              # Gli eventi sono nati con la 1.9: un file piu'
                              # vecchio non li ha, e non per questo e' rotto.
                              or title in {"Eventi", "EventiMovimenti"}
-                             and str(meta["versione"]) in {"1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8"})
+                             and str(meta["versione"]) in {"1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8"}
+                             # Le tappe sono nate con la 1.11.
+                             or title == "Tappe"
+                             and str(meta["versione"]) in {"1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10"})
                         else _read_sheet(workbook, title, *SHEETS[title], version=str(meta["versione"]))) for title in WRITE_ORDER}
         _check_declared_counts(meta, data)
         if len(data["ProfiloPensione"]) > 1:

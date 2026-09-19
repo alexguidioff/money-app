@@ -563,6 +563,10 @@ PER_UTENTE = [
     # viaggio di una persona comparirebbe nella card di un'altra.
     "events",
     "transaction_events",
+    # Le tappe di un obiettivo sono di chi ha scritto l'obiettivo: senza
+    # l'isolamento le tappe di una persona comparirebbero sotto gli obiettivi
+    # di un'altra, che hanno lo stesso nome e si leggerebbero come sue.
+    "goal_milestones",
 ]
 
 # Tabelle condivise di proposito: una quotazione e il profilo di uno strumento

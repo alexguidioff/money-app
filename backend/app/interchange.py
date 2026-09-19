@@ -27,13 +27,14 @@ from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import (Account, AccountValuation, AppSetting, BudgetPlan, Category, CategorizationRule, Event, Goal, IncomeStream,
+from .models import (Account, AccountValuation, AppSetting, BudgetPlan, Category, CategorizationRule, Event, Goal,
+                     GoalMilestone, IncomeStream,
                      RetirementProfile, InvestmentInstrument, InvestmentTransaction,
                      InvestmentTransactionDetail,
                      LiabilityProfile, LiabilityTransactionDetail, LookupOption, Note, Transaction, TransactionEvent,
                      TransactionLedgerLink)
 
-FORMAT_VERSION = "1.10"
+FORMAT_VERSION = "1.11"
 
 
 def _cell(value: Any) -> Any:
@@ -71,6 +72,10 @@ SHEETS: dict[str, tuple[Any, list[str]]] = {
                                 "recurrence_parent_id", "counts_in_budget", "refund_of_id", "incomplete_accepted"]),
     "Budget": (BudgetPlan, ["id", "period", "budget_type", "category_id", "amount"]),
     "Obiettivi": (Goal, ["id", "name", "starting_amount", "target_amount", "start_date", "target_date", "completed_at", "kind", "target_account"]),
+    # Sotto gli obiettivi, e con il loro id dentro: una tappa senza il suo
+    # obiettivo non e' importabile, quindi il foglio viene dopo quello che
+    # nomina.
+    "Tappe": (GoalMilestone, ["id", "goal_id", "name", "target_amount", "target_date"]),
     "ProfiloPensione": (RetirementProfile, ["id", "birth_year", "country", "target_retirement_age",
         "real_return", "return_volatility", "withdrawal_rate", "withdrawal_tax_rate", "inflation", "expense_basis",
         "custom_annual_expenses", "lean_annual_expenses", "expense_rules", "notes"]),

@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from app.database import Base
 from app.interchange import build_export, SHEETS
 from app.interchange_import import import_data, read_and_validate, InterchangeError
-from app.models import Account, AccountValuation, LiabilityProfile, RetirementProfile, IncomeStream, Goal
+from app.models import (Account, AccountValuation, Goal, GoalMilestone, IncomeStream, LiabilityProfile,
+                        RetirementProfile)
 
 
 class CompleteExportTests(TestCase):
@@ -36,8 +37,11 @@ class CompleteExportTests(TestCase):
             IncomeStream(id=101, name='Rendita', kind='annuity', amount=D('14000.50'), start_age=65,
                          indexed=False, country='CH', amount_if_stopping_now=D('4000.25'), notes='Stima ente'),
             IncomeStream(id=102, name='Capitale', kind='capital', amount=D('70000.75'), start_age=60, country='CH'),
-            Goal(name='Patrimonio', kind='net_worth', target_amount=500000),
-            Goal(name='Riserva', kind='contributions', target_account='Broker', target_amount=10000),
+            # Id alti apposta: con gli id 1 e 2 la rimappatura cadrebbe sugli
+            # stessi numeri e il test delle tappe passerebbe anche senza
+            # rimappare nulla.
+            Goal(id=201, name='Patrimonio', kind='net_worth', target_amount=500000),
+            Goal(id=202, name='Riserva', kind='contributions', target_account='Broker', target_amount=10000),
         ])
         self.source.commit()
 
@@ -106,6 +110,30 @@ class CompleteExportTests(TestCase):
         for title, (model, fields) in SHEETS.items():
             colonne = set(model.__table__.columns.keys()) - {'user_id'} - derivate_o_storiche.get(title, set())
             self.assertEqual(colonne, set(fields), title)
+
+    def test_le_tappe_seguono_l_obiettivo_rimappato(self):
+        # Il goal_id e' un id interno come gli altri: reimportando in un altro
+        # account, senza rimappatura la tappa finirebbe sotto l'obiettivo di
+        # qualcun altro - o sotto nessuno, se quell'id li' non esiste.
+        riserva = self.source.scalar(select(Goal).where(Goal.name == 'Riserva'))
+        self.source.add_all([
+            GoalMilestone(goal_id=riserva.id, name='Meta\' strada', target_amount=D('5000.50'),
+                          target_date=date(2026, 6, 30)),
+            # Una tappa senza data: e' facoltativa, e la colonna vuota deve
+            # restare vuota anche dopo il giro.
+            GoalMilestone(goal_id=riserva.id, name='Traguardo', target_amount=D('10000')),
+        ])
+        self.source.commit()
+
+        import_data(self.target, build_export(self.source))
+
+        obiettivo = self.target.scalar(select(Goal).where(Goal.name == 'Riserva'))
+        self.assertNotEqual(riserva.id, obiettivo.id)
+        tappe = self.target.scalars(select(GoalMilestone).order_by(GoalMilestone.id)).all()
+        self.assertEqual(['Meta\' strada', 'Traguardo'], [t.name for t in tappe])
+        self.assertTrue(all(t.goal_id == obiettivo.id for t in tappe))
+        self.assertEqual([D('5000.50'), D('10000')], [t.target_amount for t in tappe])
+        self.assertEqual([date(2026, 6, 30), None], [t.target_date for t in tappe])
 
     def test_schema_coverage_new_entities(self):
         # Una nuova ipotesi previdenziale dimenticata nell'export deve far

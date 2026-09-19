@@ -273,6 +273,31 @@ class Goal(Base):
     target_account: Mapped[str | None] = mapped_column(String(255))
 
 
+class GoalMilestone(Base):
+    """Una tappa di un obiettivo: un obiettivo piu' piccolo dentro quello grande.
+
+    L'importo e' quello che a quel punto deve essere raggiunto, non quanto si
+    mette da parte per arrivarci: e' la stessa grandezza del goal, cosi' la
+    barra dell'obiettivo e quella delle sue tappe si leggono sulla stessa scala.
+
+    L'unicita' e' dentro l'obiettivo: due tappe con lo stesso nome nello stesso
+    obiettivo si leggerebbero identiche nell'elenco, mentre "Meta' strada" in
+    due obiettivi diversi e' una cosa sensata da scrivere.
+    """
+
+    __tablename__ = "goal_milestones"
+    __table_args__ = (UniqueConstraint("goal_id", "name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, default=current_user_id)
+    # Le tappe se ne vanno con l'obiettivo, e solo con esso: sono una sua parte,
+    # e una tappa che resta senza obiettivo non e' piu' una tappa.
+    goal_id: Mapped[int] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    target_amount: Mapped[Decimal] = mapped_column(Numeric(16, 2))
+    target_date: Mapped[date | None] = mapped_column(Date)
+
+
 class Transaction(Base):
     __tablename__ = "transactions"
 

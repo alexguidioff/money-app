@@ -387,7 +387,7 @@ TABELLE_PERSONALI = [
     "notes", "dismissed_notifications", "lookup_options", "app_settings",
     "account_valuations", "liability_transaction_details", "liability_profiles",
     "income_streams", "retirement_profiles", "categorization_rules",
-    "events", "transaction_events",
+    "events", "transaction_events", "goal_milestones",
 ]
 
 
