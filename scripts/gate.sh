@@ -27,6 +27,17 @@ echo "=== SCHEMA ALLINEATO (le stesse migrazioni dell'avvio, sui dati veri) ==="
 # schema di prima mentre il codice e' nuovo, e sarebbero rossi per un motivo che
 # non c'entra con quello che provano. Non pubblica niente - allinea lo schema e
 # basta, e l'avvio vero lo rifa' identico.
+#
+# Sta qui e non prima della pubblicazione, e spostarlo romperebbe il gate invece
+# di proteggerlo: spostato dopo pytest, i test di parita' leggerebbero lo schema
+# vecchio ogni volta che una migrazione lo cambia. Il motivo per cui sembra
+# sbagliato - un passo rosso piu' avanti lascia il database migrato e l'API
+# vecchia in esecuzione - vale finche' le migrazioni restano additive: quelle
+# righe in piu' il codice di prima non le legge, ed e' lo stesso stato in cui
+# gira dopo una pubblicazione riuscita. Il giorno in cui una migrazione toglie o
+# riscrive qualcosa, la strada non e' spostare questo passo ma far girare i test
+# di parita' su uno schema loro (i test che chiedono PostgreSQL isolato lo fanno
+# gia').
 "${CANDIDATA[@]}" python -c "from app.main import prepara_schema; prepara_schema()" || { echo "STOP schema"; exit 1; }
 echo ok
 echo "=== TEST FRONTEND ==="
