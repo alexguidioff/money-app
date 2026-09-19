@@ -47,7 +47,9 @@ export type ImportTemplateRow = {
 export type ModelliDiMappatura = {
   items: ImportTemplateRow[];
   onSalva: (nome: string) => Promise<void>;
-  onCancella: (modello: ImportTemplateRow) => void;
+  // Anche la cancellazione si aspetta: il pulsante resta spento finche' non e'
+  // finita, invece di lasciare il tempo di premerlo una seconda volta.
+  onCancella: (modello: ImportTemplateRow) => Promise<void>;
 };
 
 type Riga = PDFTransaction & { selected: boolean; chiave: number; divisa?: { gruppo: number; totale: number } };
@@ -98,11 +100,21 @@ function ColonneDelFile({ headers, mapping, onChange, disabled, modelli }: {
   const { t } = useI18n();
   const [scelto, setScelto] = useState<number | ''>('');
   const [nome, setNome] = useState('');
+  // Salvataggio o cancellazione in corso: due clic sullo stesso pulsante
+  // mandano due richieste, e la seconda risponde "esiste gia'" sopra il
+  // messaggio che dice che e' andata bene.
+  const [inCorso, setInCorso] = useState(false);
   // Un importo solo (col segno) o uscita ed entrata in due colonne: sono due
   // modi di scrivere la stessa cosa, e la proposta dice gia' quale usa il file.
   const separato = mapping.debit_cols !== undefined || mapping.credit_cols !== undefined;
   const aggiorna = (patch: Record<string, number | undefined>) => {
     const unita = { ...mapping, ...patch };
+    // Correggere una colonna a mano vuol dire che la mappatura non e' piu'
+    // quella del modello: l'elenco lo deve dire, o resta a mostrare un modello
+    // che non sta piu' applicando niente. E' anche quello che rende possibile
+    // riapplicarlo: riscegliere lo stesso modello cambia di nuovo il valore, e
+    // la scelta arriva.
+    setScelto('');
     // Una colonna lasciata vuota non si manda: un indice assente non e' zero.
     onChange(Object.fromEntries(Object.entries(unita).filter(([, indice]) => indice !== undefined)) as Record<string, number>);
   };
@@ -130,14 +142,20 @@ function ColonneDelFile({ headers, mapping, onChange, disabled, modelli }: {
           {modelli.items.map((modello) => <option key={modello.id} value={modello.id}>{modello.name}</option>)}
         </select>
       </label>
-      {sceltoOra && <Button type="button" variant="outline" size="sm" disabled={disabled}
-        onClick={() => { modelli.onCancella(sceltoOra); setScelto(''); }}>{t('delete')}</Button>}
+      {sceltoOra && <Button type="button" variant="outline" size="sm" disabled={disabled || inCorso}
+        onClick={async () => {
+          setInCorso(true);
+          try { await modelli.onCancella(sceltoOra); setScelto(''); } finally { setInCorso(false); }
+        }}>{t('delete')}</Button>}
       <label className="space-y-1 text-xs font-medium text-[#52615d]">{t('csvTemplateName')}
         <Input aria-label={t('csvTemplateName')} value={nome} disabled={disabled} maxLength={255}
           className="block h-9 w-full min-w-36" onChange={(event) => setNome(event.target.value)} />
       </label>
-      <Button type="button" variant="outline" size="sm" disabled={disabled || !nome.trim()}
-        onClick={async () => { await modelli.onSalva(nome.trim()); setNome(''); }}>{t('csvTemplateSave')}</Button>
+      <Button type="button" variant="outline" size="sm" disabled={disabled || inCorso || !nome.trim()}
+        onClick={async () => {
+          setInCorso(true);
+          try { await modelli.onSalva(nome.trim()); setNome(''); } finally { setInCorso(false); }
+        }}>{t('csvTemplateSave')}</Button>
     </div>}
     <div className="mt-2 flex flex-wrap items-end gap-3">
       <Colonna etichetta={t('csvColumnDate')} valore={mapping.date_cols} headers={headers} disabled={disabled}

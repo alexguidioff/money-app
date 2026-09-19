@@ -2809,7 +2809,7 @@ function MoneyDashboardInner() {
               colonne={csvColonne}
               onCambiaColonne={(mappatura, delimitatore) => void ricaricaCsv(mappatura, delimitatore)}
               modelli={{ items: modelliMappatura, onSalva: salvaModello,
-                         onCancella: (modello) => void cancellaModello(modello) }}
+                         onCancella: (modello) => cancellaModello(modello) }}
               connected={connected}
               trendYearsAvailable={trendYearsAvailable}
               trendYears={trendYears}
