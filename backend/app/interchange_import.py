@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from openpyxl import load_workbook
-from sqlalchemy import Boolean, Date, DateTime, Integer, Numeric, delete, func, select
+from sqlalchemy import Boolean, Date, DateTime, Integer, Numeric, String, delete, func, select
 from sqlalchemy.orm import Session
 
 from .categorization import categoria_da_nome
@@ -79,7 +79,12 @@ def _read_meta(workbook) -> dict[str, Any]:
 def _coerce(column, value: Any) -> Any:
     """Riporta il valore letto dal foglio al tipo della colonna."""
     if value is None or (isinstance(value, str) and not value.strip()):
-        return None
+        # Una cella vuota e' "nessun valore" per le colonne che accettano NULL,
+        # ma per un testo che non lo accetta e' un testo vuoto. Un'impostazione
+        # si puo' svuotare - il paese fiscale, il simbolo dell'indice - e quel
+        # file l'export l'ha appena scritto: leggerlo come NULL faceva fallire
+        # l'import per un campo obbligatorio, e con esso tutto il ripristino.
+        return "" if isinstance(column.type, String) and not column.nullable else None
     kind = column.type
     try:
         if isinstance(kind, Boolean):

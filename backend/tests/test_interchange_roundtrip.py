@@ -64,6 +64,11 @@ def _populate(session: Session) -> None:
     session.add(Note(section="Investimenti", title="Piano", body="Versare ogni mese", status="open"))
     session.add(AppSetting(key="late_income_shift", label="Shift entrate", value="Active"))
     session.add(AppSetting(key="late_income_day", label="Giorno", value="20"))
+    # Un'impostazione che si puo' svuotare - il paese fiscale, il simbolo
+    # dell'indice - scrive una cella vuota. Se il giro di andata e ritorno la
+    # legge come "nessun valore", l'import muore su un file che l'export ha
+    # scritto lui stesso, e con esso tutto il ripristino.
+    session.add(AppSetting(key="tax_country", label="Paese fiscale", value=""))
     session.add(LookupOption(option_group="accounts", position=1, value="Conto corrente"))
     # Una riga di storico con l'ora piena: e' l'unico foglio che porta un
     # istante, ed e' li' che scrivere la sola data perderebbe il resto -
