@@ -158,3 +158,30 @@ class LeveTests(unittest.TestCase):
         """Le chiavi le legge il browser: rinominarle e' cambiare il contratto."""
         self.assertEqual(["savingsRate", "return", "retirementAge", "retirementExpenses"],
                          [leva.chiave for leva in LEVE])
+
+    def test_9_senza_flussi_l_eta_di_ritiro_non_muove_niente(self) -> None:
+        """Il caso che la pagina deve saper dire invece di mostrare.
+
+        Senza un flusso che parte dopo il ritiro il capitale necessario e' la
+        riserva perpetua - spese diviso prelievo - e gli anni da coprire non
+        entrano nel conto; gli anni al piano, dal canto loro, l'eta' di ritiro
+        non la leggono affatto. Le cinque righe escono uguali in entrambe le
+        colonne, ed e' la condizione su cui il browser smette di disegnare la
+        tabella e scrive cosa la farebbe muovere.
+
+        E' un test che fissa un fatto, non un desiderio: se un giorno il motore
+        cambia, questo cade e quella riga a video va riletta.
+        """
+        # Niente rendite: e' il caso di chi il profilo non l'ha ancora
+        # completato, che e' anche quello da cui arriva la segnalazione.
+        self.session.query(IncomeStream).delete()
+        self.session.commit()
+        _, _, leve = self.leve()
+        righe = leve["retirementAge"]
+        self.assertEqual(5, len(righe))
+        self.assertEqual(sorted(riga["value"] for riga in righe), [riga["value"] for riga in righe])
+        self.assertEqual(1, len({riga["capitalNeeded"] for riga in righe}), righe)
+        self.assertEqual(1, len({riga["yearsLeft"] for riga in righe}), righe)
+        # E non e' un caso di "non arriva nessuno": gli anni ci sono, sono
+        # soltanto gli stessi.
+        self.assertIsNotNone(righe[0]["yearsLeft"])

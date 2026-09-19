@@ -24,6 +24,11 @@ import { AgeShiftSlider } from '@/components/fire/age-shift-slider';
  * ponte e' lungo, a cinquanta e' corto. Il numero grande e' quello per l'eta'
  * scelta; la curva accanto porta il valore anno per anno, ed e' quella che
  * dice quando le due si incontrano.
+ *
+ * Senza nessun flusso che parte dopo il ritiro il ponte e' vuoto, e il capitale
+ * torna a essere la riserva perpetua - spese diviso prelievo - uguale a
+ * qualunque eta': e' il caso che la tabella delle leve dichiara invece di
+ * disegnarlo come se fosse una risposta.
  */
 
 type Milestone = { capitalNeeded: number | null; reached: boolean | null };

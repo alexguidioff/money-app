@@ -1223,6 +1223,9 @@ const it = {
   fireLeverageRetirementExpenses: 'Spese in pensione',
   fireLeverageCapital: 'Capitale necessario',
   fireLeverageOnlyOne: 'Tutto il resto resta come nel tuo piano.',
+  fireLeverageNoEffect: 'Questa leva non muove il tuo piano',
+  fireLeverageNoEffectWhy: 'Le cinque prove danno tutte lo stesso capitale e gli stessi anni. Il capitale necessario è «quanto spendi ÷ quanto prelevi»: cambia solo se cambia il ponte verso la pensione, e con i tuoi dati il ponte è vuoto. Le rendite attese si aggiungono nella scheda Impostazioni.',
+  fireLeverageColumnFixed: '«{{column}}» non cambia con questa leva.',
   fireLeverageYears: 'anni',
   fireLeverageYourRow: 'Tu',
 
@@ -2539,6 +2542,9 @@ const en: TranslationTable = {
   fireLeverageRetirementExpenses: 'Retirement expenses',
   fireLeverageCapital: 'Capital needed',
   fireLeverageOnlyOne: 'Everything else stays as in your plan.',
+  fireLeverageNoEffect: 'This lever does not move your plan',
+  fireLeverageNoEffectWhy: 'All five trials give the same capital and the same years. The capital needed is «what you spend ÷ what you withdraw»: it changes only if the bridge to retirement changes, and with your data the bridge is empty. Expected income streams are added in the Settings tab.',
+  fireLeverageColumnFixed: '«{{column}}» does not change with this lever.',
   fireLeverageYears: 'years',
   fireLeverageYourRow: 'You',
 
@@ -3850,6 +3856,9 @@ const de: TranslationTable = {
   fireLeverageRetirementExpenses: 'Ruhestandsausgaben',
   fireLeverageCapital: 'Nötiges Kapital',
   fireLeverageOnlyOne: 'Alles andere bleibt wie in deinem Plan.',
+  fireLeverageNoEffect: 'Dieser Hebel bewegt deinen Plan nicht',
+  fireLeverageNoEffectWhy: 'Die fünf Proben ergeben alle dasselbe Kapital und dieselben Jahre. Das nötige Kapital ist «was du ausgibst ÷ was du entziehst»: es ändert sich nur, wenn sich die Brücke zum Ruhestand ändert, und mit deinen Daten ist die Brücke leer. Künftige Renten trägst du im Tab Einstellungen ein.',
+  fireLeverageColumnFixed: '«{{column}}» ändert sich mit diesem Hebel nicht.',
   fireLeverageYears: 'Jahre',
   fireLeverageYourRow: 'Du',
 
@@ -5161,6 +5170,9 @@ const es: TranslationTable = {
   fireLeverageRetirementExpenses: 'Gastos en la jubilación',
   fireLeverageCapital: 'Capital necesario',
   fireLeverageOnlyOne: 'Todo lo demás queda como en tu plan.',
+  fireLeverageNoEffect: 'Esta palanca no mueve tu plan',
+  fireLeverageNoEffectWhy: 'Las cinco pruebas dan todas el mismo capital y los mismos años. El capital necesario es «cuánto gastas ÷ cuánto retiras»: solo cambia si cambia el puente hacia la jubilación, y con tus datos el puente está vacío. Las rentas esperadas se añaden en la pestaña Ajustes.',
+  fireLeverageColumnFixed: '«{{column}}» no cambia con esta palanca.',
   fireLeverageYears: 'años',
   fireLeverageYourRow: 'Tú',
 
@@ -6492,6 +6504,9 @@ const fr: TranslationTable = {
   fireLeverageRetirementExpenses: 'Dépenses à la retraite',
   fireLeverageCapital: 'Capital nécessaire',
   fireLeverageOnlyOne: 'Tout le reste reste comme dans ton plan.',
+  fireLeverageNoEffect: 'Ce levier ne déplace pas ton plan',
+  fireLeverageNoEffectWhy: 'Les cinq essais donnent tous le même capital et les mêmes années. Le capital nécessaire est « ce que tu dépenses ÷ ce que tu retires » : il ne change que si le pont vers la retraite change, et avec tes données le pont est vide. Les rentes attendues s\'ajoutent dans l\'onglet Paramètres.',
+  fireLeverageColumnFixed: '« {{column}} » ne change pas avec ce levier.',
   fireLeverageYears: 'ans',
   fireLeverageYourRow: 'Toi',
 
