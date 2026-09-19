@@ -25,7 +25,7 @@ from .categorie import (GRUPPI, con_i_figli, gruppo_di_categoria, nome_di, nomi 
                         radici_con_figli)
 from .database import get_session
 from .models import (Account, AppSetting, BudgetPlan, CategorizationRule, Category, Event,
-                     Goal, InvestmentInstrument, InvestmentTransaction,
+                     Goal, GoalMilestone, InvestmentInstrument, InvestmentTransaction,
                      InvestmentTransactionDetail,
                      InstrumentProfile as InstrumentProfileModel,
                      AccountValuation, LiabilityTransactionDetail,
@@ -2050,6 +2050,7 @@ def goals(session: Session = Depends(get_session)) -> dict[str, Any]:
     items = []
     today = date.today()
     elenco = session.scalars(select(Goal).order_by(Goal.name)).all()
+    tappe = _tappe_per_obiettivo(session, [g.id for g in elenco])
     # Calcolate una volta per tutta la richiesta, e solo se qualcuno le usa:
     # sono le stesse per ogni goal patrimoniale.
     basi = basi_storico(session) if any(g.kind in ("net_worth", "portfolio") for g in elenco) else None
@@ -2074,6 +2075,8 @@ def goals(session: Session = Depends(get_session)) -> dict[str, Any]:
                       "remainingAmount": round(max(target - current, 0), 2),
                       "progress": round(min(current / target, 1) * 100, 1) if target else 0,
                       "completed": completato, "history": history,
+                      "milestones": [_tappa_json(tappa, current, iniziale, goal.start_date, today)
+                                     for tappa in tappe.get(goal.id, [])],
                       **_ritmo_goal(current, target, goal.target_date, completato, today),
                       **_stato_goal(current, iniziale, target, goal.start_date, goal.target_date, completato, today)})
     # Quanto chiedono al mese tutti i goal attivi, contro quello che il piano
@@ -2091,6 +2094,140 @@ def goals(session: Session = Depends(get_session)) -> dict[str, Any]:
             # puo' fare: dirlo e' piu' utile che mostrare uno zero.
             "hasPlannedSavings": piano["hasIncomePlan"],
             "monthlyGap": round(piano["savings"] - richiesto, 2)}
+
+
+# Tappe di un obiettivo: un obiettivo piu' piccolo dentro quello grande
+# ---------------------------------------------------------------------------
+#
+# Una tappa non e' un obiettivo a se': e' un punto sulla strada dello stesso
+# obiettivo, con lo stesso punto di partenza e la stessa unita' di misura. Lo
+# stato lo calcola `_stato_goal`, la stessa funzione dello stato
+# dell'obiettivo: due criteri diversi per la stessa domanda finirebbero per
+# dire "in ritardo" dove l'obiettivo dice "in linea", ed e' l'errore che la
+# docstring di `_leva` in fire_routes racconta gia' una volta.
+
+
+class GoalMilestonePayload(BaseModel):
+    """Il nome e l'importo ci sono sempre; la data e' facoltativa."""
+
+    name: str
+    target_amount: Decimal
+    target_date: date | None = None
+
+
+def _tappe_per_obiettivo(session: Session, goal_ids: list[int]) -> dict[int, list[GoalMilestone]]:
+    """Le tappe di tutti gli obiettivi, in una interrogazione sola.
+
+    In ordine di importo, non di inserimento: la strada si legge dal primo
+    traguardo all'ultimo, e una tappa aggiunta dopo le altre ma piu' vicina
+    della meta' deve stare al suo posto, non in fondo.
+    """
+    if not goal_ids:
+        return {}
+    righe = session.scalars(select(GoalMilestone).where(GoalMilestone.goal_id.in_(goal_ids))
+                            .order_by(GoalMilestone.target_amount, GoalMilestone.id)).all()
+    per_obiettivo: dict[int, list[GoalMilestone]] = defaultdict(list)
+    for riga in righe:
+        per_obiettivo[riga.goal_id].append(riga)
+    return per_obiettivo
+
+
+def _tappa_json(tappa: GoalMilestone, corrente: float, iniziale: float,
+                inizio: date | None, oggi: date) -> dict[str, Any]:
+    """Una tappa con il suo stato, calcolato come quello dell'obiettivo.
+
+    Una tappa raggiunta e' "completed" anche senza date: non c'e' niente da
+    confrontare col tempo, ma il traguardo e' passato, e quello si vede.
+    """
+    traguardo = num(tappa.target_amount)
+    return {"id": tappa.id, "name": tappa.name, "targetAmount": traguardo,
+            "targetDate": tappa.target_date.isoformat() if tappa.target_date else None,
+            **_stato_goal(corrente, iniziale, traguardo, inizio, tappa.target_date,
+                          corrente >= traguardo, oggi)}
+
+
+def _importo_tappa(valore: Decimal) -> Decimal:
+    """L'importo di una tappa ai centesimi, o un rifiuto.
+
+    Stessi limiti di `_to_decimal` in main.py, ma scritti qui: la' il valore
+    arriva come float dal corpo JSON, e importare quella funzione chiuderebbe
+    il cerchio degli import fra i due moduli.
+    """
+    if (valore is None or not valore.is_finite()
+            or valore < 0 or valore >= Decimal("100000000000000")):
+        raise HTTPException(status_code=422, detail="statementInvalidAmount")
+    return valore.quantize(Decimal("0.01"))
+
+
+def _valida_tappa(payload: GoalMilestonePayload, obiettivo: Goal, session: Session) -> Decimal:
+    """Le regole di una tappa, prima di scriverla.
+
+    Una tappa piu' grande dell'obiettivo, o con una data oltre la sua scadenza,
+    non e' una tappa: e' un secondo obiettivo travestito, e dirlo subito e'
+    meglio che lasciarlo scoprire dal grafico.
+    """
+    nome = (payload.name or "").strip()
+    if not nome:
+        raise HTTPException(status_code=422, detail="milestoneNameRequired")
+    importo = _importo_tappa(payload.target_amount)
+    if importo > Decimal(str(obiettivo.target_amount)):
+        raise HTTPException(status_code=422, detail="milestoneAboveGoal")
+    if payload.target_date and obiettivo.target_date and payload.target_date > obiettivo.target_date:
+        raise HTTPException(status_code=422, detail="milestoneAfterGoal")
+    # Il vincolo sulla tabella resta come rete per due salvataggi simultanei;
+    # questo lo anticipa per rispondere con un codice invece che con un errore
+    # di integrita'.
+    doppione = session.scalar(select(GoalMilestone.id).where(GoalMilestone.goal_id == obiettivo.id,
+                                                            GoalMilestone.name == nome))
+    if doppione is not None:
+        raise HTTPException(status_code=422, detail="milestoneDuplicate")
+    return importo
+
+
+def _tappa_creata(session: Session, obiettivo: Goal, tappa: GoalMilestone, oggi: date) -> dict[str, Any]:
+    """La tappa appena scritta, nella stessa forma in cui esce dall'elenco.
+
+    Due forme per la stessa entita' costringono chi legge a sapere da quale
+    rotta e' arrivata: qui costa tre righe e la forma resta una sola.
+    """
+    firmati = _movimenti_goal(session, obiettivo)
+    corrente = _valore_corrente_goal(session, obiettivo,
+                                     num(sum((importo for _, importo in firmati), Decimal("0"))), oggi)
+    return _tappa_json(tappa, corrente, num(obiettivo.starting_amount), obiettivo.start_date, oggi)
+
+
+@router.post("/api/goals/{goal_id}/milestones", status_code=201)
+def create_goal_milestone(goal_id: int, payload: GoalMilestonePayload,
+                          session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Aggiunge una tappa a un obiettivo."""
+    obiettivo = session.get(Goal, goal_id)
+    if obiettivo is None:
+        raise HTTPException(status_code=404, detail="goalNotFound")
+    riga = GoalMilestone(goal_id=obiettivo.id, name=payload.name.strip(),
+                         target_amount=_valida_tappa(payload, obiettivo, session),
+                         target_date=payload.target_date)
+    session.add(riga)
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(status_code=422, detail="milestoneDuplicate") from error
+    return _tappa_creata(session, obiettivo, riga, date.today())
+
+
+@router.delete("/api/goals/{goal_id}/milestones/{milestone_id}")
+def delete_goal_milestone(goal_id: int, milestone_id: int,
+                          session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Toglie una tappa. L'obiettivo e le sue altre tappe restano dove sono."""
+    riga = session.get(GoalMilestone, milestone_id)
+    if riga is None or riga.goal_id != goal_id:
+        # Una tappa di un altro obiettivo non si cancella passando di qui: il
+        # numero da solo non basta a dire che quella tappa e' di questo goal.
+        raise HTTPException(status_code=404, detail="milestoneNotFound")
+    session.delete(riga)
+    session.commit()
+    return {"success": True}
+
 
 
 def _storico_patrimoniale(session: Session, goal: Goal, today: date,
