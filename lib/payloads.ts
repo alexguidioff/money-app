@@ -110,6 +110,15 @@ export function goalPayload(form: FormData) {
   };
 }
 
+/** Una tappa di un obiettivo, dal campo in fondo all'elenco. */
+export function goalMilestonePayload(form: FormData) {
+  return {
+    name: testo(form, 'name').trim(),
+    target_amount: Number(testo(form, 'target_amount')),
+    target_date: testo(form, 'target_date') || null,
+  };
+}
+
 /** Un'operazione del ledger, dal modulo Investimenti. */
 export function ledgerOperationPayload(form: FormData) {
   return {

@@ -4,7 +4,7 @@ import { expect, it } from 'vitest';
 import type { RetirementProfile } from '@/components/settings/retirement-profile-form';
 import { accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, eventAttachPayload,
   eventPayload, expenseRulesPayload,
-  goalPayload, incomeStreamPayload,
+  goalMilestonePayload, goalPayload, incomeStreamPayload,
   ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, splitPayload, transactionPayload } from '@/lib/payloads';
 
 /*
@@ -74,6 +74,10 @@ const richieste = [
     name: 'Viaggio', starting_amount: '100', target_amount: '3000', start_date: oggi, target_date: annoProssimo,
     kind: 'contributions', target_account: 'Banca' })) },
   { endpoint: 'goal', case: 'patrimonio netto senza date', body: goalPayload(modulo({ name: 'Libertà', starting_amount: '', target_amount: '500000', kind: 'net_worth' })) },
+  // Una tappa senza data: e' facoltativa, e la stringa vuota del campo non
+  // deve arrivare al backend come valore.
+  { endpoint: 'milestone', case: 'tappa senza scadenza', body: goalMilestonePayload(modulo({
+    name: 'Anticipo', target_amount: '2500', target_date: '' })) },
   { endpoint: 'ledgerOperation', case: 'acquisto', body: ledgerOperationPayload(modulo({
     occurred_on: oggi, name: 'ETF Mondo', transaction_type: 'Buy', amount: '1000', units: '10', price: '100', currency: 'eur', fee: '1', notes: '' })) },
   { endpoint: 'note', case: 'appunto', body: notePayload(modulo({ section: '', title: 'Ricordare', body: 'Rinnovare il fido', status: '' })) },

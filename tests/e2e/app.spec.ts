@@ -253,3 +253,47 @@ test('Budget: la card del risparmio del mese guarda solo il mese', async ({ page
   await expect(card.getByText(/1\.986,00/)).toHaveCount(0);
   expect(errori).toEqual([]);
 });
+
+test('Obiettivi: una tappa si aggiunge dall\'elenco, resta dopo il ricarico e si toglie', async ({ page }) => {
+  // Il corpo del modulo e' l'unica cosa che nessun test di contratto vede: il
+  // contratto costruisce il FormData da solo, quindi un campo `name` scritto
+  // male nella card passerebbe. Qui si passa dal browser vero.
+  const errori = raccogliErrori(page);
+  await avvia(page);
+  await apri(page, 'Obiettivi');
+  await page.getByRole('button', { name: 'Nuovo obiettivo' }).click();
+  const modulo = page.getByRole('dialog');
+  await modulo.getByLabel('Nome', { exact: true }).fill('Vacanza e2e');
+  await modulo.getByLabel('Importo iniziale').fill('0');
+  await modulo.getByLabel('Obiettivo', { exact: true }).fill('10000');
+  await modulo.getByRole('button', { name: 'Salva obiettivo' }).click();
+  const card = page.locator('[data-slot="card"]', { has: page.getByText('Vacanza e2e') });
+  await expect(card).toBeVisible();
+
+  await card.getByRole('button', { name: 'Aggiungi una tappa' }).click();
+  await card.getByLabel('Nome della tappa').fill('Biglietti e2e');
+  await card.getByLabel('Importo della tappa').fill('2500');
+  await card.getByRole('button', { name: 'Aggiungi una tappa' }).click();
+  await expect(card.getByText('Biglietti e2e')).toBeVisible();
+
+  // Dopo il ricarico c'e' ancora: e' stato salvato, non solo disegnato.
+  await page.reload();
+  await expect(page.getByText('Dati aggiornati')).toBeVisible();
+  await apri(page, 'Obiettivi');
+  const dopo = page.locator('[data-slot="card"]', { has: page.getByText('Vacanza e2e') });
+  await expect(dopo.getByText('Biglietti e2e')).toBeVisible();
+
+  await dopo.getByRole('button', { name: 'Elimina Biglietti e2e' }).click();
+  await expect(dopo.getByText('Biglietti e2e')).toHaveCount(0);
+  expect(errori).toEqual([]);
+
+  // Una tappa piu' grande dell'obiettivo non e' una tappa: l'app dice perche'.
+  // Questo passo sta in fondo apposta: il 422 e' voluto, ma il browser lo
+  // registra come errore di rete, e sporcherebbe il controllo qui sopra.
+  await dopo.getByRole('button', { name: 'Aggiungi una tappa' }).click();
+  await dopo.getByLabel('Nome della tappa').fill('Troppo grande e2e');
+  await dopo.getByLabel('Importo della tappa').fill('20000');
+  await dopo.getByRole('button', { name: 'Aggiungi una tappa' }).click();
+  await expect(dopo.getByText('Una tappa non può valere più dell’obiettivo.')).toBeVisible();
+  await expect(dopo.getByText('Troppo grande e2e')).toHaveCount(0);
+});

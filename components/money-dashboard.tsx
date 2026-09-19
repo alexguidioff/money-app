@@ -3,7 +3,7 @@
 import { campiMancanti, downloadFile, responseError } from '@/lib/download';
 import { previewEffectiveDate } from '@/lib/effective-date';
 import { LEDGER_SENZA_QUOTE, nettoOperazioni } from '@/lib/ledger-preview';
-import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, eventAttachPayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
+import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, eventAttachPayload, goalMilestonePayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
 import { messaggioErroreRegola } from '@/lib/rule-errors';
 import { Fragment, SyntheticEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Flame,
@@ -405,6 +405,18 @@ export type CategorizationSuggestionsData = {
   incoerenti: RuleIncoherentData[];
 };
 
+type GoalMilestoneData = {
+  id: number;
+  name: string;
+  targetAmount: number;
+  targetDate: string | null;
+  // Lo stato lo calcola il backend con la stessa funzione dello stato
+  // dell'obiettivo: qui si legge, non si rifa'.
+  status: 'on_track' | 'slightly_behind' | 'behind' | 'completed' | null;
+  timeProgress: number | null;
+  gap: number | null;
+};
+
 type GoalData = {
   id: number;
   name: string;
@@ -428,6 +440,7 @@ type GoalData = {
   progress: number;
   completed: boolean;
   history: Array<{ label: string; amount: number }>;
+  milestones: GoalMilestoneData[];
 };
 
 export type GoalsData = { items: GoalData[]; active: number; completed: number; targetTotal: number; currentTotal: number; monthlyNeededTotal: number; plannedSavings: number; hasPlannedSavings: boolean; monthlyGap: number };
@@ -1695,6 +1708,28 @@ function MoneyDashboardInner() {
     await loadData(undefined, ['goals']);
   }
 
+  // Il codice del rifiuto torna su come messaggio: la regola - una tappa non
+  // vale piu' dell'obiettivo, non scade dopo - la conosce il backend, e la
+  // frase la scrive la card nella lingua scelta.
+  async function handleMilestoneAdd(goalId: number, payload: ReturnType<typeof goalMilestonePayload>) {
+    const response = await fetch(`${apiUrl}/api/goals/${goalId}/milestones`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => null) as { detail?: string } | null;
+      throw new Error(typeof result?.detail === 'string' ? result.detail : 'milestone-add');
+    }
+    await loadData(undefined, ['goals']).catch(() => undefined);
+  }
+
+  async function handleMilestoneDelete(goalId: number, milestoneId: number) {
+    const response = await fetch(`${apiUrl}/api/goals/${goalId}/milestones/${milestoneId}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('milestone-delete');
+    await loadData(undefined, ['goals']);
+  }
+
   async function handleInvestmentSave(transactionId: number | null, payload: Record<string, string | number | boolean>) {
     const { force_duplicate: forceDuplicate, ...body } = payload;
     const response = await fetch(`${apiUrl}/api/investments/ledger${transactionId ? `/${transactionId}` : ''}${!transactionId && forceDuplicate ? '?force=true' : ''}`, {
@@ -2508,6 +2543,8 @@ function MoneyDashboardInner() {
               onAnnualBudgetApply={handleAnnualBudgetApply}
               onGoalSave={handleGoalSave}
               onGoalDelete={handleGoalDelete}
+              onMilestoneAdd={handleMilestoneAdd}
+              onMilestoneDelete={handleMilestoneDelete}
               investmentDashboardData={investmentDashboardData}
               investmentLedger={investmentLedger}
               investmentAllocationData={investmentAllocationData}
@@ -3079,6 +3116,8 @@ function SectionView({
   onAnnualBudgetApply,
   onGoalSave,
   onGoalDelete,
+  onMilestoneAdd,
+  onMilestoneDelete,
   onInvestmentSave,
   onInvestmentDelete,
   onInstrumentSave,
@@ -3170,6 +3209,8 @@ function SectionView({
   onAnnualBudgetApply: (category: string, months: number[], amount: number, categoryGroup?: string | null) => Promise<void>;
   onGoalSave: (goalId: number | null, payload: Record<string, string | number | null>) => Promise<void>;
   onGoalDelete: (goal: GoalData) => Promise<void>;
+  onMilestoneAdd: (goalId: number, payload: ReturnType<typeof goalMilestonePayload>) => Promise<void>;
+  onMilestoneDelete: (goalId: number, milestoneId: number) => Promise<void>;
   onInvestmentSave: (transactionId: number | null, payload: Record<string, string | number | boolean>) => Promise<void>;
   onInvestmentDelete: (transaction: InvestmentTransaction) => Promise<void>;
   onInstrumentSave: (instrumentId: number, payload: Record<string, string | number | null>) => Promise<void>;
@@ -3476,7 +3517,7 @@ function SectionView({
         {budgetView === 'categories' && <CategoryTreeCard apiUrl={apiUrl} onChanged={onReload} />}
       </div>}
 
-      {section === 'Obiettivi' && <GoalsView data={goalsData} accounts={accounts} onSave={onGoalSave} onDelete={onGoalDelete} />}
+      {section === 'Obiettivi' && <GoalsView data={goalsData} accounts={accounts} onSave={onGoalSave} onDelete={onGoalDelete} onMilestoneAdd={onMilestoneAdd} onMilestoneDelete={onMilestoneDelete} />}
 
       {section === 'Patrimonio' && <NetWorthView apiUrl={apiUrl} data={netWorthData} primoAnno={Number(years[0]) || selectedYear} accounts={accounts} alPresente={alPresente} onNewAccount={onNewAccount} onAccountEdit={onAccountEdit} onAccountValuations={onAccountValuations} onAccountDelete={onAccountDelete} />}
 
@@ -3751,6 +3792,84 @@ function GoalStatusBadge({ status }: { status: GoalData['status'] }) {
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${stile.classe}`}>{stile.testo}</span>;
 }
 
+// Il codice del rifiuto diventa una frase: la regola la conosce il backend,
+// la lingua la sceglie chi legge. Un codice che non si conosce non si mostra
+// grezzo - si dice che non si e' potuto aggiungere.
+function milestoneErrorLabel(
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string,
+  codice: string,
+): string {
+  switch (codice) {
+    case 'milestoneAboveGoal':
+      return t('milestoneAboveGoal');
+    case 'milestoneAfterGoal':
+      return t('milestoneAfterGoal');
+    case 'milestoneDuplicate':
+      return t('milestoneDuplicate');
+    case 'milestoneNameRequired':
+      return t('milestoneNameRequired');
+    default:
+      return t('cannotAddMilestone');
+  }
+}
+
+// Le tappe: i pallini sulla barra e l'elenco sotto. Sono facoltative, e un
+// obiettivo senza tappe non mostra un elenco vuoto - mostra solo come
+// aggiungerne una.
+function GoalMilestones({ goal, onAdd, onRemove }: {
+  goal: GoalData;
+  onAdd: (goalId: number, payload: ReturnType<typeof goalMilestonePayload>) => Promise<void>;
+  onRemove: (goalId: number, milestoneId: number) => Promise<void>;
+}) {
+  const { t, formatEuro } = useI18n();
+  const [aggiunta, setAggiunta] = useState(false);
+  const [errore, setErrore] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function aggiungi(event: SyntheticEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setErrore('');
+    // Il corpo lo costruisce la stessa funzione che usa il test di contratto:
+    // un campo scritto qui e non la' e' un campo che nessuno controlla.
+    const payload = goalMilestonePayload(new FormData(event.currentTarget));
+    try {
+      await onAdd(goal.id, payload);
+      setAggiunta(false);
+    } catch (error) {
+      setErrore(milestoneErrorLabel(t, error instanceof Error ? error.message : ''));
+    } finally { setBusy(false); }
+  }
+
+  async function togli(tappa: GoalMilestoneData) {
+    setErrore('');
+    try { await onRemove(goal.id, tappa.id); }
+    catch { setErrore(t('cannotDeleteMilestone')); }
+  }
+
+  return <div className="mt-3">
+    {goal.milestones.length > 0 && <ul className="space-y-1.5">{goal.milestones.map((tappa) => (
+      <li key={tappa.id} className="flex flex-wrap items-center gap-2 text-xs">
+        <span aria-hidden className={`size-2 shrink-0 rounded-full ${tappa.status === 'completed' ? 'bg-[#397867]' : 'bg-[#c9d2f0]'}`} />
+        <span className={`font-medium ${tappa.status === 'completed' ? 'text-[#87918e] line-through' : 'text-[#52615d]'}`}>{tappa.name}</span>
+        <span className="text-[#7b8784]">{formatEuro(tappa.targetAmount)}</span>
+        {tappa.status === 'completed'
+          ? <span className="rounded-full bg-[#e5f3ed] px-2 py-0.5 text-[11px] font-medium text-[#2d7b65]">{t('goalMilestoneReached')}</span>
+          : <GoalStatusBadge status={tappa.status} />}
+        <button type="button" aria-label={`${t('delete')} ${tappa.name}`} onClick={() => void togli(tappa)} className="ml-auto text-[#bd5e46]"><Trash2 className="size-3.5" /></button>
+      </li>
+    ))}</ul>}
+    {aggiunta
+      ? <form onSubmit={aggiungi} className="mt-2 flex flex-wrap items-end gap-2">
+          <label htmlFor={`milestone-name-${goal.id}`} className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('goalMilestoneName')}<Input id={`milestone-name-${goal.id}`} required name="name" className="h-9" /></label>
+          <label htmlFor={`milestone-amount-${goal.id}`} className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('goalMilestoneAmount')}<Input id={`milestone-amount-${goal.id}`} required name="target_amount" type="number" min="0.01" step="0.01" className="h-9" /></label>
+          <label htmlFor={`milestone-date-${goal.id}`} className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDeadline')}<Input id={`milestone-date-${goal.id}`} name="target_date" type="date" className="h-9" /></label>
+          <Button type="submit" disabled={busy} className="h-9 bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('goalMilestoneAdd')}</Button>
+          <Button type="button" variant="outline" className="h-9" onClick={() => { setAggiunta(false); setErrore(''); }}>{t('cancel')}</Button>
+        </form>
+      : <button type="button" onClick={() => { setAggiunta(true); setErrore(''); }} className="inline-flex items-center gap-1 text-xs font-medium text-[#397867] hover:underline"><Plus className="size-3.5" />{t('goalMilestoneAdd')}</button>}
+    {errore && <p role="alert" className="mt-2 rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{errore}</p>}
+  </div>;
+}
+
 function GoalsBalanceRow({ data }: { data: GoalsData }) {
   const { t, formatEuro } = useI18n();
   // Nessun goal con una scadenza: non c'e' niente da far quadrare.
@@ -3766,7 +3885,7 @@ function GoalsBalanceRow({ data }: { data: GoalsData }) {
   return <Card className="border-black/6 bg-white shadow-sm"><CardContent className="p-4"><p className={`text-sm ${tono}`}>{messaggio}</p></CardContent></Card>;
 }
 
-function GoalsView({ data, accounts, onSave, onDelete }: { data: GoalsData; accounts: Account[]; onSave: (goalId: number | null, payload: Record<string, string | number | null>) => Promise<void>; onDelete: (goal: GoalData) => Promise<void> }) {
+function GoalsView({ data, accounts, onSave, onDelete, onMilestoneAdd, onMilestoneDelete }: { data: GoalsData; accounts: Account[]; onSave: (goalId: number | null, payload: Record<string, string | number | null>) => Promise<void>; onDelete: (goal: GoalData) => Promise<void>; onMilestoneAdd: (goalId: number, payload: ReturnType<typeof goalMilestonePayload>) => Promise<void>; onMilestoneDelete: (goalId: number, milestoneId: number) => Promise<void> }) {
   const { t, locale, formatEuro, formatDate, formatPeriodLabel } = useI18n();
   const [editing, setEditing] = useState<GoalData | null | undefined>(undefined);
   // Il tipo va tenuto in stato e non lasciato al form: il conto d'accumulo ha
@@ -3827,7 +3946,7 @@ function GoalsView({ data, accounts, onSave, onDelete }: { data: GoalsData; acco
       } else {
         subtitleParts.push(t('noDeadline'));
       }
-      return <Card key={goal.id} className={`border-black/6 bg-white shadow-sm ${goal.completed ? 'opacity-75' : ''}`}><CardHeader className="flex-row items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><CardTitle className="text-[17px]">{goal.name}</CardTitle><GoalStatusBadge status={goal.status} /></div><p className="mt-1 text-xs text-[#7b8784]">{subtitleParts.join(' · ')}</p></div><div className="flex"><Button size="icon" variant="ghost" aria-label={`${t('edit')} ${goal.name}`} onClick={() => apriGoal(goal)}><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${goal.name}`} onClick={() => void remove(goal)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button></div></CardHeader><CardContent><div className="flex items-end justify-between"><p className="text-2xl font-semibold">{formatEuro(goal.currentAmount)}</p><p className="text-sm font-semibold text-[#397867]">{goal.progress.toLocaleString(locale)}%</p></div><div className="mt-4 h-2 overflow-hidden rounded-full bg-[#eef0ec]"><div className="h-full rounded-full bg-[#6d8ff4]" style={{ width: `${goal.progress}%` }} /></div>{goal.history.length > 1 ? <div className="mt-4"><ChartContainer config={historyConfig} className="h-[88px] w-full"><LineChart accessibilityLayer data={historyData} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}><YAxis hide domain={[(min: number) => Math.min(min, 0), (max: number) => Math.max(max, goal.targetAmount)]} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} hide /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} nameKey="amount" formatter={(value) => formatEuro(Number(value))} />} /><Line type="monotone" dataKey="target" stroke="var(--color-target)" strokeWidth={1.5} strokeDasharray="3 4" dot={false} /><Line type="monotone" dataKey="amount" stroke="var(--color-amount)" strokeWidth={2.4} dot={false} /></LineChart></ChartContainer></div> : <p className="mt-4 text-xs text-[#87918e]">{t('goalHistoryUnavailable')}</p>}{goal.monthlyNeeded !== null && <p className="mt-3 text-sm"><span className="font-semibold text-[var(--money-deep)]">{t('goalMonthlyNeeded', { amount: formatEuro(goal.monthlyNeeded) })}</span> <span className="text-xs text-[#7b8784]">{t('goalWeeklyNeeded', { amount: formatEuro(goal.weeklyNeeded ?? 0) })}</span></p>}
+      return <Card key={goal.id} className={`border-black/6 bg-white shadow-sm ${goal.completed ? 'opacity-75' : ''}`}><CardHeader className="flex-row items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><CardTitle className="text-[17px]">{goal.name}</CardTitle><GoalStatusBadge status={goal.status} /></div><p className="mt-1 text-xs text-[#7b8784]">{subtitleParts.join(' · ')}</p></div><div className="flex"><Button size="icon" variant="ghost" aria-label={`${t('edit')} ${goal.name}`} onClick={() => apriGoal(goal)}><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${goal.name}`} onClick={() => void remove(goal)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button></div></CardHeader><CardContent><div className="flex items-end justify-between"><p className="text-2xl font-semibold">{formatEuro(goal.currentAmount)}</p><p className="text-sm font-semibold text-[#397867]">{goal.progress.toLocaleString(locale)}%</p></div><div className="relative mt-4 h-2 overflow-hidden rounded-full bg-[#eef0ec]"><div className="h-full rounded-full bg-[#6d8ff4]" style={{ width: `${goal.progress}%` }} />{goal.milestones.map((tappa) => <span key={tappa.id} aria-hidden className={`absolute top-0 h-full w-[2px] ${tappa.status === 'completed' ? 'bg-white' : 'bg-[#2c3f7a]/70'}`} style={{ left: `${goal.targetAmount > 0 ? Math.min(tappa.targetAmount / goal.targetAmount * 100, 100) : 0}%` }} />)}</div><GoalMilestones goal={goal} onAdd={onMilestoneAdd} onRemove={onMilestoneDelete} />{goal.history.length > 1 ? <div className="mt-4"><ChartContainer config={historyConfig} className="h-[88px] w-full"><LineChart accessibilityLayer data={historyData} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}><YAxis hide domain={[(min: number) => Math.min(min, 0), (max: number) => Math.max(max, goal.targetAmount)]} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} hide /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} nameKey="amount" formatter={(value) => formatEuro(Number(value))} />} /><Line type="monotone" dataKey="target" stroke="var(--color-target)" strokeWidth={1.5} strokeDasharray="3 4" dot={false} /><Line type="monotone" dataKey="amount" stroke="var(--color-amount)" strokeWidth={2.4} dot={false} /></LineChart></ChartContainer></div> : <p className="mt-4 text-xs text-[#87918e]">{t('goalHistoryUnavailable')}</p>}{goal.monthlyNeeded !== null && <p className="mt-3 text-sm"><span className="font-semibold text-[var(--money-deep)]">{t('goalMonthlyNeeded', { amount: formatEuro(goal.monthlyNeeded) })}</span> <span className="text-xs text-[#7b8784]">{t('goalWeeklyNeeded', { amount: formatEuro(goal.weeklyNeeded ?? 0) })}</span></p>}
       {goal.overdue && !goal.completed && <p className="mt-3 text-sm font-medium text-[#bd5e46]">{t('goalOverdue', { amount: formatEuro(goal.remainingAmount) })}</p>}
       <div className="mt-3 flex justify-between text-xs text-[#7b8784]"><span>{goal.kind === 'contributions' ? `${t('movementsAndAmount', { count: goal.linkedMovements, amount: formatEuro(goal.linkedAmount) })}${goal.targetAccount ? ` · ${t('goalTargetAccountOn', { account: goal.targetAccount })}` : ''}` : t(goal.kind === 'portfolio' ? 'goalKindPortfolio' : 'goalKindNetWorth')}</span><span>{t('goalTarget', { amount: formatEuro(goal.targetAmount) })}</span></div></CardContent></Card>;
     })}</div>}

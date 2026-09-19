@@ -40,10 +40,12 @@ from app import backup
 from app.auth import OPZIONI_INIZIALI
 from app.categorie import elenco_categorie
 from app.categorization import suggest
-from app.core_routes import (EventPayload, RuleBulkPayload, RulePayload, TransactionEventPayload, accounts, analysis,
+from app.core_routes import (EventPayload, GoalMilestonePayload, RuleBulkPayload, RulePayload, TransactionEventPayload,
+                             accounts, analysis,
                              balance_sheet_series, budget_annual, budget_dashboard,
                              budget_suggestions, budget_trends, budgets, calculations, categorization_rules,
-                             create_categorization_rule, create_categorization_rules, create_event, event_detail, events,
+                             create_categorization_rule, create_categorization_rules, create_event,
+                             create_goal_milestone, event_detail, events,
                              goals, instrument_history,
                              investments_allocation, investments_dashboard, investments_ledger, net_worth, notes,
                              set_transaction_event, settings, summary, summary_breakdown, transactions)
@@ -56,7 +58,7 @@ from app.main import (AccountPayload, BudgetCreatePayload, BudgetUpdatePayload, 
                       create_recurring_transaction, create_transaction, liabilities, list_backups_endpoint,
                       list_recurring_transactions, save_liability, split_transaction, update_budget, update_setting)
 from app.models import (Account, AccountValuation, AppSetting, BudgetPlan, CategorizationRule, Category, Event, Goal,
-                        IncomeStream, InvestmentInstrument,
+                        GoalMilestone, IncomeStream, InvestmentInstrument,
                         LiabilityProfile, LookupOption, MarketPrice, Note, RetirementProfile, Transaction, TransactionLedgerLink)
 from app.notifications import elenco as notifiche
 from tests.categorie_fixture import categoria
@@ -214,6 +216,13 @@ def _semina(session: Session) -> None:
     session.commit()
     movimento(occurred_on=f"{anno_scorso}-07-01", transaction_type="Transfers", amount=100, account_name="Banca",
               destination_name="Casa", goal="Fondo emergenza", details="Accantonamento")
+    # Una tappa con la data: senza, `targetDate` resterebbe vuoto nel file delle
+    # risposte e lo stato non ci sarebbe - un tipo compatibile con qualunque
+    # cosa non controlla niente.
+    session.add(GoalMilestone(goal_id=session.scalar(select(Goal.id).where(Goal.name == "Fondo emergenza")),
+                              name="Prima meta'", target_amount=Decimal("3000"),
+                              target_date=date(oggi.year + 1, 1, 1)))
+    session.commit()
     acquisto = create_investment_tx(InvestmentTxPayload(name="ETF Mondo", transaction_type="Buy", amount=1900,
                                                         occurred_on=f"{anno_scorso}-06-01", units=20, price=95, fee=2),
                                     False, session)
@@ -331,6 +340,11 @@ def _gestori(session: Session) -> dict[str, tuple[type[BaseModel], Any]]:
         "setting": (SettingValueUpdate, lambda p: update_setting("header_color", p, session)),
         "account": (AccountPayload, lambda p: create_account(p, session)),
         "goal": (GoalPayload, lambda p: create_goal(p, session)),
+        # Il nome e' diverso da quello della tappa del seme: lo stesso nome lo
+        # rifiuterebbe, ed e' giusto cosi' - il caso "nome gia' usato" sta nei
+        # test del backend.
+        "milestone": (GoalMilestonePayload, lambda p: create_goal_milestone(
+            session.scalar(select(Goal.id).where(Goal.name == "Fondo emergenza")), p, session)),
         "ledgerOperation": (InvestmentTxPayload, lambda p: create_investment_tx(p, True, session)),
         "note": (NotePayload, lambda p: create_note(p, session)),
         "budgetCreate": (BudgetCreatePayload, lambda p: create_budget(p, session)),
