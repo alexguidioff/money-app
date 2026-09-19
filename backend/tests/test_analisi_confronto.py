@@ -9,6 +9,7 @@ chi usa l'app non ci entrano.
 """
 import unittest
 from datetime import date
+from decimal import Decimal
 from unittest.mock import patch
 
 from sqlalchemy import create_engine
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core_routes import _finestra_periodo, analysis
 from app.database import Base
+from app.models import Category, Transaction
 
 
 class OggiFinto(date):
@@ -66,8 +68,13 @@ class FinestraTests(unittest.TestCase):
         self.assertEqual(date(2024, 12, 31), fine)
 
 
-class RispostaTests(unittest.TestCase):
-    """La risposta dichiara su cosa e' calcolata: senza, tocca fidarsi."""
+class AnalisiTestBase(unittest.TestCase):
+    """Un database in memoria, e il vocabolario per riempirlo.
+
+    `_movimento` scrive sempre su `effective_on`: e' la data con cui l'app
+    aggrega i budget, e un movimento datato solo su `occurred_on` non entra in
+    nessun totale di questa pagina.
+    """
 
     def setUp(self) -> None:
         self.engine = create_engine("sqlite://")
@@ -77,6 +84,28 @@ class RispostaTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.session.close()
         self.engine.dispose()
+
+    def _radice(self, nome: str) -> int:
+        riga = Category(name=nome)
+        self.session.add(riga)
+        self.session.flush()
+        return riga.id
+
+    def _figlio(self, nome: str, padre_id: int) -> int:
+        riga = Category(name=nome, parent_id=padre_id)
+        self.session.add(riga)
+        self.session.flush()
+        return riga.id
+
+    def _movimento(self, categoria_id: int, importo: str, giorno: date,
+                   tipo: str = "Expenses") -> None:
+        self.session.add(Transaction(occurred_on=giorno, effective_on=giorno, transaction_type=tipo,
+                                     category_id=categoria_id, amount=Decimal(importo),
+                                     account_name="Conto"))
+
+
+class RispostaTests(AnalisiTestBase):
+    """La risposta dichiara su cosa e' calcolata: senza, tocca fidarsi."""
 
     def test_la_risposta_dichiara_il_suo_periodo(self) -> None:
         with patch("app.core_routes.date", OggiFinto):
@@ -92,3 +121,119 @@ class RispostaTests(unittest.TestCase):
         self.assertEqual("year", risposta["period"]["scope"])
         self.assertEqual("2025-01-01", risposta["period"]["from"])
         self.assertEqual("2025-12-31", risposta["period"]["to"])
+
+
+class ConfrontoTests(AnalisiTestBase):
+    """Il periodo precedente, e le categorie che si confrontano con se stesse.
+
+    Il quadro e' sempre lo stesso, e ogni prova ne controlla un pezzo: due
+    figli sotto una radice, una radice sola, e una categoria che c'era prima e
+    adesso non c'e' piu'. Con `oggi` finto al 19 settembre 2026 il periodo sono
+    gli ultimi dodici mesi (ottobre 2025 - settembre 2026) e il precedente e'
+    ottobre 2024 - settembre 2025.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        alimentari = self._radice("Alimentari")
+        self.supermercato = self._figlio("Supermercato", alimentari)
+        self.mensa = self._figlio("Mensa", alimentari)
+        self.viaggi = self._radice("Viaggi")
+        self.palestra = self._radice("Palestra")
+        # Un movimento vecchio, fuori da tutti e due i periodi: serve solo a dire
+        # che i dati cominciano prima del periodo precedente. Senza, il confronto
+        # non si farebbe e ogni prova qui sotto misurerebbe un'altra cosa.
+        self._movimento(self.supermercato, "1", date(2024, 5, 1))
+        # Periodo in corso.
+        self._movimento(self.supermercato, "30", date(2026, 3, 10))
+        self._movimento(self.mensa, "20", date(2026, 3, 11))
+        self._movimento(self.viaggi, "100", date(2026, 3, 12))
+        # Periodo precedente.
+        self._movimento(self.supermercato, "20", date(2024, 12, 10))
+        self._movimento(self.viaggi, "40", date(2024, 12, 12))
+        self._movimento(self.palestra, "25", date(2024, 12, 11))
+        self.session.commit()
+
+    def _analisi(self) -> dict:
+        with patch("app.core_routes.date", OggiFinto):
+            return analysis(2026, "last12", "Expenses", None, self.session)
+
+    def _riga(self, nome: str) -> dict:
+        righe = {riga["name"]: riga for riga in self._analisi()["categoryComparison"]}
+        return righe[nome]
+
+    def test_il_periodo_precedente_e_quello_di_pari_durata(self) -> None:
+        confronto = self._analisi()["comparison"]
+        self.assertTrue(confronto["available"])
+        self.assertEqual("2024-10-01", confronto["from"])
+        self.assertEqual("2025-09-30", confronto["to"])
+        self.assertEqual("2024-05-01", confronto["since"])
+
+    def test_1_in_entrambi_i_periodi_differenza_e_percentuale(self) -> None:
+        riga = self._riga("Supermercato")
+        self.assertEqual(30.0, riga["amount"])
+        self.assertEqual(20.0, riga["previous"])
+        self.assertEqual(10.0, riga["difference"])
+        self.assertEqual(50.0, riga["percent"])
+
+    def test_2_categoria_nuova_differenza_piena_e_percentuale_nulla(self) -> None:
+        """Non "+∞" e non "+100%": una categoria appena nata e' cresciuta di tutto."""
+        riga = self._riga("Mensa")
+        self.assertEqual(20.0, riga["amount"])
+        self.assertEqual(0.0, riga["previous"])
+        self.assertEqual(20.0, riga["difference"])
+        self.assertIsNone(riga["percent"])
+
+    def test_3_categoria_sparita_differenza_negativa_e_percentuale_nulla(self) -> None:
+        riga = self._riga("Palestra")
+        self.assertEqual(0.0, riga["amount"])
+        self.assertEqual(25.0, riga["previous"])
+        self.assertEqual(-25.0, riga["difference"])
+        self.assertIsNone(riga["percent"])
+
+    def test_5_i_totali_risalgono_al_padre(self) -> None:
+        """Trenta in Supermercato e venti in Mensa fanno cinquanta in Alimentari.
+
+        La riga del padre vale se stessa piu' i figli: e' `con_i_figli`, la
+        stessa somma che usano gli altri report, e non una seconda che risale
+        l'albero per conto suo.
+        """
+        padre = self._riga("Alimentari")
+        self.assertEqual(50.0, padre["amount"])
+        self.assertEqual(20.0, padre["previous"])
+        self.assertEqual(30.0, padre["difference"])
+
+    def test_6_una_radice_senza_figli_conta_per_se_e_non_sparisce(self) -> None:
+        riga = self._riga("Viaggi")
+        self.assertIsNone(riga["parentId"])
+        self.assertEqual(100.0, riga["amount"])
+        self.assertEqual(40.0, riga["previous"])
+        self.assertEqual(60.0, riga["difference"])
+        self.assertEqual(150.0, riga["percent"])
+
+
+class SenzaStoriaTests(AnalisiTestBase):
+    """Il primo periodo di dati: il confronto non si fa, e la risposta lo dice.
+
+    Confrontare un mese di storia con il periodo precedente vuoto direbbe che
+    ogni categoria e' cresciuta di tutto. Non e' un confronto: e' l'inizio.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        casa = self._radice("Casa")
+        self._movimento(casa, "200", date(2026, 3, 10))
+        self.session.commit()
+
+    def test_4_il_confronto_non_si_fa_e_la_risposta_lo_dichiara(self) -> None:
+        with patch("app.core_routes.date", OggiFinto):
+            risposta = analysis(2026, "last12", "Expenses", None, self.session)
+        confronto = risposta["comparison"]
+        self.assertFalse(confronto["available"])
+        # La finestra si dichiara lo stesso, e da quando esistono i dati.
+        self.assertEqual("2024-10-01", confronto["from"])
+        self.assertEqual("2026-03-10", confronto["since"])
+        riga = risposta["categoryComparison"][0]
+        self.assertEqual(200.0, riga["amount"])
+        for campo in ("previous", "difference", "percent"):
+            self.assertIsNone(riga[campo])

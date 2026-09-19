@@ -755,6 +755,80 @@ def _finestra_periodo(scope: str, year: int, oggi: date) -> tuple[date, date]:
     return date(year, 1, 1), date(year, 12, 31)
 
 
+def _finestra_precedente(inizio: date, fine: date) -> tuple[date, date]:
+    """La finestra di pari durata che finisce il giorno prima di questa.
+
+    Pari durata, non "l'anno prima": un periodo di dodici mesi si confronta con
+    dodici mesi, altrimenti la differenza misura la lunghezza del periodo invece
+    di cosa e' cambiato. Su un anno solare la finestra precedente e' l'anno
+    scorso, perche' gli anni durano uguale.
+    """
+    giorni = (fine - inizio).days + 1
+    prima_fine = inizio - timedelta(days=1)
+    return prima_fine - timedelta(days=giorni - 1), prima_fine
+
+
+def _totali_per_categoria(session: Session, inizio: date, fine: date, tipo: str) -> dict[int | None, float]:
+    """Quanto e' entrato o uscito per categoria fra due date, estremi compresi.
+
+    Una query sola per periodo invece di una per categoria: le categorie sono
+    qualche decina e i periodi due, e il conto delle query si sente
+    all'apertura della pagina.
+    """
+    righe = session.execute(select(Transaction.category_id, func.sum(Transaction.amount)).where(
+        Transaction.effective_on >= inizio, Transaction.effective_on <= fine,
+        Transaction.transaction_type == tipo, BUDGET_MOVEMENT,
+    ).group_by(Transaction.category_id)).all()
+    return {categoria_id: num(totale) for categoria_id, totale in righe}
+
+
+def _prima_data(session: Session) -> date | None:
+    """Il giorno del movimento piu' vecchio: da li' in poi i dati esistono.
+
+    Serve a decidere se il periodo precedente si puo' confrontare. Se i dati
+    cominciano dopo, quel periodo e' vuoto perche' l'app non c'era ancora, non
+    perche' non si spendeva: confrontarcisi direbbe che ogni categoria e'
+    cresciuta di tutto, cioe' aumenti del mille per cento che non vogliono dire
+    niente.
+    """
+    return session.scalar(select(func.min(Transaction.effective_on)).where(BUDGET_MOVEMENT))
+
+
+def _confronto_categorie(session: Session, tipo: str, finestra: tuple[date, date],
+                         precedente: tuple[date, date], confrontabile: bool) -> list[dict[str, Any]]:
+    """Le categorie del periodo, accanto alle stesse del periodo precedente.
+
+    I totali passano da `con_i_figli`: una radice vale se stessa piu' i suoi
+    figli, e "Alimentari" nei due periodi deve parlare della stessa cosa.
+
+    La percentuale e' nulla - non "+100%" - quando il periodo precedente era a
+    zero, e anche quando e' a zero adesso. Una categoria nuova e' cresciuta di
+    tutto, e "di tutto" non e' una percentuale: chi legge trova l'importo pieno
+    e un trattino al posto di un numero inventato.
+    """
+    attuali = con_i_figli(session, _totali_per_categoria(session, *finestra, tipo))
+    precedenti = (con_i_figli(session, _totali_per_categoria(session, *precedente, tipo))
+                  if confrontabile else {})
+    nomi_cat, genitori = nomi_categorie(session), padri(session)
+    righe: list[dict[str, Any]] = []
+    for categoria_id in set(attuali) | set(precedenti):
+        # Un movimento senza categoria e' denaro uscito davvero, e il flusso lo
+        # conta, ma non e' una voce dell'albero: in una tabella di categorie
+        # sarebbe una riga senza nome.
+        if categoria_id is None:
+            continue
+        attuale = round(attuali.get(categoria_id, 0), 2)
+        prima = round(precedenti.get(categoria_id, 0), 2) if confrontabile else None
+        differenza = None if prima is None else round(attuale - prima, 2)
+        percentuale = (round(differenza / prima * 100, 1)
+                       if differenza is not None and attuale and prima else None)
+        righe.append({"categoryId": categoria_id, "parentId": genitori.get(categoria_id),
+                      "name": nomi_cat.get(categoria_id, ""), "amount": attuale,
+                      "previous": prima, "difference": differenza, "percent": percentuale})
+    righe.sort(key=lambda riga: (-riga["amount"], riga["name"].casefold()))
+    return righe
+
+
 @router.get("/api/analysis")
 def analysis(
     year: int = Query(ge=2000, le=2100),
@@ -774,6 +848,13 @@ def analysis(
     - period: su quale finestra la pagina racconta, date comprese. I quattro blocchi
       qui sopra restano annuali; i numeri nuovi no, e chi li legge deve sapere su
       cosa sono calcolati: un report che non lo dice costringe a fidarsi.
+    - comparison: il periodo precedente di pari durata, e se i dati cominciano
+      abbastanza indietro da poterlo confrontare (`available`, `since`).
+    - categoryComparison: per categoria, quanto in questo periodo e quanto nel
+      precedente, con differenza e percentuale (`null` dove una percentuale non
+      esiste: categoria nuova o sparita, o confronto che non si fa). Segue
+      `category_type` come gli altri blocchi per categoria; per Savings resta
+      vuoto, perche' il tipo di movimento Savings non esiste piu'.
     """
     types = ("Income", "Expenses", "Savings")
     today = date.today()
@@ -838,10 +919,20 @@ def analysis(
             BUDGET_MOVEMENT).distinct()) if nomi.get(categoria_id)}, key=str.casefold)
 
     inizio, fine = _finestra_periodo(scope, year, today)
+    # Il periodo precedente di pari durata, e se c'e' storia abbastanza per
+    # confrontarlo. Le due cose viaggiano insieme: "non si confronta" senza dire
+    # da quando esistono i dati sarebbe un silenzio, non una risposta.
+    precedente = _finestra_precedente(inizio, fine)
+    prima_data = _prima_data(session)
+    confrontabile = prima_data is not None and prima_data <= precedente[0]
 
     return {
         "year": year,
         "period": {"scope": scope, "from": inizio.isoformat(), "to": fine.isoformat()},
+        "comparison": {"from": precedente[0].isoformat(), "to": precedente[1].isoformat(),
+                       "available": confrontabile,
+                       "since": prima_data.isoformat() if prima_data else None},
+        "categoryComparison": _confronto_categorie(session, category_type, (inizio, fine), precedente, confrontabile),
         "monthlyBudget": monthly_budget,
         "topExpenseCategories": top_expense_categories,
         "savingsByMonth": savings_by_month,

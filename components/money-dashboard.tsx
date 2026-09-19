@@ -150,6 +150,16 @@ export type AnalysisData = {
      gli ultimi dodici mesi o un anno solare - e le due date la chiudono: senza,
      un numero non si sa su cosa e' calcolato. */
   period: { scope: 'last12' | 'year'; from: string; to: string };
+  /* Il periodo precedente di pari durata, e se i dati cominciano abbastanza
+     indietro da poterlo confrontare; `since` e' il primo movimento che esiste,
+     ed e' quello che si scrive quando il confronto non si fa. */
+  comparison: { from: string; to: string; available: boolean; since: string | null };
+  /* Per categoria: questo periodo, il precedente, e quanto e' cambiato.
+     `previous`, `difference` e `percent` sono nulli quando il confronto non si
+     fa; `percent` da sola e' nulla anche per una categoria nuova o sparita,
+     perche' "cresciuta di tutto" non e' una percentuale. */
+  categoryComparison: Array<{ categoryId: number; parentId: number | null; name: string; amount: number;
+                              previous: number | null; difference: number | null; percent: number | null }>;
   monthlyBudget: { income: MonthlyBudgetPoint[]; expenses: MonthlyBudgetPoint[]; savings: MonthlyBudgetPoint[] };
   topExpenseCategories: Array<{ name: string; value: number; color: string }>;
   savingsByMonth: Array<{ month: string; amount: number }>;
