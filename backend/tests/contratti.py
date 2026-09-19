@@ -55,10 +55,10 @@ from app.fire_routes import (FlussoPayload, ProfiloPayload, RegolePayload, crea_
 from app.main import (AccountPayload, BudgetCreatePayload, BudgetUpdatePayload, GoalPayload, InvestmentTxPayload,
                       LiabilityPayload, NotePayload, RecurringTransactionCreate, SettingValueUpdate, SplitPayload, TransactionPayload,
                       create_account, create_budget, create_goal, create_investment_tx, create_note,
-                      create_recurring_transaction, create_transaction, liabilities, list_backups_endpoint,
+                      create_recurring_transaction, create_transaction, import_batches, liabilities, list_backups_endpoint,
                       list_recurring_transactions, save_liability, split_transaction, update_budget, update_setting)
 from app.models import (Account, AccountValuation, AppSetting, BudgetPlan, CategorizationRule, Category, Event, Goal,
-                        GoalMilestone, IncomeStream, InvestmentInstrument,
+                        GoalMilestone, ImportBatch, IncomeStream, InvestmentInstrument,
                         LiabilityProfile, LookupOption, MarketPrice, Note, RetirementProfile, Transaction, TransactionLedgerLink)
 from app.notifications import elenco as notifiche
 from tests.categorie_fixture import categoria
@@ -245,6 +245,15 @@ def _semina(session: Session) -> None:
     affitto = session.scalars(select(Transaction).where(Transaction.transaction_type == "Expenses",
                                                        Transaction.amount == Decimal("900")).order_by(Transaction.id)).first()
     set_transaction_event(affitto.id, TransactionEventPayload(event_id=evento["id"]), session)
+    # Un import di estratto conto con uno scarto: senza la riga l'elenco dello
+    # storico sarebbe vuoto, e un elenco vuoto e' compatibile con qualunque
+    # tipo - cioe' non controlla niente. I motivi ci sono perche' e' la parte
+    # che il frontend riapre e legge per esteso.
+    session.add(ImportBatch(kind="statement", source_name="estratto-di-prova.csv",
+                            imported_at=datetime(oggi.year, 1, 2, 9, 30),
+                            rows_accepted=12, rows_rejected=2,
+                            rejected_reasons='{"statementAccountRequired": 2}'))
+    session.commit()
     assert vendita
 
 
@@ -288,6 +297,7 @@ def risposte() -> dict[str, Any]:
         "events": events(session),
         "eventDetail": event_detail(session.scalar(select(Event.id).order_by(Event.id)), session),
         "recurring": asyncio.run(list_recurring_transactions(session)),
+        "importBatches": import_batches(20, session),
         "notifications": notifiche(session),
         "backups": _backup_di_prova(),
     }

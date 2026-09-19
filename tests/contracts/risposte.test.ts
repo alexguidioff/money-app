@@ -61,6 +61,7 @@ const CONTRATTI: Array<{ risposta: string; tipo: string; da: string }> = [
   { risposta: 'categorizationSuggestions', tipo: 'CategorizationSuggestionsData', da: '@/components/money-dashboard' },
   { risposta: 'recurring', tipo: 'RecurringTransactionData[]', da: '@/components/money-dashboard' },
   { risposta: 'notifications', tipo: '{ items: Notification[] }', da: '@/components/notifications-panel' },
+  { risposta: 'importBatches', tipo: '{ items: ImportBatchRow[] }', da: '@/components/import-history-card' },
   { risposta: 'backups', tipo: '{ items?: BackupItem[] }', da: '@/components/money-dashboard' },
 ];
 

@@ -67,6 +67,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { ImportHistoryCard } from '@/components/import-history-card';
 import { Input } from '@/components/ui/input';
 import { PDFImportPreview, type PDFTransaction } from '@/components/ui/pdf-import-preview';
 import { RefundPicker } from '@/components/ui/refund-picker';
@@ -1019,6 +1020,11 @@ function MoneyDashboardInner() {
   const [downloadError, setDownloadError] = useState('');
   const [pdfPreviewTransactions, setPdfPreviewTransactions] = useState<PDFTransaction[]>([]);
   const [showPdfPreview, setShowPdfPreview] = useState(false);
+  // Il nome del file da cui vengono le righe in anteprima: serve a scrivere una
+  // riga leggibile nello storico degli import, dove "che file" e' meta' della
+  // domanda. Vive qui e non nell'anteprima perche' l'anteprima non sa da dove
+  // sono arrivate le righe.
+  const [statementSource, setStatementSource] = useState('');
   const [settingSaving, setSettingSaving] = useState('');
   const [settingError, setSettingError] = useState('');
   const [auth, setAuth] = useState<{ user: AccountSummary & { sharesTotals: boolean } | null; users: AccountSummary[]; loginRequired: boolean; canManageBackups: boolean } | null>(null);
@@ -2125,6 +2131,7 @@ function MoneyDashboardInner() {
         if (!response.ok) throw new Error(await responseError(response, t));
         const result = await response.json() as { transactions: PDFTransaction[]; rulesDiscarded?: string[] };
         if (!result.transactions.length) throw new Error(t('statementEmpty'));
+        setStatementSource(file.name);
         setPdfPreviewTransactions(result.transactions);
         // Regole scartate perche' non compilabili: senza dirle resterebbero
         // regole che non fanno niente, in silenzio.
@@ -2145,7 +2152,10 @@ function MoneyDashboardInner() {
     setPdfImporting(true);
     setImportFeedback(null);
     try {
-      const response = await fetch(`${apiUrl}/api/transactions/pdf-import`, {
+      // Il nome del file viaggia con la conferma: e' la rotta che scrive lo
+      // storico, e senza di esso la riga direbbe solo che un import e'
+      // avvenuto, non da dove.
+      const response = await fetch(`${apiUrl}/api/transactions/pdf-import?source=${encodeURIComponent(statementSource)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(approvedTransactions)
       });
@@ -3535,6 +3545,7 @@ function SectionView({
           <CardContent className="px-3 sm:px-6">{movimenti.length ? <><div className={`divide-y divide-black/5 ${caricandoMovimenti ? 'opacity-60' : ''}`}>{movimenti.map((transaction) => <div key={transaction.id} className="flex items-center gap-2"><input type="checkbox" aria-label={t('selectMovement', { description: transaction.description })} checked={selection.has(String(transaction.id))} onChange={e => setSelection(old => { const next = new Set(old); e.target.checked ? next.add(String(transaction.id)) : next.delete(String(transaction.id)); return next; })} /><div className="min-w-0 flex-1"><TransactionRow transaction={transaction} onRefund={openRefundedTransaction} onEdit={onEditTransaction} onDuplicate={onDuplicateTransaction} onDelete={onDeleteTransaction} onSplit={onSplitTransaction} /></div></div>)}</div>{movimenti.length < totaleMovimenti && <div className="border-t border-black/5 py-4 text-center"><Button type="button" variant="outline" disabled={caricandoMovimenti} onClick={() => setPagina((corrente) => corrente + 1)}>{caricandoMovimenti ? t('updating') : t('showMore100')}</Button></div>}</> : <p className="py-12 text-center text-sm text-[#71807c]">{caricandoMovimenti ? t('updating') : t('noMovementsMatchFilters')}</p>}</CardContent>
         </Card>
         <EventsCard events={eventiCard} apiUrl={apiUrl} />
+        <ImportHistoryCard apiUrl={apiUrl} versione={movimentiVersione} />
         {selection.size > 0 && <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-xl border bg-white p-4 shadow-lg">
           <span>{t('selectedCount', { count: selection.size })}</span>
           {selezioneTroncata > 0 && <span className="rounded-lg bg-[#f4f5f1] px-2 py-1 text-xs text-[#52615d]">{t('bulkSelectionCapped', { total: selezioneTroncata })}</span>}

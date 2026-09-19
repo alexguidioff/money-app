@@ -481,6 +481,35 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
     return {"success": not errors, "saved": saved_count, "errors": errors}
 
 
+@app.get("/api/import-batches")
+def import_batches(limit: int = 20, session: Session = Depends(get_session)):
+    """Gli ultimi import, il piu' recente per primo.
+
+    Il limite non e' un'ottimizzazione: e' un elenco che si guarda subito dopo
+    un import, non un registro da sfogliare. Restare senza limite vorrebbe dire
+    caricare anni di righe per mostrarne tre.
+
+    `kind` distingue il ripristino di un backup dall'import di un estratto
+    conto, che non si leggono allo stesso modo: nel primo contano i movimenti
+    tornati dentro, nel secondo accettate e scartate.
+    """
+    righe = session.scalars(select(ImportBatch)
+                            .order_by(ImportBatch.imported_at.desc(), ImportBatch.id.desc())
+                            .limit(max(1, min(limit, 100)))).all()
+    return {"items": [{
+        "id": riga.id,
+        "kind": riga.kind,
+        "sourceName": riga.source_name,
+        "importedAt": riga.imported_at.isoformat() if riga.imported_at else None,
+        "accepted": riga.rows_accepted,
+        "rejected": riga.rows_rejected,
+        # Il JSON si riapre qui e non nel frontend: se un giorno il formato
+        # cambia, il posto da cambiare e' uno.
+        "reasons": json.loads(riga.rejected_reasons) if riga.rejected_reasons else {},
+        "transactionCount": riga.transaction_count,
+    } for riga in righe], "count": len(righe)}
+
+
 # ---------------------------------------------------------------------------
 # CRUD transazioni (Fase 1)
 # ---------------------------------------------------------------------------
