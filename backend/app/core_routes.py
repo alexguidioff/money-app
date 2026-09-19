@@ -21,7 +21,8 @@ from sqlalchemy.orm import Session
 from .calculation_engine import (account_balances_at, account_balances_series, account_reconciliation,
                                  investment_positions, normalized_name, savings_rate, source_effect)
 from .categorization import MAX_REGOLE, categoria_da_nome, suggest
-from .categorie import GRUPPI, con_i_figli, gruppo_di_categoria, nome_di, nomi as nomi_categorie, padri
+from .categorie import (GRUPPI, con_i_figli, gruppo_di_categoria, nome_di, nomi as nomi_categorie, padri,
+                        radici_con_figli)
 from .database import get_session
 from .models import (Account, AppSetting, BudgetPlan, CategorizationRule, Category, Event,
                      Goal, InvestmentInstrument, InvestmentTransaction,
@@ -1315,10 +1316,21 @@ def settings(session: Session = Depends(get_session)) -> dict[str, Any]:
     for kind, gruppo in (("Expenses", "categories_expenses"), ("Income", "categories_income"),
                          ("Savings", "categories_savings")):
         by_type[kind].update(options.get(gruppo, []))
+    # Una categoria appena creata non ha ancora un tipo: nessun movimento e
+    # nessun budget la nomina, e i tipi qui sopra si ricavano proprio da li'.
+    # Nasconderla la renderebbe inutilizzabile appena creata - la si crea per
+    # usarla - quindi si offre a tutti e tre, e il primo movimento che la usa
+    # decide dove sta. Una categoria spenta invece non si sceglie piu': resta
+    # nell'albero e nella storia dei movimenti che l'hanno gia' usata.
+    spente = {riga.name for riga in session.scalars(select(Category)).all() if not riga.active}
+    for nome in set(nomi.values()):
+        if nome and nome not in spente and not any(nome in valori for valori in by_type.values()):
+            for kind in by_type:
+                by_type[kind].add(nome)
     # I trasferimenti spostano denaro fra conti: non c'e' niente da categorizzare.
     # Spostare denaro fra conti non e' una categoria da scegliere: ne' un
     # giroconto ne' un versamento su un broker hanno qualcosa da categorizzare.
-    categories_by_type = ({kind: sorted(values, key=str.casefold) for kind, values in by_type.items()}
+    categories_by_type = ({kind: sorted(values - spente, key=str.casefold) for kind, values in by_type.items()}
                           | {"Transfers": [], "Investment": [], "Debt": []})
     # Panoramica non deve offrire l'elenco anni "infinito" copiato dal dropdown Excel
     # (options["years"], usato altrove per pianificazione futura): si ferma all'ultimo
@@ -1346,7 +1358,7 @@ def settings(session: Session = Depends(get_session)) -> dict[str, Any]:
         rows = session.execute(select(distinct(extract("year", BudgetPlan.period))).where(BudgetPlan.budget_type == budget_kind).order_by(extract("year", BudgetPlan.period))).all()
         kind_years = sorted({int(row[0]) for row in rows if row[0] is not None})
         budget_years_by_type[budget_kind] = [str(year) for year in sorted(set(kind_years) | set(anni_piano))]
-    return {"settings": {row.key: row.value for row in setting_rows}, "labels": {row.key: row.label for row in setting_rows}, "options": options, "categoriesByType": categories_by_type, "budgetYearsByType": budget_years_by_type}
+    return {"settings": {row.key: row.value for row in setting_rows}, "labels": {row.key: row.label for row in setting_rows}, "options": options, "categoriesByType": categories_by_type, "budgetYearsByType": budget_years_by_type, "categoryTree": radici_con_figli(session)}
 
 
 def budget_actual(session: Session, year: int, month: int, budget_type: str = "Expenses") -> dict[int, float]:

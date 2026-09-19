@@ -161,6 +161,11 @@ def tracked_changes(engine: Engine) -> None:
                   AND NOT EXISTS (SELECT 1 FROM liability_transaction_details d
                                   WHERE d.transaction_id = t.id AND d.user_id = t.user_id)
             """))
+            # La colonna di testo `category` non c'e' piu' su un database nato
+            # dopo l'albero: li' la sentinella "_" non serve, e nominarla
+            # farebbe fallire l'avvio. Su un database vecchio invece c'e'
+            # ancora, e il movimento deve restare senza categoria come prima.
+            testo_categoria = (", category='_'" if "category" in _colonne_di(conn, "transactions") else "")
             if "interest_transaction_id" in detail_cols:
                 # Le vecchie rate avevano un giroconto capitale e una spesa
                 # interessi separata. Li portiamo al nuovo modello senza
@@ -172,8 +177,8 @@ def tracked_changes(engine: Engine) -> None:
                     "FROM liability_transaction_details d JOIN accounts a ON a.id=d.liability_account_id "
                     "WHERE d.interest_transaction_id IS NOT NULL")).mappings().all()
                 for row in old_rows:
-                    conn.execute(text("UPDATE transactions SET transaction_type='Debt', category='_', amount=:amount "
-                                      "WHERE id=:id"),
+                    conn.execute(text("UPDATE transactions SET transaction_type='Debt'"
+                                      + testo_categoria + ", amount=:amount WHERE id=:id"),
                                  {"id": row["transaction_id"],
                                   "amount": row["principal_amount"] + row["interest_amount"]})
                     conn.execute(text("UPDATE transactions SET account_name=:name WHERE id=:id"),
@@ -185,7 +190,7 @@ def tracked_changes(engine: Engine) -> None:
             # piano debito: e' un normale trasferimento che continua comunque
             # a modificare il saldo del conto passivo.
             conn.execute(text(
-                "UPDATE transactions SET transaction_type='Transfers', category='_' "
+                "UPDATE transactions SET transaction_type='Transfers'" + testo_categoria + " "
                 "WHERE id IN (SELECT transaction_id FROM liability_transaction_details WHERE kind='refund')"))
             conn.execute(text("DELETE FROM liability_transaction_details WHERE kind='refund'"))
 

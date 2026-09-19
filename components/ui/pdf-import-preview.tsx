@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Split, Undo2, X } from 'lucide-react';
+import { CategoryOptions, type CategoryNode } from '@/components/category-options';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -39,10 +40,11 @@ type TipoMovimento = (typeof TIPI)[number][0];
 // Spostano denaro fra due conti: vogliono una destinazione e non hanno categoria.
 const SPOSTAMENTI: readonly TipoMovimento[] = ['Transfers', 'Investment', 'Debt'];
 
-export function PDFImportPreview({ transactions, accounts, categoriesByType, onConfirm, onCancel, feedback }: {
+export function PDFImportPreview({ transactions, accounts, categoriesByType, categoryTree, onConfirm, onCancel, feedback }: {
   transactions: PDFTransaction[];
   accounts: { name: string }[];
   categoriesByType: Record<string, string[]>;
+  categoryTree: CategoryNode[];
   onConfirm: (approvedTransactions: PDFTransaction[]) => Promise<void>;
   onCancel: () => void;
   feedback: { ok: boolean; message: string } | null;
@@ -138,7 +140,7 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, onC
             <td className="p-2"><select aria-label={t('category')} value={spostamento || senzaCategoria ? '' : row.category} disabled={isSaving || spostamento} className="w-40 rounded border p-2 disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]"
               onChange={e => updateRow(index, { category: e.target.value, categoryAutomatic: !e.target.value, categoryRule: null })}>
               <option value="">{spostamento ? t('categoryNotApplicable') : t('categoryAutomatic')}</option>
-              {!spostamento && scelte.map(categoria => <option key={categoria} value={categoria}>{categoria}</option>)}
+              {!spostamento && <CategoryOptions names={scelte} tree={categoryTree} />}
             </select>
             {/* Da dove viene la categoria: senza, una casella gia' piena sembra
                 una lettura del file. La × la riporta a "Da categorizzare". */}

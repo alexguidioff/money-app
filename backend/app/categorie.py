@@ -17,7 +17,7 @@ identiche nell'elenco a tendina: chi le vede non sa quale ha scelto.
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -82,6 +82,24 @@ def elenco(session: Session) -> list[Category]:
                                                            Category.id)).all())
     radici = [riga for riga in righe if riga.parent_id is None]
     return [riga for radice in radici for riga in (radice, *(r for r in righe if r.parent_id == radice.id))]
+
+
+def radici_con_figli(session: Session) -> list[dict[str, Any]]:
+    """Le radici con i nomi dei loro figli, in ordine d'albero.
+
+    E' la forma che serve a un elenco a tendina: i figli si mostrano indentati
+    sotto il padre, e un padre che ne ha non e' una scelta ma il contenitore di
+    quelle che ha sotto. I nomi e non gli id perche' l'interfaccia di oggi sceglie
+    una categoria scrivendone il nome; le categorie spente restano dentro,
+    altrimenti i figli di una radice spenta sparirebbero dall'elenco.
+    """
+    righe = elenco(session)
+    figli: dict[int, list[str]] = defaultdict(list)
+    for riga in righe:
+        if riga.parent_id is not None:
+            figli[riga.parent_id].append(riga.name)
+    return [{"name": riga.name, "children": figli.get(riga.id, [])}
+            for riga in righe if riga.parent_id is None]
 
 
 def nomi(session: Session) -> dict[int, str]:

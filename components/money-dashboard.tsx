@@ -82,6 +82,8 @@ import { I18nProvider, useI18n } from '@/lib/i18n-context';
 import { LoginScreen, type AccountSummary } from '@/components/login-screen';
 import { SharedTotalsView } from '@/components/shared-totals';
 import { FirePage } from '@/components/fire-page';
+import { CategoryOptions, type CategoryNode } from '@/components/category-options';
+import { CategoryTreeCard } from '@/components/settings/category-tree';
 import { FireSettingsSection } from '@/components/settings/fire-settings-section';
 import { AccountSettings, type AccountState } from '@/components/account-settings';
 import { NotificationsPanel, type Notification } from '@/components/notifications-panel';
@@ -126,7 +128,9 @@ export type Summary = {
 };
 
 type BreakdownSection = {
-  categories: Array<{ name: string; tracked: number; budget: number; completion: number | null; remaining: number; excess: number }>;
+  categories: Array<{ name: string; categoryId: number | null; parentId: number | null; tracked: number;
+                      budget: number; completion: number | null; remaining: number; excess: number;
+                      trackedWithChildren: number; budgetWithChildren: number }>;
   plannedTotal: number;
   actualTotal: number;
 };
@@ -461,6 +465,9 @@ export type SettingsData = {
   labels: Record<string, string>;
   options: Record<string, string[]>;
   categoriesByType: Record<string, string[]>;
+  // Le categorie come stanno nell'albero: le tendine mostrano i figli
+  // indentati sotto il padre, e una radice che ne ha non si sceglie.
+  categoryTree: CategoryNode[];
   budgetYearsByType: Record<'Expenses' | 'Income' | 'Savings', string[]>;
 };
 
@@ -630,6 +637,7 @@ const fallbackSettings: SettingsData = {
     categories: [],
   },
   categoriesByType: { Expenses: [], Income: [], Savings: [], Transfers: [] },
+  categoryTree: [],
   budgetYearsByType: { Expenses: [String(MESE_CORRENTE.anno)], Income: [String(MESE_CORRENTE.anno)], Savings: [String(MESE_CORRENTE.anno)] },
 };
 
@@ -2551,7 +2559,9 @@ function MoneyDashboardInner() {
               settingError={settingError}
               importing={importing}
               onImportData={handleImportData}
-              onReload={async () => { await loadData(undefined, ['ledger', 'overview', 'budget', 'goals']); setMovimentiVersione(v => v + 1); }}
+              // Anche le impostazioni: una categoria appena creata vive li', e
+              // senza rileggerle le tendine dei movimenti non la vedrebbero.
+              onReload={async () => { await loadData(undefined, ['ledger', 'overview', 'budget', 'goals', 'settings']); setMovimentiVersione(v => v + 1); }}
               account={auth?.user ?? null}
               onAccountChanged={loadAuth}
               importFeedback={importFeedback}
@@ -2599,7 +2609,7 @@ function MoneyDashboardInner() {
               return <p className="rounded-lg bg-[#f0f8f4] px-3 py-2 text-xs text-[#3b6a5b]">{t('effectiveDateHint', { date: formatDate(`${effective}T12:00:00`, { day: 'numeric', month: 'long', year: 'numeric' }) })}</p>;
             })()}
             <div className="grid grid-cols-2 gap-3">
-              <label htmlFor="movement-category" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldCategory')}<select id="movement-category" required={!isTransfer && Boolean(editingTransaction)} disabled={isTransfer} name="category" defaultValue={formTransaction?.category ?? ''} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]"><option value="" disabled={!isTransfer && Boolean(editingTransaction)}>{isTransfer ? t('categoryNotApplicable') : editingTransaction ? t('selectPlaceholder') : t('categoryAutomatic')}</option>{!isTransfer && uniqueOptions(formTransaction?.category ?? '', movementCategories).map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+              <label htmlFor="movement-category" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldCategory')}<select id="movement-category" required={!isTransfer && Boolean(editingTransaction)} disabled={isTransfer} name="category" defaultValue={formTransaction?.category ?? ''} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]"><option value="" disabled={!isTransfer && Boolean(editingTransaction)}>{isTransfer ? t('categoryNotApplicable') : editingTransaction ? t('selectPlaceholder') : t('categoryAutomatic')}</option>{!isTransfer && <CategoryOptions names={uniqueOptions(formTransaction?.category ?? '', movementCategories)} tree={settingsData.categoryTree} />}</select></label>
               <label htmlFor="movement-amount" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldAmount')}<Input id="movement-amount" required min="0.01" step="0.01" name="amount" type="number" defaultValue={formTransaction ? Math.abs(formTransaction.amount).toFixed(2) : undefined} placeholder="0,00" className="h-10 bg-white" /></label>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -2944,7 +2954,7 @@ function MoneyDashboardInner() {
         </DialogContent>
       </Dialog>
       {daDividere && <SplitTransactionDialog transaction={daDividere} accounts={accounts} apiUrl={apiUrl}
-        categoriesByType={settingsData.categoriesByType} onClose={() => setDaDividere(null)}
+        categoriesByType={settingsData.categoriesByType} categoryTree={settingsData.categoryTree} onClose={() => setDaDividere(null)}
         onDone={async () => {
           setDaDividere(null);
           await loadDataRef.current(undefined, ['ledger', 'overview', 'budget', 'goals']).catch(() => undefined);
@@ -3381,9 +3391,9 @@ function SectionView({
           {([['list', t('movementsTabList')], ['recurring', t('movementsTabRecurring')], ['rules', t('movementsTabRules')]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setMovementsView(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${movementsView === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
         </div>
         {movementsView === 'rules'
-          ? <CategoryRulesCard rules={categorizationRules} categories={categorieRegola} apiUrl={apiUrl}
+          ? <CategoryRulesCard rules={categorizationRules} categories={categorieRegola} categoryTree={settingsData.categoryTree} apiUrl={apiUrl}
             onChanged={onCategoryRulesChanged} />
-          : movementsView === 'recurring' ? <RecurringTransactionsView accounts={accounts} data={recurringTransactions} categoriesByType={settingsData.categoriesByType} onCreate={onCreateRecurring} onDelete={onDeleteRecurring} onGenerate={onGenerateRecurring} /> : <>
+          : movementsView === 'recurring' ? <RecurringTransactionsView accounts={accounts} data={recurringTransactions} categoriesByType={settingsData.categoriesByType} categoryTree={settingsData.categoryTree} onCreate={onCreateRecurring} onDelete={onDeleteRecurring} onGenerate={onGenerateRecurring} /> : <>
         <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
           <CardHeader className="gap-4">
             <div><CardTitle className="text-[17px]">{t('allMovements')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('resultsOfTotal', { count: movimenti.length, total: totaleMovimenti })}</p></div>
@@ -3490,10 +3500,11 @@ function SectionView({
           </div>
         </div>
         <FireSettingsSection apiUrl={apiUrl} />
+        <CategoryTreeCard apiUrl={apiUrl} onChanged={onReload} />
       </div>}
       <Dialog open={showPdfPreview} onOpenChange={open => { if (!open && !pdfImporting) onPdfImportCancel(); }}>
         {showPdfPreview && <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-[95vw]" showCloseButton={false}>
-          <PDFImportPreview transactions={pdfPreviewTransactions} accounts={accounts.filter(a => a.isActive !== false)} categoriesByType={settingsData.categoriesByType} feedback={importFeedback}
+          <PDFImportPreview transactions={pdfPreviewTransactions} accounts={accounts.filter(a => a.isActive !== false)} categoriesByType={settingsData.categoriesByType} categoryTree={settingsData.categoryTree} feedback={importFeedback}
             onConfirm={onPdfImportConfirm} onCancel={onPdfImportCancel} />
         </DialogContent>}
       </Dialog>
@@ -6181,6 +6192,10 @@ function PeriodBreakdownCard({ breakdown, isWholeYear }: { breakdown: SummaryBre
 
 function PeriodBreakdownTable({ breakdown }: { breakdown: SummaryBreakdown | null }) {
   const { t, formatCompactEuro } = useI18n();
+  // Le radici aperte. Si tiene l'elenco delle *chiuse* e non di quelle aperte:
+  // di partenza l'albero si vede tutto, e una categoria appena spostata sotto
+  // un padre non sparisce dietro un clic che nessuno sa di dover fare.
+  const [chiuse, setChiuse] = useState<Record<string, boolean>>({});
   if (!breakdown) return null;
   const sections: Array<{ key: 'income' | 'expenses' | 'savings'; label: string }> = [
     { key: 'income', label: t('income') },
@@ -6218,34 +6233,67 @@ function PeriodBreakdownTable({ breakdown }: { breakdown: SummaryBreakdown | nul
                   <colgroup><col className="w-[26%]" /><col className="w-[15%]" /><col className="w-[15%]" /><col className="w-[22%]" /><col className="w-[11%]" /><col className="w-[11%]" /></colgroup>
                   <thead className="text-xs text-[#87918e]"><tr><th className="py-1.5 text-left font-medium">{t('category')}</th><th className="py-1.5 text-right font-medium">{t('tracked')}</th><th className="py-1.5 text-right font-medium">{t('budget')}</th><th className="py-1.5 text-left font-medium pl-4">{t('completion')}</th><th className="py-1.5 text-right font-medium">{t('remaining')}</th><th className="py-1.5 text-right font-medium">{t('excess')}</th></tr></thead>
                   <tbody className="divide-y divide-black/5">
-                    {section.categories.map((category) => {
-                      const percentage = category.completion !== null ? Math.min(category.completion * 100, 100) : 0;
-                      // Superare il pianificato e' un guaio solo per le uscite:
-                      // incassare o mettere da parte piu' del previsto non va
-                      // dipinto di rosso come uno sforamento.
-                      const over = category.completion !== null && category.completion > 1;
-                      const coloreBarra = key === 'expenses' ? (over ? '#bd5e46' : '#47a889') : (over ? stile.accento : '#8aa8a0');
-                      return <tr key={category.name}>
-                        <td className="py-2.5 truncate font-medium">{category.name}</td>
-                        <td className="py-2.5 text-right tabular-nums">{formatCompactEuro(category.tracked)}</td>
-                        <td className="py-2.5 text-right tabular-nums text-[#71807c]">{formatCompactEuro(category.budget)}</td>
-                        <td className="py-2.5 pl-4">
-                          {category.completion !== null ? (
-                            <div className="flex items-center gap-2">
-                              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#eef0ec]"><div className="h-full rounded-full" style={{ width: `${percentage}%`, background: coloreBarra }} /></div>
-                              <span className="w-9 shrink-0 text-right text-xs tabular-nums text-[#71807c]">{Math.round(category.completion * 100)}%</span>
-                            </div>
-                          ) : <span className="text-xs text-[#87918e]">—</span>}
-                        </td>
-                        {/* Verde e rosso hanno un senso solo sulle uscite: li'
-                            "rimanente" e' margine e "eccedenza" e' uno sforamento.
-                            Su entrate e risparmi i due significati si invertono,
-                            quindi l'eccedenza prende il colore della sezione e il
-                            rimanente resta neutro. */}
-                        <td className="py-2.5 text-right tabular-nums" style={{ color: key === 'expenses' ? '#397867' : '#71807c' }}>{category.remaining ? formatCompactEuro(category.remaining) : '—'}</td>
-                        <td className="py-2.5 text-right tabular-nums" style={{ color: key === 'expenses' ? '#bd5e46' : stile.accento }}>{category.excess ? formatCompactEuro(category.excess) : '—'}</td>
-                      </tr>;
-                    })}
+                    {(() => {
+                      const idPresenti = new Set(section.categories.map((riga) => riga.categoryId));
+                      const figliDi = (id: number | null) => section.categories.filter((riga) => riga.parentId === id);
+                      // Un padre che nessuno nomina non esiste: se il suo totale
+                      // non e' in elenco, i figli si mostrano come radici invece
+                      // di sparire sotto un padre che non c'e'.
+                      const eRadice = (riga: typeof section.categories[number]) =>
+                        riga.parentId === null || !idPresenti.has(riga.parentId);
+                      const riga = (category: typeof section.categories[number], profondita: number) => {
+                        const figli = figliDi(category.categoryId);
+                        const chiusa = chiuse[`${key}:${category.categoryId ?? category.name}`];
+                        // I totali della radice sono quelli con i figli dentro:
+                        // il padre di Alimentari e' la risposta a "quanto spendo
+                        // in cibo", e mostrarne solo la spesa propria direbbe
+                        // zero. Il resto della riga si ricalcola di conseguenza,
+                        // perche' una percentuale sul totale proprio accanto a un
+                        // totale con i figli sarebbe un numero che non torna.
+                        const tracked = profondita === 0 ? category.trackedWithChildren : category.tracked;
+                        const budget = profondita === 0 ? category.budgetWithChildren : category.budget;
+                        const completion = budget ? Math.round((tracked / budget) * 10000) / 10000 : null;
+                        const percentage = completion !== null ? Math.min(completion * 100, 100) : 0;
+                        // Superare il pianificato e' un guaio solo per le uscite:
+                        // incassare o mettere da parte piu' del previsto non va
+                        // dipinto di rosso come uno sforamento.
+                        const over = completion !== null && completion > 1;
+                        const coloreBarra = key === 'expenses' ? (over ? '#bd5e46' : '#47a889') : (over ? stile.accento : '#8aa8a0');
+                        const remaining = budget - tracked > 0 ? Math.round((budget - tracked) * 100) / 100 : 0;
+                        const excess = tracked - budget > 0 ? Math.round((tracked - budget) * 100) / 100 : 0;
+                        return <tr key={category.categoryId ?? category.name}>
+                          <td className="py-2.5 truncate font-medium">{profondita > 0
+                            ? <span className="pl-5 text-[#52615d]">{category.name}</span>
+                            : figli.length
+                              ? <button type="button" onClick={() => setChiuse((precedenti) => ({ ...precedenti, [`${key}:${category.categoryId ?? category.name}`]: !precedenti[`${key}:${category.categoryId ?? category.name}`] }))} className="flex items-center gap-1.5 text-left">
+                                  <ChevronRight className={`size-3.5 shrink-0 text-[#87918e] transition-transform ${chiusa ? '' : 'rotate-90'}`} />
+                                  {category.name}
+                                </button>
+                              : category.name}</td>
+                          <td className="py-2.5 text-right tabular-nums">{formatCompactEuro(tracked)}</td>
+                          <td className="py-2.5 text-right tabular-nums text-[#71807c]">{formatCompactEuro(budget)}</td>
+                          <td className="py-2.5 pl-4">
+                            {completion !== null ? (
+                              <div className="flex items-center gap-2">
+                                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#eef0ec]"><div className="h-full rounded-full" style={{ width: `${percentage}%`, background: coloreBarra }} /></div>
+                                <span className="w-9 shrink-0 text-right text-xs tabular-nums text-[#71807c]">{Math.round(completion * 100)}%</span>
+                              </div>
+                            ) : <span className="text-xs text-[#87918e]">—</span>}
+                          </td>
+                          {/* Verde e rosso hanno un senso solo sulle uscite: li'
+                              "rimanente" e' margine e "eccedenza" e' uno sforamento.
+                              Su entrate e risparmi i due significati si invertono,
+                              quindi l'eccedenza prende il colore della sezione e il
+                              rimanente resta neutro. */}
+                          <td className="py-2.5 text-right tabular-nums" style={{ color: key === 'expenses' ? '#397867' : '#71807c' }}>{remaining ? formatCompactEuro(remaining) : '—'}</td>
+                          <td className="py-2.5 text-right tabular-nums" style={{ color: key === 'expenses' ? '#bd5e46' : stile.accento }}>{excess ? formatCompactEuro(excess) : '—'}</td>
+                        </tr>;
+                      };
+                      return section.categories.flatMap((category) => eRadice(category)
+                        ? [riga(category, 0), ...(chiuse[`${key}:${category.categoryId ?? category.name}`]
+                            ? [] : figliDi(category.categoryId).map((figlio) => riga(figlio, 1)))]
+                        : []);
+                    })()}
                   </tbody>
                 </table>
               </div>
@@ -6469,8 +6517,8 @@ function divisibile(transaction: Transaction) {
     && !transaction.refundedById && !transaction.linkedLedger?.length && !transaction.liabilitySplit;
 }
 
-function SplitTransactionDialog({ transaction, accounts, apiUrl, categoriesByType, onClose, onDone }: {
-  transaction: Transaction; accounts: Account[]; apiUrl: string; categoriesByType: Record<string, string[]>;
+function SplitTransactionDialog({ transaction, accounts, apiUrl, categoriesByType, categoryTree, onClose, onDone }: {
+  transaction: Transaction; accounts: Account[]; apiUrl: string; categoriesByType: Record<string, string[]>; categoryTree: CategoryNode[];
   onClose: () => void; onDone: () => Promise<void>;
 }) {
   const { t, formatEuro } = useI18n();
@@ -6530,7 +6578,7 @@ function SplitTransactionDialog({ transaction, accounts, apiUrl, categoriesByTyp
           : <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('fieldCategory')}
             <select className={campo} required value={parte.category} onChange={(e) => setParte((p) => ({ ...p, category: e.target.value }))}>
               <option value="">{t('selectPlaceholder')}</option>
-              {(categoriesByType[parte.type] ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
+              <CategoryOptions names={categoriesByType[parte.type] ?? []} tree={categoryTree} />
             </select></label>}
         <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('fieldDescription')}
           <Input value={parte.details} onChange={(e) => setParte((p) => ({ ...p, details: e.target.value }))} />
@@ -6621,8 +6669,8 @@ function EventsCard({ events, apiUrl }: { events: EventData[]; apiUrl: string })
   );
 }
 
-function CategoryRulesCard({ rules, categories, apiUrl, onChanged }: {
-  rules: CategorizationRuleData[]; categories: string[]; apiUrl: string; onChanged: () => void;
+function CategoryRulesCard({ rules, categories, categoryTree, apiUrl, onChanged }: {
+  rules: CategorizationRuleData[]; categories: string[]; categoryTree: CategoryNode[]; apiUrl: string; onChanged: () => void;
 }) {
   const { t, formatEuro } = useI18n();
   const vuoto = { pattern: '', category: '', type: '' as '' | 'Expenses' | 'Income', isRegex: false, minAmount: '', maxAmount: '' };
@@ -6749,7 +6797,7 @@ function CategoryRulesCard({ rules, categories, apiUrl, onChanged }: {
         <label className="text-xs text-[#52615d]">{t('category')}
           <select required value={form.category} onChange={(e) => setForm((c) => ({ ...c, category: e.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-input bg-white px-2 text-sm">
             <option value="">{t('categoryPlaceholder')}</option>
-            {categories.map((categoria) => <option key={categoria} value={categoria}>{categoria}</option>)}
+            <CategoryOptions names={categories} tree={categoryTree} />
           </select></label>
         <label className="text-xs text-[#52615d]">{t('type')}
           <select value={form.type} onChange={(e) => setForm((c) => ({ ...c, type: e.target.value as typeof c.type }))} className="mt-1 h-10 w-full rounded-lg border border-input bg-white px-2 text-sm">
@@ -6821,7 +6869,7 @@ function CategoryRulesCard({ rules, categories, apiUrl, onChanged }: {
   </Card>;
 }
 
-function RecurringTransactionsView({ accounts, data, categoriesByType, onCreate, onDelete, onGenerate }: { accounts: Account[]; data: RecurringTransactionData[]; categoriesByType: Record<string, string[]>; onCreate: (payload: Record<string, string | number | null>) => Promise<void>; onDelete: (id: number) => Promise<void>; onGenerate: (until: string) => Promise<number> }) {
+function RecurringTransactionsView({ accounts, data, categoriesByType, categoryTree, onCreate, onDelete, onGenerate }: { accounts: Account[]; data: RecurringTransactionData[]; categoriesByType: Record<string, string[]>; categoryTree: CategoryNode[]; onCreate: (payload: Record<string, string | number | null>) => Promise<void>; onDelete: (id: number) => Promise<void>; onGenerate: (until: string) => Promise<number> }) {
   const { t, locale } = useI18n();
   const [form, setForm] = useState({ description: '', amount: '', category: '', recurrence: 'FREQ=MONTHLY;BYMONTHDAY=1', startDate: new Date().toISOString().slice(0, 10), endDate: '', type: 'Expenses' });
   const [busy, setBusy] = useState(false);
@@ -6866,7 +6914,7 @@ function RecurringTransactionsView({ accounts, data, categoriesByType, onCreate,
             <Input placeholder={t('descriptionPlaceholder')} value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} className="h-10 bg-white" />
             <select aria-label={t('categoryPlaceholder')} required={form.type !== 'Transfers'} disabled={form.type === 'Transfers'} value={form.type === 'Transfers' ? '' : form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} className="h-10 rounded-lg border border-input bg-white px-2 text-sm disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]">
               <option value="">{form.type === 'Transfers' ? t('categoryNotApplicable') : t('categoryPlaceholder')}</option>
-              {form.type !== 'Transfers' && (categoriesByType[form.type] ?? []).map((categoria) => <option key={categoria} value={categoria}>{categoria}</option>)}
+              {form.type !== 'Transfers' && <CategoryOptions names={categoriesByType[form.type] ?? []} tree={categoryTree} />}
             </select>
             <Input type="number" min="0.01" step="0.01" placeholder={t('amountPlaceholder')} value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} className="h-10 bg-white" />
             {/* Una categoria di spesa non vale per un'entrata: cambiando tipo si riparte. */}
