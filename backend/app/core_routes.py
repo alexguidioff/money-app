@@ -3125,8 +3125,15 @@ def _open_positions(session: Session, include_closed: bool = False) -> list[dict
 
     Le commissioni scritte sulle righe arrivano al motore: senza, il costo e il
     realizzato di questa pagina ignoravano fee che il libro movimenti mostra, e
-    lo stesso strumento aveva due costi a seconda di dove lo si guardava. Una
-    lettura sola per tutte le righe, non una per riga.
+    lo stesso strumento aveva due costi a seconda che lo si guardasse qui o
+    nel libro movimenti. Una lettura sola per tutte le righe, non una per riga.
+
+    Due costi restano, ma non sono questi. Il patrimonio
+    (`portfolio_timeline`) somma il versato netto, e la commissione li' non la
+    conta: quel numero non e' un costo, e' il flusso di cassa su cui poggiano
+    TWR e XIRR, e decidere se una commissione sia un flusso sposta quei
+    rendimenti. Finche' non lo si decide, i due numeri differiscono di quanto
+    valgono le commissioni: e' scritto qui perche' non lo si scopra guardando.
 
     Il metodo di carico e' letto qui e non passato da fuori: e' l'unico punto in
     cui si guardano le posizioni per davvero, e finche' non esiste un'anteprima
