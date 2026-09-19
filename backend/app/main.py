@@ -3903,6 +3903,8 @@ def download_report(kind: str, year: int = Query(ge=2000, le=2100), month: int =
 
 from .core_routes import register_core_routes
 from .fire_routes import register_fire_routes
+from .categorie import register_categorie_routes
 
 register_core_routes(app)
 register_fire_routes(app)
+register_categorie_routes(app)

@@ -20,7 +20,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import BudgetPlan, Category, CategorizationRule, LookupOption, Transaction
+from .models import Category, CategorizationRule, Transaction
 from .transaction_rules import REAL_MOVEMENT
 
 # La categoria di chi non ne ha una. Sta qui e non in ``main`` perche' la usano
@@ -43,23 +43,23 @@ MAX_REGOLE = 200
 TIPI_CON_CATEGORIA = ("Expenses", "Income")
 
 _SPAZI = re.compile(r"\s+")
-# I gruppi di voci fra cui l'app pesca le categorie da scegliere.
-GRUPPI_CATEGORIE = ("categories_expenses", "categories_income", "categories_savings")
 
 
 def categorie_ammesse(session: Session) -> set[str]:
-    """Le categorie che l'interfaccia offre da scegliere, tutte in un insieme.
+    """I nomi delle categorie che esistono, tutte in un insieme.
 
-    Il vocabolario di partenza, quelle gia' usate nei movimenti e quelle
-    pianificate a budget: sono esattamente le voci che finiscono nell'elenco a
-    tendina del modulo movimento. Rifiutare una categoria che l'elenco propone
-    sarebbe un errore che chi usa l'app non puo' capire ne' correggere.
+    Prima erano un insieme che *emergeva* da quello che era gia' stato scritto:
+    il vocabolario, i nomi nei movimenti, i nomi nei budget. Adesso le categorie
+    sono righe, e questa e' la loro tabella: un elenco che dipende da cosa e'
+    gia' stato speso non sa mostrare una categoria appena creata e non ancora
+    usata, e non sa distinguere una categoria da un refuso.
+
+    Ci sono anche quelle spente: serve a *riconoscere* un nome che arriva da
+    fuori, non a proporlo. Rifiutare una categoria che un movimento vecchio ha
+    gia' sarebbe un errore che chi usa l'app non puo' capire ne' correggere -
+    e le categorie spente restano sui movimenti che le hanno.
     """
-    valori = set(session.scalars(select(LookupOption.value)
-                                 .where(LookupOption.option_group.in_(GRUPPI_CATEGORIE))).all())
-    valori.update(session.scalars(select(Transaction.category).distinct()).all())
-    valori.update(session.scalars(select(BudgetPlan.category).distinct()).all())
-    return {valore.strip() for valore in valori if valore and valore.strip()}
+    return {riga.name for riga in session.scalars(select(Category)).all()}
 
 
 def categoria_da_nome(session: Session, nome: str | None) -> int | None:

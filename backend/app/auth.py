@@ -354,6 +354,10 @@ def aggiorna_utente(user_id: int, payload: UserUpdatePayload, request: Request,
 # tutte: lasciarne fuori una vorrebbe dire lasciare righe orfane, che nessuno
 # vedrebbe piu' e che il prossimo utente con lo stesso id si ritroverebbe.
 TABELLE_PERSONALI = [
+    # Le categorie sono di chi le ha create: cancellando una persona senza
+    # svuotarle, il prossimo account con lo stesso id se le ritroverebbe fra i
+    # propri dati.
+    "categories",
     "transaction_ledger_links", "investment_transaction_details", "investment_transactions",
     "investment_instruments", "transactions", "budget_plans", "goals", "accounts",
     "notes", "dismissed_notifications", "lookup_options", "app_settings",
