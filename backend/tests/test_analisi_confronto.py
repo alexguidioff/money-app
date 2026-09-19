@@ -7,6 +7,7 @@ che si spende la meta' soltanto perche' l'anno non e' finito.
 I numeri sono tondi e inventati: questo repository e' pubblico e i valori veri di
 chi usa l'app non ci entrano.
 """
+import os
 import unittest
 from datetime import date
 from decimal import Decimal
@@ -16,8 +17,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.core_routes import _finestra_periodo, analysis
-from app.database import Base
+from app.database import Base, reset_current_user, set_current_user
 from app.models import Category, Transaction
+from tests.test_categorie_albero import SchemaIsolato
 
 
 class OggiFinto(date):
@@ -85,8 +87,8 @@ class AnalisiTestBase(unittest.TestCase):
         self.session.close()
         self.engine.dispose()
 
-    def _radice(self, nome: str) -> int:
-        riga = Category(name=nome)
+    def _radice(self, nome: str, scope: str = "expense") -> int:
+        riga = Category(name=nome, scope=scope)
         self.session.add(riga)
         self.session.flush()
         return riga.id
@@ -140,6 +142,7 @@ class ConfrontoTests(AnalisiTestBase):
         self.mensa = self._figlio("Mensa", alimentari)
         self.viaggi = self._radice("Viaggi")
         self.palestra = self._radice("Palestra")
+        stipendio = self._radice("Stipendio", scope="income")
         # Un movimento vecchio, fuori da tutti e due i periodi: serve solo a dire
         # che i dati cominciano prima del periodo precedente. Senza, il confronto
         # non si farebbe e ogni prova qui sotto misurerebbe un'altra cosa.
@@ -148,10 +151,12 @@ class ConfrontoTests(AnalisiTestBase):
         self._movimento(self.supermercato, "30", date(2026, 3, 10))
         self._movimento(self.mensa, "20", date(2026, 3, 11))
         self._movimento(self.viaggi, "100", date(2026, 3, 12))
+        self._movimento(stipendio, "2000", date(2026, 3, 1), tipo="Income")
         # Periodo precedente.
         self._movimento(self.supermercato, "20", date(2024, 12, 10))
         self._movimento(self.viaggi, "40", date(2024, 12, 12))
         self._movimento(self.palestra, "25", date(2024, 12, 11))
+        self._movimento(stipendio, "1500", date(2024, 12, 1), tipo="Income")
         self.session.commit()
 
     def _analisi(self) -> dict:
@@ -257,6 +262,88 @@ class MedianaTests(AnalisiTestBase):
         self.assertEqual(600.0, riga["amount"])
 
 
+class MosseTests(AnalisiTestBase):
+    """Le tre categorie che spiegano la differenza: quelle che si sono mosse.
+
+    Casa e' la piu' grande di tutte e non si e' mossa di un euro: se comparisse
+    fra le tre, la pagina direbbe che il periodo e' cambiato per colpa di una
+    spesa che e' identica a prima.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        banca = self._radice("Banca")
+        self._movimento(banca, "1", date(2024, 5, 2))
+        casa = self._radice("Casa")
+        self._movimento(casa, "5000", date(2026, 2, 10))
+        self._movimento(casa, "5000", date(2025, 2, 10))
+        palestra = self._radice("Palestra")
+        self._movimento(palestra, "100", date(2026, 2, 11))
+        self._movimento(palestra, "40", date(2025, 2, 11))
+        viaggi = self._radice("Viaggi")
+        self._movimento(viaggi, "200", date(2026, 2, 12))
+        self._movimento(viaggi, "350", date(2025, 2, 12))
+        mensa = self._radice("Mensa")
+        self._movimento(mensa, "50", date(2026, 2, 13))
+        self._movimento(mensa, "20", date(2025, 2, 13))
+        self.session.commit()
+
+    def _mosse(self) -> list[dict]:
+        with patch("app.core_routes.date", OggiFinto):
+            return analysis(2026, "last12", "Expenses", None, self.session)["flow"]["movers"]
+
+    def test_10_le_tre_che_si_muovono_non_le_tre_piu_grandi(self) -> None:
+        nomi = [riga["name"] for riga in self._mosse()]
+        self.assertEqual(["Viaggi", "Palestra", "Mensa"], nomi)
+        self.assertNotIn("Casa", nomi)
+        self.assertEqual([-150.0, 60.0, 30.0], [riga["difference"] for riga in self._mosse()])
+
+
+class FlussoTests(AnalisiTestBase):
+    """Entrato, uscito, rimasto: la risposta che uno cerca per prima.
+
+    E il verso di entrate e spese viaggia con i numeri: e' quello che decide di
+    che colore si scrive una differenza, e sono due versi opposti. Indovinarlo a
+    video dal segno direbbe che guadagnare di piu' e' un problema.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        banca = self._radice("Banca")
+        self._movimento(banca, "1", date(2024, 5, 3))
+        stipendio = self._radice("Stipendio", scope="income")
+        self._movimento(stipendio, "2000", date(2026, 3, 1), tipo="Income")
+        self._movimento(stipendio, "1500", date(2024, 12, 1), tipo="Income")
+        casa = self._radice("Casa")
+        self._movimento(casa, "800", date(2026, 3, 2))
+        self._movimento(casa, "1000", date(2024, 12, 2))
+        self.session.commit()
+
+    def _analisi(self, tipo: str = "Expenses") -> dict:
+        with patch("app.core_routes.date", OggiFinto):
+            return analysis(2026, "last12", tipo, None, self.session)
+
+    def _flusso(self) -> dict:
+        return self._analisi()["flow"]
+
+    def test_11_entrate_e_spese_hanno_versi_opposti_e_il_verso_e_nella_risposta(self) -> None:
+        flusso = self._flusso()
+        self.assertEqual(2000.0, flusso["income"]["amount"])
+        self.assertEqual(1500.0, flusso["income"]["previous"])
+        self.assertEqual(500.0, flusso["income"]["difference"])
+        self.assertEqual(33.3, flusso["income"]["percent"])
+        self.assertEqual(800.0, flusso["expenses"]["amount"])
+        self.assertEqual(-200.0, flusso["expenses"]["difference"])
+        self.assertEqual(-20.0, flusso["expenses"]["percent"])
+        self.assertEqual(1200.0, flusso["net"]["amount"])
+        # Il netto e' gia' una differenza: la sua percentuale non esiste.
+        self.assertIsNone(flusso["net"]["percent"])
+        # Il verso sta su ogni riga: e' quello che colora la differenza.
+        self.assertEqual(["expense"], [riga["scope"] for riga in flusso["movers"]])
+        righe_entrate = self._analisi("Income")["categoryComparison"]
+        self.assertEqual({"income"}, {riga["scope"] for riga in righe_entrate})
+
+
 class SenzaStoriaTests(AnalisiTestBase):
     """Il primo periodo di dati: il confronto non si fa, e la risposta lo dice.
 
@@ -282,3 +369,46 @@ class SenzaStoriaTests(AnalisiTestBase):
         self.assertEqual(200.0, riga["amount"])
         for campo in ("previous", "difference", "percent"):
             self.assertIsNone(riga[campo])
+        # Senza confronto non ci sono nemmeno le categorie che si sono mosse.
+        self.assertEqual([], risposta["flow"]["movers"])
+
+
+@unittest.skipUnless(os.getenv("MONEY_TEST_POSTGRES") == "1", "requires isolated PostgreSQL schema")
+class IsolamentoFlussoTests(unittest.TestCase):
+    """I totali di una persona non contengono quelli di un'altra.
+
+    Le politiche di riga del database sono l'unica prova vera di questa cosa: su
+    SQLite non esistono, e se una somma dimenticasse di filtrare le due
+    contabilita' finirebbero nello stesso mucchio senza che nessuno se ne
+    accorga. Per questo la prova gira solo dove le politiche ci sono.
+    """
+
+    def _semina(self, schema, utente: int, importo: str) -> None:
+        token = set_current_user(utente)
+        try:
+            with Session(schema.limited) as session:
+                casa = Category(name="Casa")
+                session.add(casa)
+                session.flush()
+                session.add(Transaction(occurred_on=date(2026, 3, 10), effective_on=date(2026, 3, 10),
+                                        transaction_type="Expenses", category_id=casa.id,
+                                        amount=Decimal(importo), account_name="Conto"))
+                session.commit()
+        finally:
+            reset_current_user(token)
+
+    def test_12_i_totali_di_uno_non_contengono_quelli_dell_altro(self) -> None:
+        with SchemaIsolato() as schema:
+            self._semina(schema, 101, "200")
+            self._semina(schema, 202, "9000")
+            token = set_current_user(101)
+            try:
+                with Session(schema.limited) as session:
+                    with patch("app.core_routes.date", OggiFinto):
+                        risposta = analysis(2026, "last12", "Expenses", None, session)
+            finally:
+                reset_current_user(token)
+        self.assertEqual(200.0, risposta["flow"]["expenses"]["amount"])
+        self.assertEqual([200.0], [riga["amount"] for riga in risposta["categoryComparison"]])
+        # E il confronto guarda la storia di chi sta guardando: da li' in poi.
+        self.assertEqual("2026-03-10", risposta["comparison"]["since"])

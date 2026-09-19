@@ -838,6 +838,64 @@ def _con_i_figli_mensile(genitori: dict[int, int | None],
     return risultato
 
 
+def _variazione(attuale: float, prima: float | None) -> dict[str, Any]:
+    """Un numero, quello del periodo precedente, e quanto e' cambiato.
+
+    La percentuale e' nulla - non "+infinito" e non "+100%" - quando uno dei due
+    periodi e' a zero: un numero nuovo non e' cresciuto di una percentuale, e'
+    comparso, e un numero sparito non e' calato del cento per cento, non c'e'
+    piu'. Chi legge trova l'importo pieno e un trattino.
+    """
+    differenza = None if prima is None else round(attuale - prima, 2)
+    return {"amount": round(attuale, 2), "previous": prima, "difference": differenza,
+            "percent": (round(differenza / prima * 100, 1)
+                        if differenza is not None and attuale and prima else None)}
+
+
+def _flusso(session: Session, finestra: tuple[date, date], precedente: tuple[date, date],
+            confrontabile: bool) -> dict[str, Any]:
+    """Entrato, uscito, e quello che e' rimasto nel periodo.
+
+    E' la risposta piu' densa della pagina: prima di sapere dove sono andati i
+    soldi, uno vuole sapere quanti ne sono passati. Entrate e uscite sono due
+    voci distinte e non due numeri da colorare allo stesso modo: per il netto
+    non c'e' percentuale, perche' e' gia' una differenza, e con entrate e uscite
+    vicine il suo denominatore passa da un numero piccolo a uno negativo, dove
+    il segno della percentuale direbbe il contrario di quello che e' successo.
+    """
+    def _entrate_uscite(periodo: tuple[date, date]) -> tuple[float, float]:
+        return (round(sum(_totali_per_categoria(session, *periodo, "Income").values()), 2),
+                round(sum(_totali_per_categoria(session, *periodo, "Expenses").values()), 2))
+
+    entrate, uscite = _entrate_uscite(finestra)
+    prima_entrate, prima_uscite = _entrate_uscite(precedente) if confrontabile else (None, None)
+    netto = round(entrate - uscite, 2)
+    prima_netto = round(prima_entrate - prima_uscite, 2) if confrontabile else None
+    return {"income": _variazione(entrate, prima_entrate),
+            "expenses": _variazione(uscite, prima_uscite),
+            "net": {"amount": netto, "previous": prima_netto,
+                    "difference": None if prima_netto is None else round(netto - prima_netto, 2),
+                    "percent": None}}
+
+
+def _mosse(righe: list[dict[str, Any]], quante: int = 3) -> list[dict[str, Any]]:
+    """Le categorie che spiegano di piu' la differenza: quelle che si sono mosse.
+
+    Non le piu' grandi: una categoria enorme e ferma non spiega niente di cosa e'
+    cambiato, e metterla in cima direbbe che il periodo e' andato come sempre. Si
+    guarda il valore assoluto della differenza, perche' un calo di trecento euro
+    spiega il conto quanto un aumento di trecento.
+
+    Restano fuori le categorie che hanno figli: il loro movimento e' anche quello
+    dei figli, e in una lista di tre voci i figli conterebbero due volte.
+    """
+    genitori = {riga["parentId"] for riga in righe if riga["parentId"] is not None}
+    mosse = [riga for riga in righe
+             if riga["categoryId"] not in genitori and riga["difference"]]
+    mosse.sort(key=lambda riga: abs(riga["difference"]), reverse=True)
+    return mosse[:quante]
+
+
 def _totali_per_categoria(session: Session, inizio: date, fine: date, tipo: str) -> dict[int | None, float]:
     """Quanto e' entrato o uscito per categoria fra due date, estremi compresi.
 
@@ -888,6 +946,10 @@ def _confronto_categorie(session: Session, tipo: str, finestra: tuple[date, date
     precedenti = (con_i_figli(session, _totali_per_categoria(session, *precedente, tipo))
                   if confrontabile else {})
     nomi_cat = nomi_categorie(session)
+    # Il verso di ogni categoria viaggia con la riga: e' quello che decide di che
+    # colore si scrive una differenza, e indovinarlo a video dal segno direbbe
+    # che guadagnare di piu' e' un problema.
+    versi = dict(session.execute(select(Category.id, Category.scope)).all())
     mesi = _mesi_del_periodo(*finestra, oggi)
     righe: list[dict[str, Any]] = []
     for categoria_id in set(attuali) | set(precedenti):
@@ -896,16 +958,13 @@ def _confronto_categorie(session: Session, tipo: str, finestra: tuple[date, date
         # sarebbe una riga senza nome.
         if categoria_id is None:
             continue
-        attuale = round(attuali.get(categoria_id, 0), 2)
-        prima = round(precedenti.get(categoria_id, 0), 2) if confrontabile else None
-        differenza = None if prima is None else round(attuale - prima, 2)
-        percentuale = (round(differenza / prima * 100, 1)
-                       if differenza is not None and attuale and prima else None)
         per_mese = [round(mensili.get(categoria_id, {}).get(mese, 0), 2) for mese in mesi]
         con_movimenti = sum(1 for valore in per_mese if valore)
         righe.append({"categoryId": categoria_id, "parentId": genitori.get(categoria_id),
-                      "name": nomi_cat.get(categoria_id, ""), "amount": attuale,
-                      "previous": prima, "difference": differenza, "percent": percentuale,
+                      "name": nomi_cat.get(categoria_id, ""),
+                      "scope": versi.get(categoria_id, "expense"),
+                      **_variazione(attuali.get(categoria_id, 0),
+                                    round(precedenti.get(categoria_id, 0), 2) if confrontabile else None),
                       # Senza movimenti non c'e' una mediana da leggere: zero
                       # sarebbe un numero, e direbbe un'altra cosa.
                       "median": round(_mediana(per_mese), 2) if con_movimenti else None,
@@ -935,11 +994,15 @@ def analysis(
       cosa sono calcolati: un report che non lo dice costringe a fidarsi.
     - comparison: il periodo precedente di pari durata, e se i dati cominciano
       abbastanza indietro da poterlo confrontare (`available`, `since`).
+    - flow: entrato, uscito e rimasto nel periodo, ciascuno con il periodo prima
+      e la differenza, piu' `movers`: le tre categorie che si sono mosse di piu',
+      che sono quelle che spiegano la differenza.
     - categoryComparison: per categoria, quanto in questo periodo e quanto nel
-      precedente, con differenza e percentuale (`null` dove una percentuale non
-      esiste: categoria nuova o sparita, o confronto che non si fa). Segue
-      `category_type` come gli altri blocchi per categoria; per Savings resta
-      vuoto, perche' il tipo di movimento Savings non esiste piu'.
+      precedente, con differenza, percentuale e mediana mensile (`null` dove un
+      numero non esiste: percentuale di una categoria nuova o sparita, mediana
+      senza movimenti, confronto che non si fa). Segue `category_type` come gli
+      altri blocchi per categoria; per Savings resta vuoto, perche' il tipo di
+      movimento Savings non esiste piu'.
     """
     types = ("Income", "Expenses", "Savings")
     today = date.today()
@@ -1011,14 +1074,24 @@ def analysis(
     prima_data = _prima_data(session)
     confrontabile = prima_data is not None and prima_data <= precedente[0]
 
+    confronto = _confronto_categorie(session, category_type, (inizio, fine), precedente, confrontabile, today)
+    # Le tre categorie che spiegano la differenza si cercano fra le spese anche
+    # quando la tabella sta mostrando le entrate: il blocco del flusso racconta
+    # dove sono finiti i soldi, e quello e' sempre la stessa domanda. Chiedere di
+    # nuovo il confronto delle spese serve solo se non e' gia' quello di sopra.
+    confronto_spese = (confronto if category_type == "Expenses"
+                       else _confronto_categorie(session, "Expenses", (inizio, fine), precedente,
+                                                 confrontabile, today))
+
     return {
         "year": year,
         "period": {"scope": scope, "from": inizio.isoformat(), "to": fine.isoformat()},
         "comparison": {"from": precedente[0].isoformat(), "to": precedente[1].isoformat(),
                        "available": confrontabile,
                        "since": prima_data.isoformat() if prima_data else None},
-        "categoryComparison": _confronto_categorie(session, category_type, (inizio, fine), precedente,
-                                                   confrontabile, today),
+        "flow": {**_flusso(session, (inizio, fine), precedente, confrontabile),
+                 "movers": _mosse(confronto_spese)},
+        "categoryComparison": confronto,
         "monthlyBudget": monthly_budget,
         "topExpenseCategories": top_expense_categories,
         "savingsByMonth": savings_by_month,

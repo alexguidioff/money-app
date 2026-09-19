@@ -144,6 +144,20 @@ export type SummaryBreakdown = {
 
 type MonthlyBudgetPoint = { month: string; inBudget: number; remaining: number; excess: number; isCurrentMonth: boolean };
 
+/* Un numero, quello del periodo precedente, e quanto e' cambiato. `percent` e'
+   nulla quando uno dei due periodi e' a zero - una cosa comparsa o sparita non
+   e' cresciuta di una percentuale - e per il netto non esiste mai: e' gia' una
+   differenza, e il suo segno direbbe il contrario di quello che e' successo. */
+type ComparisonAmounts = { amount: number; previous: number | null; difference: number | null; percent: number | null };
+
+/* Una riga del confronto, e anche una delle categorie che si sono mosse di piu':
+   e' la stessa riga, scelta con un'altra regola. `scope` e' il verso della
+   categoria, ed e' quello che decide il colore di una differenza - per le spese
+   un aumento e' una cosa da guardare, per le entrate il contrario. La mediana
+   viaggia con i mesi che l'hanno formata, perche' da sola non dice quanto vale. */
+type ComparisonRow = ComparisonAmounts & { categoryId: number; parentId: number | null; name: string;
+  scope: string; median: number | null; monthsWithMovements: number; monthsConsidered: number };
+
 export type AnalysisData = {
   year: number;
   /* Su quale finestra la pagina racconta. `scope` dice come e' stata scelta -
@@ -158,11 +172,12 @@ export type AnalysisData = {
      `previous`, `difference` e `percent` sono nulli quando il confronto non si
      fa; `percent` da sola e' nulla anche per una categoria nuova o sparita,
      perche' "cresciuta di tutto" non e' una percentuale. */
-  categoryComparison: Array<{ categoryId: number; parentId: number | null; name: string; amount: number;
-                              previous: number | null; difference: number | null; percent: number | null;
-                              /* La mediana dei mesi, e su quanti mesi e' calcolata: da sola
-                                 non dice quanto vale, e "—" quando non ci sono movimenti. */
-                              median: number | null; monthsWithMovements: number; monthsConsidered: number }>;
+  /* Dove sono finiti i soldi del periodo: entrato, uscito e rimasto, ciascuno
+     accanto al periodo prima. `movers` sono le tre categorie che si sono mosse
+     di piu' - quelle che spiegano la differenza, non le tre piu' grandi. */
+  flow: { income: ComparisonAmounts; expenses: ComparisonAmounts; net: ComparisonAmounts;
+          movers: ComparisonRow[] };
+  categoryComparison: ComparisonRow[];
   monthlyBudget: { income: MonthlyBudgetPoint[]; expenses: MonthlyBudgetPoint[]; savings: MonthlyBudgetPoint[] };
   topExpenseCategories: Array<{ name: string; value: number; color: string }>;
   savingsByMonth: Array<{ month: string; amount: number }>;
