@@ -768,6 +768,76 @@ def _finestra_precedente(inizio: date, fine: date) -> tuple[date, date]:
     return prima_fine - timedelta(days=giorni - 1), prima_fine
 
 
+def _mediana(valori: list[float]) -> float:
+    """La mediana di una lista di numeri, con i mesi a zero dentro.
+
+    Zero e' un'informazione - "quel mese non ho speso niente" - e resta nella
+    lista: togliendolo, la mediana direbbe come sono i mesi in cui si spende,
+    che e' un'altra domanda. Quanti mesi valgono qualcosa lo dice accanto il
+    conteggio dei mesi con movimenti.
+    """
+    if not valori:
+        return 0.0
+    ordinati = sorted(valori)
+    meta = len(ordinati) // 2
+    return ordinati[meta] if len(ordinati) % 2 else (ordinati[meta - 1] + ordinati[meta]) / 2
+
+
+def _mesi_del_periodo(inizio: date, fine: date, oggi: date) -> list[tuple[int, int]]:
+    """I mesi del periodo, e solo quelli gia' cominciati.
+
+    Un anno solare in corso finisce a dicembre, ma i mesi che non sono ancora
+    arrivati non sono mesi a zero spese: contarli abbasserebbe la mediana di
+    tutte le categorie per colpa del calendario. Gli ultimi dodici mesi
+    finiscono con il mese di oggi, e li' non cambia niente.
+    """
+    ultimo_anno, ultimo_mese = (min(fine, oggi).year, min(fine, oggi).month)
+    mesi: list[tuple[int, int]] = []
+    anno, mese = inizio.year, inizio.month
+    while (anno, mese) <= (ultimo_anno, ultimo_mese):
+        mesi.append((anno, mese))
+        anno, mese = (anno + 1, 1) if mese == 12 else (anno, mese + 1)
+    return mesi
+
+
+def _mensili_fra_date(session: Session, inizio: date, fine: date,
+                           tipo: str) -> dict[int | None, dict[tuple[int, int], float]]:
+    """Quanto per categoria, mese per mese, fra due date.
+
+    Si raggruppa qui e non in SQL perche' la mediana vuole i mesi interi, non
+    solo il totale del periodo: una query sola, e i mesi sono dodici per
+    categoria.
+    """
+    righe = session.execute(select(Transaction.category_id, Transaction.effective_on, Transaction.amount).where(
+        Transaction.effective_on >= inizio, Transaction.effective_on <= fine,
+        Transaction.transaction_type == tipo, BUDGET_MOVEMENT)).all()
+    per_categoria: dict[int | None, dict[tuple[int, int], float]] = defaultdict(lambda: defaultdict(float))
+    for categoria_id, giorno, importo in righe:
+        per_categoria[categoria_id][(giorno.year, giorno.month)] += num(importo)
+    return per_categoria
+
+
+def _con_i_figli_mensile(genitori: dict[int, int | None],
+                         mensili: dict[int | None, dict[tuple[int, int], float]]
+                         ) -> dict[int | None, dict[tuple[int, int], float]]:
+    """Gli stessi totali mensili, con dentro quelli dei figli.
+
+    E' `con_i_figli` mese per mese: la regola e' la stessa - un gradino solo, la
+    radice vale se stessa piu' i figli - ma quella lavora su mappe piatte, e qui
+    i valori sono i mesi invece di un numero solo. L'albero si legge da `padri`,
+    come la', e non si risale a mano.
+    """
+    risultato = {categoria: dict(valori) for categoria, valori in mensili.items()}
+    for categoria_id, valori in mensili.items():
+        padre = genitori.get(categoria_id) if categoria_id is not None else None
+        if padre is None:
+            continue
+        destinazione = risultato.setdefault(padre, {})
+        for mese, valore in valori.items():
+            destinazione[mese] = destinazione.get(mese, 0) + valore
+    return risultato
+
+
 def _totali_per_categoria(session: Session, inizio: date, fine: date, tipo: str) -> dict[int | None, float]:
     """Quanto e' entrato o uscito per categoria fra due date, estremi compresi.
 
@@ -795,21 +865,30 @@ def _prima_data(session: Session) -> date | None:
 
 
 def _confronto_categorie(session: Session, tipo: str, finestra: tuple[date, date],
-                         precedente: tuple[date, date], confrontabile: bool) -> list[dict[str, Any]]:
+                         precedente: tuple[date, date], confrontabile: bool,
+                         oggi: date) -> list[dict[str, Any]]:
     """Le categorie del periodo, accanto alle stesse del periodo precedente.
 
-    I totali passano da `con_i_figli`: una radice vale se stessa piu' i suoi
-    figli, e "Alimentari" nei due periodi deve parlare della stessa cosa.
+    I totali passano da `con_i_figli` - o dal suo gemello mensile, che serve alla
+    mediana: una radice vale se stessa piu' i suoi figli, e "Alimentari" nei due
+    periodi deve parlare della stessa cosa.
 
     La percentuale e' nulla - non "+100%" - quando il periodo precedente era a
     zero, e anche quando e' a zero adesso. Una categoria nuova e' cresciuta di
     tutto, e "di tutto" non e' una percentuale: chi legge trova l'importo pieno
     e un trattino al posto di un numero inventato.
+
+    La mediana viaggia con i mesi che l'hanno formata, come nei suggerimenti di
+    budget: una mediana su un mese solo, per quanto tonda, non e' una mediana, e
+    chi legge deve poterlo vedere invece di fidarsi.
     """
-    attuali = con_i_figli(session, _totali_per_categoria(session, *finestra, tipo))
+    genitori = padri(session)
+    mensili = _con_i_figli_mensile(genitori, _mensili_fra_date(session, *finestra, tipo))
+    attuali = {categoria: round(sum(valori.values()), 2) for categoria, valori in mensili.items()}
     precedenti = (con_i_figli(session, _totali_per_categoria(session, *precedente, tipo))
                   if confrontabile else {})
-    nomi_cat, genitori = nomi_categorie(session), padri(session)
+    nomi_cat = nomi_categorie(session)
+    mesi = _mesi_del_periodo(*finestra, oggi)
     righe: list[dict[str, Any]] = []
     for categoria_id in set(attuali) | set(precedenti):
         # Un movimento senza categoria e' denaro uscito davvero, e il flusso lo
@@ -822,9 +901,15 @@ def _confronto_categorie(session: Session, tipo: str, finestra: tuple[date, date
         differenza = None if prima is None else round(attuale - prima, 2)
         percentuale = (round(differenza / prima * 100, 1)
                        if differenza is not None and attuale and prima else None)
+        per_mese = [round(mensili.get(categoria_id, {}).get(mese, 0), 2) for mese in mesi]
+        con_movimenti = sum(1 for valore in per_mese if valore)
         righe.append({"categoryId": categoria_id, "parentId": genitori.get(categoria_id),
                       "name": nomi_cat.get(categoria_id, ""), "amount": attuale,
-                      "previous": prima, "difference": differenza, "percent": percentuale})
+                      "previous": prima, "difference": differenza, "percent": percentuale,
+                      # Senza movimenti non c'e' una mediana da leggere: zero
+                      # sarebbe un numero, e direbbe un'altra cosa.
+                      "median": round(_mediana(per_mese), 2) if con_movimenti else None,
+                      "monthsWithMovements": con_movimenti, "monthsConsidered": len(mesi)})
     righe.sort(key=lambda riga: (-riga["amount"], riga["name"].casefold()))
     return righe
 
@@ -932,7 +1017,8 @@ def analysis(
         "comparison": {"from": precedente[0].isoformat(), "to": precedente[1].isoformat(),
                        "available": confrontabile,
                        "since": prima_data.isoformat() if prima_data else None},
-        "categoryComparison": _confronto_categorie(session, category_type, (inizio, fine), precedente, confrontabile),
+        "categoryComparison": _confronto_categorie(session, category_type, (inizio, fine), precedente,
+                                                   confrontabile, today),
         "monthlyBudget": monthly_budget,
         "topExpenseCategories": top_expense_categories,
         "savingsByMonth": savings_by_month,
@@ -1773,9 +1859,9 @@ def budget_suggestions(year: int, month: int, budget_type: str = "Expenses", mon
         con_spesa = [valore for valore in mensili if valore]
         if not con_spesa:
             continue
-        ordinati = sorted(mensili)
-        meta = len(ordinati) // 2
-        mediana = ordinati[meta] if len(ordinati) % 2 else (ordinati[meta - 1] + ordinati[meta]) / 2
+        # La formula sta in `_mediana`: la pagina Analisi calcola la stessa cosa
+        # sugli stessi mesi, e due formule in due posti divergono.
+        mediana = _mediana(mensili)
         items.append({
             # Senza id nel dizionario la categoria del risparmio non esiste
             # ancora come riga: si mostra il nome che avra'.

@@ -212,6 +212,51 @@ class ConfrontoTests(AnalisiTestBase):
         self.assertEqual(150.0, riga["percent"])
 
 
+class MedianaTests(AnalisiTestBase):
+    """La mediana dei mesi, e quanti mesi l'hanno formata.
+
+    La mediana e non la media: con un mese da mille euro fra undici da cento, la
+    media sale a centosettantacinque e sembra un mese normale. E' il mese dei
+    viaggi che si porta dietro, e non dice come sono i mesi normali.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        bollette = self._radice("Bollette")
+        # Undici mesi da cento: ottobre 2025 - agosto 2026.
+        for anno, mese in [(2025, m) for m in range(10, 13)] + [(2026, m) for m in range(1, 9)]:
+            self._movimento(bollette, "100", date(anno, mese, 10))
+        # E il mese in cui si e' pagato anche il resto.
+        self._movimento(bollette, "1000", date(2026, 9, 10))
+        palestra = self._radice("Palestra")
+        self._movimento(palestra, "600", date(2026, 1, 20))
+        self.session.commit()
+
+    def _riga(self, nome: str) -> dict:
+        with patch("app.core_routes.date", OggiFinto):
+            risposta = analysis(2026, "last12", "Expenses", None, self.session)
+        return {riga["name"]: riga for riga in risposta["categoryComparison"]}[nome]
+
+    def test_7_un_mese_fuori_linea_non_sposta_la_mediana(self) -> None:
+        riga = self._riga("Bollette")
+        self.assertEqual(100.0, riga["median"])
+        self.assertEqual(12, riga["monthsWithMovements"])
+        self.assertEqual(12, riga["monthsConsidered"])
+
+    def test_8_su_pochi_mesi_il_conteggio_dice_quanto_vale(self) -> None:
+        """Una mediana su un mese su dodici non e' una mediana, e si vede.
+
+        La riga porta il numero dei mesi che l'hanno formata, come fanno i
+        suggerimenti di budget: il seicento speso a gennaio resta scritto
+        accanto, e a fianco c'e' scritto che gennaio e' l'unico mese.
+        """
+        riga = self._riga("Palestra")
+        self.assertEqual(0.0, riga["median"])
+        self.assertEqual(1, riga["monthsWithMovements"])
+        self.assertEqual(12, riga["monthsConsidered"])
+        self.assertEqual(600.0, riga["amount"])
+
+
 class SenzaStoriaTests(AnalisiTestBase):
     """Il primo periodo di dati: il confronto non si fa, e la risposta lo dice.
 

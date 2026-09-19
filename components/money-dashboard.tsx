@@ -159,7 +159,10 @@ export type AnalysisData = {
      fa; `percent` da sola e' nulla anche per una categoria nuova o sparita,
      perche' "cresciuta di tutto" non e' una percentuale. */
   categoryComparison: Array<{ categoryId: number; parentId: number | null; name: string; amount: number;
-                              previous: number | null; difference: number | null; percent: number | null }>;
+                              previous: number | null; difference: number | null; percent: number | null;
+                              /* La mediana dei mesi, e su quanti mesi e' calcolata: da sola
+                                 non dice quanto vale, e "—" quando non ci sono movimenti. */
+                              median: number | null; monthsWithMovements: number; monthsConsidered: number }>;
   monthlyBudget: { income: MonthlyBudgetPoint[]; expenses: MonthlyBudgetPoint[]; savings: MonthlyBudgetPoint[] };
   topExpenseCategories: Array<{ name: string; value: number; color: string }>;
   savingsByMonth: Array<{ month: string; amount: number }>;
