@@ -196,9 +196,12 @@ class Category(Base):
     Due livelli, non di piu': radice e figlio. Con ventisei categorie un terzo
     livello non serve a niente e raddoppia i casi da gestire in ogni somma.
 
-    Il gruppo bisogni/piaceri non e' un campo: e' il nome della radice. Stava
-    scritto sulle righe di budget, una per mese, ma descriveva la categoria -
-    la spesa non e' un bisogno a gennaio e un piacere a febbraio.
+    Il gruppo bisogni/piaceri e' un campo - ``essenziale`` - e non il nome
+    della radice. Metterlo come padre confonde due domande diverse: a cosa
+    servono i soldi (Housing, e sotto Affitto e Utenze) e quanto e' essenziale
+    (Affitto e' un bisogno, Arredamento no, e stanno entrambi sotto Housing).
+    Si eredita dal padre quando il figlio non lo dichiara, quindi basta dirlo
+    una volta su Housing per tutti i suoi figli.
 
     Il vincolo di unicita' vale per i figli; per le radici, dove ``parent_id``
     e' NULL, il database considera le righe diverse fra loro e il controllo lo
@@ -220,6 +223,16 @@ class Category(Base):
     # scegliere: e' il modo di mettere via una categoria senza riscrivere la
     # storia di chi l'ha usata.
     active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    # Due alberi separati: una categoria di spesa non compare fra le entrate e
+    # viceversa. Sono domande diverse, e mescolarle rende ambigua una categoria
+    # come "Housing", che ha spese e anche qualche entrata.
+    scope: Mapped[str] = mapped_column(String(10), default="expense", server_default=text("'expense'"))
+
+    # Quanto e' essenziale quella spesa: bisogno, piacere, o non detto. Nullo
+    # vuol dire "non detto", non "piacere": e' un giudizio dell'utente, e
+    # inventarlo per lui vorrebbe dire scrivere nella sua contabilita' una cosa
+    # che non ha mai detto.
+    essenziale: Mapped[str | None] = mapped_column(String(10))
 
 
 class BudgetPlan(Base):

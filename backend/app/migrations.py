@@ -212,6 +212,20 @@ def tracked_changes(engine: Engine) -> None:
                                       "REFERENCES categories(id)"))
             _albero_delle_categorie(conn)
 
+            # Le due colonne della B3b. `create_all` crea le tabelle nuove ma
+            # non tocca quelle che esistono gia', quindi su un database di
+            # prima non ci sono: senza questo passo l'app leggerebbe colonne
+            # che il database non ha. `scope` ha un valore di partenza perche'
+            # le categorie di prima erano tutte di spesa tranne quelle
+            # dell'albero entrate, che il passo sotto rimette a posto; le righe
+            # gia' scritte non possono restare senza.
+            colonne_cat = _colonne_di(conn, "categories")
+            if "scope" not in colonne_cat:
+                conn.execute(text("ALTER TABLE categories ADD COLUMN scope VARCHAR(10) NOT NULL "
+                                  "DEFAULT 'expense'"))
+            if "essenziale" not in colonne_cat:
+                conn.execute(text("ALTER TABLE categories ADD COLUMN essenziale VARCHAR(10)"))
+
             # Le colonne di testo hanno fatto il loro giro: i nomi sono
             # diventati righe, i riferimenti puntano agli id, e l'app non le
             # legge piu'. Una copia che invecchia e' peggio di nessuna copia -
