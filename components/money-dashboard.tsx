@@ -4337,6 +4337,36 @@ function InstrumentAnalysisView({ apiUrl, positions }: { apiUrl: string; positio
   );
 }
 
+// Cercare uno strumento alla fonte delle quotazioni: sta qui una volta sola
+// perche' la usano due schermate - il ticker degli strumenti e l'indice di
+// confronto - e le due copie divergevano gia': una reggeva la rete assente e
+// l'altra no. Torna una lista vuota invece di sollevare, cosi' chi chiama non
+// deve sapere come si comporta la rete in questo momento.
+type TickerResult = { symbol: string; name: string; exchange: string; type: string };
+
+async function cercaStrumenti(apiUrl: string, query: string): Promise<TickerResult[]> {
+  if (query.trim().length < 2) return [];
+  try {
+    const response = await fetch(`${apiUrl}/api/market-data/search?q=${encodeURIComponent(query.trim())}`);
+    return response.ok ? ((await response.json()) as { items: TickerResult[] }).items : [];
+  } catch {
+    return [];
+  }
+}
+
+// E anche la riga del risultato e' una sola: simbolo in grassetto, nome dietro,
+// piazza e tipo a destra. Due liste di risultati diverse per la stessa fonte
+// sembrano due fonti diverse.
+function TickerResults({ items, onPick }: { items: TickerResult[]; onPick: (symbol: string) => void }) {
+  if (items.length === 0) return null;
+  return <div className="mt-2 divide-y divide-black/5 rounded-lg border border-black/8 bg-white">
+    {items.map((item) => <button key={item.symbol} type="button" onClick={() => onPick(item.symbol)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs hover:bg-[#f4f5f1]">
+      <span><span className="font-semibold">{item.symbol}</span> <span className="text-[#71807c]">{item.name}</span></span>
+      <span className="shrink-0 text-[#87918e]">{item.exchange} · {item.type}</span>
+    </button>)}
+  </div>;
+}
+
 function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { apiUrl: string; rows: InstrumentRow[]; reload: () => Promise<void>; onSaved: () => Promise<void>; onRefresh: () => Promise<{ updated: number; errors: Array<{ code?: string; error?: string }> }> }) {
   const { t } = useI18n();
   const [newName, setNewName] = useState('');
@@ -4350,17 +4380,12 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [searchFor, setSearchFor] = useState<number | null>(null);
   const [searchText, setSearchText] = useState('');
-  const [results, setResults] = useState<Array<{ symbol: string; name: string; exchange: string; type: string }>>([]);
+  const [results, setResults] = useState<TickerResult[]>([]);
   const [searching, setSearching] = useState(false);
 
-  async function runSearch(instrumentId: number, query: string) {
-    if (query.trim().length < 2) return;
+  async function runSearch(query: string) {
     setSearching(true);
-    setResults([]);
-    try {
-      const response = await fetch(`${apiUrl}/api/market-data/search?q=${encodeURIComponent(query.trim())}`);
-      if (response.ok) setResults(((await response.json()) as { items: typeof results }).items);
-    } finally { setSearching(false); }
+    try { setResults(await cercaStrumenti(apiUrl, query)); } finally { setSearching(false); }
   }
 
   function pick(instrumentId: number, symbol: string) {
@@ -4487,15 +4512,10 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
               if (searchFor !== row.id) return [rowNode];
               return [rowNode, <tr key={`search-${row.id}`}><td colSpan={5} className="bg-[#fafaf8] px-5 py-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Input autoFocus value={searchText} onChange={(event) => setSearchText(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void runSearch(row.id, searchText); } }} placeholder={t('tickerSearchPlaceholder')} className="h-9 w-[280px] bg-white" />
-                  <Button type="button" size="sm" variant="outline" disabled={searching} onClick={() => void runSearch(row.id, searchText)}>{searching ? t('searchingEllipsis') : t('tickerSearch')}</Button>
+                  <Input autoFocus value={searchText} onChange={(event) => setSearchText(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void runSearch(searchText); } }} placeholder={t('tickerSearchPlaceholder')} className="h-9 w-[280px] bg-white" />
+                  <Button type="button" size="sm" variant="outline" disabled={searching} onClick={() => void runSearch(searchText)}>{searching ? t('searchingEllipsis') : t('tickerSearch')}</Button>
                 </div>
-                {results.length > 0 && <div className="mt-2 divide-y divide-black/5 rounded-lg border border-black/8 bg-white">
-                  {results.map((item) => <button key={item.symbol} type="button" onClick={() => pick(row.id, item.symbol)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs hover:bg-[#f4f5f1]">
-                    <span><span className="font-semibold">{item.symbol}</span> <span className="text-[#71807c]">{item.name}</span></span>
-                    <span className="shrink-0 text-[#87918e]">{item.exchange} · {item.type}</span>
-                  </button>)}
-                </div>}
+                <TickerResults items={results} onPick={(symbol) => pick(row.id, symbol)} />
                 {!searching && results.length === 0 && <p className="mt-2 text-xs text-[#87918e]">{t('tickerSearchHint')}</p>}
               </td></tr>];
             })}
@@ -6150,26 +6170,22 @@ function SettingCountry({ label, value, saving, onChange, hint }: { label: strin
 function SettingBenchmark({ label, value, saving, onChange, hint, apiUrl }: { label: string; value: string; saving: boolean; onChange: (value: string) => void; hint: string; apiUrl: string }) {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Array<{ symbol: string; name: string; exchange: string; type: string }>>([]);
+  const [results, setResults] = useState<TickerResult[]>([]);
   const [searching, setSearching] = useState(false);
   // Il nome dell'indice scelto, quando e' uno di quelli della lista: senza,
   // "^SSMI" resta una sigla anche per chi l'ha scelta.
   const scelto = BENCHMARKS.find((indice) => indice.symbol === value);
 
   async function cerca() {
-    if (query.trim().length < 2) return;
     setSearching(true);
-    try {
-      const response = await fetch(`${apiUrl}/api/market-data/search?q=${encodeURIComponent(query.trim())}`);
-      setResults(response.ok ? ((await response.json()) as { items: typeof results }).items : []);
-    } catch {
-      // La rete non c'e': la lista corta resta cliccabile, e il campo non
-      // finge un risultato che non ha.
-      setResults([]);
-    } finally { setSearching(false); }
+    try { setResults(await cercaStrumenti(apiUrl, query)); } finally { setSearching(false); }
   }
 
   async function scegli(symbol: string) {
+    // Mentre il salvataggio precedente e' in volo non se ne accetta un altro:
+    // due scelte ravvicinate partono come due salvataggi sovrapposti, e vince
+    // l'ultimo che arriva invece di quello che si e' scelto.
+    if (saving) return;
     setResults([]);
     setQuery('');
     // La quotazione si aggiorna da sola: `onSettingChange` ricarica i dati
@@ -6196,12 +6212,7 @@ function SettingBenchmark({ label, value, saving, onChange, hint, apiUrl }: { la
         onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void cerca(); } }} />
       <Button type="button" size="sm" variant="outline" disabled={searching} onClick={() => void cerca()}>{searching ? t('searchingEllipsis') : t('tickerSearch')}</Button>
     </div>
-    {results.length > 0 && <div className="divide-y divide-black/5 rounded-lg border border-black/8 bg-white">
-      {results.map((item) => <button key={item.symbol} type="button" onClick={() => void scegli(item.symbol)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs hover:bg-[#f4f5f1]">
-        <span><span className="font-semibold">{item.symbol}</span> <span className="text-[#71807c]">{item.name}</span></span>
-        <span className="shrink-0 text-[#87918e]">{item.exchange} · {item.type}</span>
-      </button>)}
-    </div>}
+    <TickerResults items={results} onPick={(symbol) => void scegli(symbol)} />
     {!searching && results.length === 0 && <p className="font-normal leading-4 text-[#87918e]">{hint}</p>}
   </div>;
 }
