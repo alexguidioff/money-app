@@ -25,7 +25,6 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .categorization import categoria_da_nome
 from .database import get_session
 from .models import BudgetPlan, CategorizationRule, Category, Transaction
 
@@ -36,6 +35,11 @@ router = APIRouter()
 # categoria e' il nome della radice sotto cui sta, e queste sono le tre che
 # contano: le altre radici sono categorie normali e valgono "Other".
 GRUPPI = ("Needs", "Wants", "Other")
+
+# Le tre parole dell'interfaccia e quello che si scrive nella colonna: "Other"
+# vuol dire "non detto", e nella colonna e' vuoto. In mezzo sta l'unica
+# traduzione fra i due vocabolari, cosi' non ce n'e' una per rotta.
+ESSENZIALE = {"Needs": "needs", "Wants": "wants", "Other": None}
 
 
 class CategoryPayload(BaseModel):
@@ -53,16 +57,23 @@ class CategoryPayload(BaseModel):
 
 
 def categoria_json(riga: Category, *, movimenti: int = 0, budget: int = 0, regole: int = 0,
-                   figli: int = 0) -> dict[str, Any]:
+                   figli: int = 0, effettivo: str | None = None) -> dict[str, Any]:
     """Una categoria come la vuole l'interfaccia.
 
     Gli usi viaggiano con la categoria perche' servono a decidere *prima* di
     provare a cancellarla: l'interfaccia sa dire "usata da 12 movimenti" invece
     di far scoprire il rifiuto dopo il clic.
+
+    Viaggiano anche le due facce del bisogno/piacere: quello che la categoria
+    dichiara (``essential``, vuoto se non dice niente) e quello che vale per
+    lei (``essentialEffective``, che e' quello del padre quando lei tace).
+    Servono tutti e due perche' il modulo li mostra diversi: il valore
+    ereditato si vede in grigio, come una cosa che viene da sopra.
     """
     return {"id": riga.id, "name": riga.name, "parentId": riga.parent_id, "position": riga.position,
             "active": riga.active, "movements": movimenti, "budgets": budget, "rules": regole,
-            "children": figli}
+            "children": figli, "scope": riga.scope, "essential": riga.essenziale,
+            "essentialEffective": effettivo}
 
 
 def _usi(session: Session, colonna) -> dict[int, int]:
@@ -169,23 +180,40 @@ def con_i_figli(session: Session, totali: dict[int | None, Any]) -> dict[int | N
     return risultato
 
 
+def essenziale_di_categoria(session: Session) -> dict[int, str | None]:
+    """Se ogni categoria e' un bisogno, un piacere, o non si sa.
+
+    Vale quello che la categoria dichiara; se non dichiara niente, vale quello
+    del padre. Un solo gradino di risalita: l'albero e' a due livelli, e leggere
+    oltre vorrebbe dire inventare una gerarchia che non c'e'. Dire "Housing e'
+    un bisogno" basta per tutti i suoi figli, e Arredamento puo' smentirlo per
+    conto suo senza toccare gli altri.
+
+    ``None`` vuol dire "non detto", e non e' un piacere di comodo: un giudizio
+    che l'utente non ha dato non si scrive nella sua contabilita'.
+    """
+    dichiarato = dict(session.execute(select(Category.id, Category.essenziale)).all())
+    genitori = padri(session)
+    return {category_id: valore if valore is not None else dichiarato.get(genitori.get(category_id))
+            for category_id, valore in dichiarato.items()}
+
+
 def gruppo_di_categoria(session: Session) -> dict[int, str]:
     """Bisogni, piaceri, o il resto: il gruppo di ogni categoria.
 
-    Il gruppo non e' un campo, e' il nome della radice sotto cui la categoria
-    sta. Una radice che si chiama "Needs" e' un bisogno essa stessa - con figli
-    o senza -; una categoria figlia di quella radice e' un bisogno anche lei.
-    Quello che non sta sotto nessuna delle tre radici e' "Other", dove finisce
-    cio' che non e' stato classificato: tenerlo visibile serve proprio a farlo
-    svuotare.
+    Quello che non e' ne' un bisogno ne' un piacere - non detto - e' "Other",
+    dove finisce cio' che non e' stato classificato: tenerlo visibile serve
+    proprio a farlo svuotare.
 
     Prima il gruppo era scritto su ogni riga di budget, una per mese, e
     descriveva la categoria: la spesa non e' un bisogno a gennaio e un piacere
-    a febbraio. Adesso si legge dall'albero, e vale per tutti i mesi insieme.
+    a febbraio. Poi e' stato il nome della radice sotto cui la categoria stava,
+    che confondeva due domande diverse. Adesso e' un attributo, con
+    l'ereditarieta' del padre, e vale per tutti i mesi insieme.
     """
-    noto = {gruppo.casefold(): gruppo for gruppo in GRUPPI}
-    return {category_id: noto.get(radice.casefold(), "Other")
-            for category_id, radice in radici(session).items()}
+    noto = {valore: gruppo for gruppo, valore in ESSENZIALE.items() if valore}
+    return {category_id: noto.get(valore, "Other")
+            for category_id, valore in essenziale_di_categoria(session).items()}
 
 
 def _dal_payload(session: Session, category_id: int | None, nome: str | None) -> Category:
@@ -200,8 +228,11 @@ def _dal_payload(session: Session, category_id: int | None, nome: str | None) ->
     pulito = (nome or "").strip()
     if not pulito:
         raise HTTPException(status_code=422, detail="category obbligatoria")
-    riga = session.scalar(select(Category).where(func.lower(Category.name) == pulito.casefold(),
-                                                 Category.parent_id.is_(None)))
+    # A qualunque livello, con la radice che vince: una categoria dell'albero
+    # nuovo puo' essere un figlio, e classificare "Vestiti" sotto Acquisti deve
+    # funzionare come classificare una radice.
+    riga = session.scalar(select(Category).where(func.lower(Category.name) == pulito.casefold())
+                          .order_by(Category.parent_id.is_not(None), Category.id).limit(1))
     if riga is None:
         raise HTTPException(status_code=404, detail="categoryNotFound")
     return riga
@@ -267,9 +298,11 @@ def elenco_categorie(session: Session = Depends(get_session)) -> dict[str, Any]:
                                 _usi(session, CategorizationRule.category_id))
     figli = Counter(riga.parent_id for riga in session.scalars(select(Category)).all()
                     if riga.parent_id is not None)
+    effettivi = essenziale_di_categoria(session)
     return {"items": [categoria_json(riga, movimenti=movimenti.get(riga.id, 0),
                                      budget=budget.get(riga.id, 0), regole=regole.get(riga.id, 0),
-                                     figli=figli.get(riga.id, 0)) for riga in elenco(session)]}
+                                     figli=figli.get(riga.id, 0), effettivo=effettivi.get(riga.id))
+                      for riga in elenco(session)]}
 
 
 @router.post("/api/categories", status_code=201)
@@ -352,30 +385,27 @@ def classifica_categoria(payload: CategoryGroupPayload,
                          session: Session = Depends(get_session)) -> dict[str, Any]:
     """Classifica una categoria come bisogno o piacere.
 
-    La classificazione non e' piu' scritta su ogni riga di budget - era
-    ``category_group``, la stessa parola ripetuta per mese su una riga che
-    descriveva la categoria e non il mese - ma e' la posizione nell'albero:
-    bisogni e piaceri sono le radici che portano quei nomi. Classificare vuol
-    dire quindi spostare la categoria sotto la radice del gruppo, creandola se
-    non c'e'. E' per tutti i periodi in una volta, com'era prima.
+    La classificazione ha cambiato casa due volte: era scritta su ogni riga di
+    budget - la stessa parola ripetuta per mese su una riga che descriveva la
+    categoria e non il mese - poi era la posizione nell'albero, cioe' il nome
+    della radice sotto cui la categoria stava. Adesso e' un attributo della
+    categoria, ed e' l'unica delle tre che non confonde due domande diverse:
+    a cosa servono quei soldi, e quanto sono essenziali.
 
-    La rotta resta dove stava, cosi' l'interfaccia continua a funzionare: e'
-    il posto in cui si dice "questa categoria e' un bisogno", che e' una cosa
-    che si fa all'albero.
+    "Other" non e' un terzo valore: vuol dire "non detto", ed e' quello che si
+    scrive quando l'utente ritira la sua risposta.
+
+    Solo le spese si classificano. Su un'entrata la domanda non ha senso - il
+    rimborso di una spesa non e' un bisogno - e la risposta e' un errore, non
+    un valore scritto e poi ignorato.
     """
     riga = _dal_payload(session, payload.categoryId, payload.category)
     gruppo = (payload.category_group or "").strip()
     if gruppo not in GRUPPI:
         raise HTTPException(status_code=422, detail="categoryGroupUnknown")
-    if riga.parent_id is None and session.scalar(
-            select(func.count(Category.id)).where(Category.parent_id == riga.id)):
-        # Una radice con figli non si sposta: sotto di lei ci sarebbe un terzo
-        # livello, e l'albero ne ha due.
-        raise HTTPException(status_code=422, detail="categoryTooDeep")
-    radice = _categoria(session, categoria_da_nome(session, gruppo))
-    if radice.id != riga.id:
-        _senza_omonimi(session, riga.name, radice.id, esclusa=riga.id)
-        riga.parent_id = radice.id
+    if gruppo != "Other" and riga.scope != "expense":
+        raise HTTPException(status_code=422, detail="essentialOnlyForExpenses")
+    riga.essenziale = ESSENZIALE[gruppo]
     session.commit()
     return {"success": True, "categoryId": riga.id, "category": riga.name,
             "categoryGroup": gruppo, "parentId": riga.parent_id}

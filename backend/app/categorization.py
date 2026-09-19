@@ -71,15 +71,23 @@ def categoria_da_nome(session: Session, nome: str | None) -> int | None:
     segnaposto dei trasferimenti (``"_"``: non ne ha) vale ``None``: creare una
     categoria chiamata underscore sarebbe un dato inventato.
 
-    Si cerca fra le radici. Un nome ripetuto sotto due padri diversi e'
-    legittimo, quindi senza sapere il padre l'unica risposta non ambigua e' la
-    radice; e se nemmeno quella c'e' il nome e' nuovo, e nasce radice.
+    Si cerca a qualunque livello, e vince la radice. Un nome ripetuto sotto due
+    padri diversi e' legittimo, quindi senza sapere il padre l'unica risposta
+    non ambigua e' la radice; ma un nome che sta solo sotto un padre e' quella
+    categoria, non una nuova: "Alimentari" e' una radice e "Cena fuori" sta
+    sotto "Cibo", e un file scritto prima che l'albero avesse i rami li nomina
+    tutti e due allo stesso modo. Senza questo, un file vecchio farebbe
+    ricomparire come radice una categoria che c'e' gia', e l'elenco a tendina
+    avrebbe due voci identiche.
+
+    Un nome che non c'e' da nessuna parte nasce radice: senza padre e' l'unica
+    cosa che si puo' dire di lui.
     """
     nome = (nome or "").strip()
     if not nome or nome == "_":
         return None
-    esistente = session.scalar(select(Category.id).where(Category.parent_id.is_(None),
-                                                         func.lower(Category.name) == nome.lower()))
+    esistente = session.scalar(select(Category.id).where(func.lower(Category.name) == nome.lower())
+                               .order_by(Category.parent_id.is_not(None), Category.id).limit(1))
     if esistente is not None:
         return esistente
     radice = Category(parent_id=None, name=nome)
