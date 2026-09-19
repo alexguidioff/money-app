@@ -2274,10 +2274,18 @@ function MoneyDashboardInner() {
         body: JSON.stringify(approvedTransactions)
       });
       if (!response.ok) throw new Error(await responseError(response, t));
-      const result = await response.json() as { saved: number; errors: { index: number; code: string }[] };
+      const result = await response.json() as { saved: number; errors: { index: number; code: string; duplicateOf?: PDFTransaction['duplicateOf'] }[] };
       setImportFeedback({ ok: !result.errors.length, message: t('statementSaved', { saved: result.saved, errors: result.errors.length }) });
       if (result.errors.length) {
-        setPdfPreviewTransactions(result.errors.map(error => ({ ...approvedTransactions[error.index], duplicate: false, errorCode: error.code })));
+        // Una riga rifiutata perche' somiglia a un movimento che c'e' gia' torna
+        // segnata come se l'anteprima l'avesse vista: la casella vuota e' il
+        // consenso che manca, e spuntarla la fa entrare. Tenendole il motivo
+        // rosso, l'unica cosa che si poteva fare era riconfermare la stessa
+        // lista e farsela rifiutare di nuovo, per sempre. Le altre righe
+        // restano come erano: quelle si sistemano cambiando un campo.
+        setPdfPreviewTransactions(result.errors.map(error => error.code === 'statementDuplicateRow'
+          ? { ...approvedTransactions[error.index], duplicate: true, duplicateOf: error.duplicateOf ?? null, errorCode: undefined }
+          : { ...approvedTransactions[error.index], duplicate: false, errorCode: error.code }));
       } else {
         setShowPdfPreview(false);
         setPdfPreviewTransactions([]);

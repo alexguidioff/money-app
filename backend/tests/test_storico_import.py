@@ -158,7 +158,12 @@ class DoppioniAlSalvataggioTests(unittest.TestCase):
         esito = self.salva([_riga()])
 
         self.assertEqual(0, esito["saved"])
-        self.assertEqual([{"index": 0, "code": "statementDuplicateRow"}], esito["errors"])
+        # Il movimento che le somiglia viaggia col rifiuto: e' quello che
+        # l'anteprima mostra sotto la riga, e senza non si saprebbe con cosa si
+        # sta parlando.
+        self.assertEqual([{"index": 0, "code": "statementDuplicateRow",
+                           "duplicateOf": {"id": 1, "date": "2026-09-10", "amount": 100.0, "description": "Affitto"}}],
+                         esito["errors"])
         riga = self.storico()[-1]
         self.assertEqual((0, 1), (riga.rows_accepted, riga.rows_rejected))
         # Anche questo motivo si conta: "una riga saltata" da sola non direbbe
@@ -173,6 +178,19 @@ class DoppioniAlSalvataggioTests(unittest.TestCase):
         esito = self.salva([{**_riga(), "duplicate": True}])
 
         self.assertEqual((1, []), (esito["saved"], esito["errors"]))
+
+    def test_una_riga_rifiutata_si_puo_far_entrare(self) -> None:
+        # Il giro completo di chi importa: la riga viene rifiutata, torna
+        # all'anteprima col movimento che le somiglia, lui la spunta - cioe' la
+        # tiene - e la riga entra. Se il rifiuto non lasciasse questa strada,
+        # riconfermare la stessa lista la farebbe rifiutare di nuovo, per
+        # sempre, ed e' una riga che si e' deciso di volere.
+        self.assertEqual(1, self.salva([_riga()])["saved"])
+
+        rifiuto = self.salva([_riga()])
+        rimandata = {**_riga(), "duplicate": True, "duplicateOf": rifiuto["errors"][0]["duplicateOf"]}
+
+        self.assertEqual((1, []), (self.salva([rimandata])["saved"], []))
 
     def test_due_righe_uguali_nello_stesso_file_entrano_entrambe(self) -> None:
         # Due caffe' da 1,50 nello stesso giorno sono due movimenti, non un

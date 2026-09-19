@@ -375,6 +375,20 @@ class _Doppioni:
         return (match, [match]) if match is not None else ((coppia[0], coppia) if coppia else (None, []))
 
 
+def _doppione_mostrato(match, coppia: list) -> dict:
+    """Il movimento che c'e' gia' e somiglia a una riga, come lo si mostra.
+
+    Lo scrive l'anteprima sotto la riga e lo rimanda indietro il salvataggio
+    quando rifiuta una riga: sono la stessa cosa detta a due schermate, quindi
+    si scrive una volta sola.
+    """
+    return {"id": match.id, "date": match.occurred_on.isoformat(),
+            # Una spesa divisa in due movimenti e' la riga, non due doppioni:
+            # si mostra il totale dei due e le due descrizioni insieme.
+            "amount": float(sum(abs(item.amount) for item in coppia) if coppia else match.amount),
+            "description": " + ".join(filter(None, (item.details for item in coppia))) if coppia else match.details}
+
+
 def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
     """Le righe lette da un estratto conto, con i possibili doppioni gia' segnati.
 
@@ -432,10 +446,7 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
             "type": tx.get("type", "expense"), "accountName": tx.get("accountName"),
             "destinationName": tx.get("destinationName"), "goal": tx.get("goal"),
             "duplicate": match is not None,
-            "duplicateOf": {"id": match.id, "date": match.occurred_on.isoformat(),
-                            "amount": float(sum(abs(item.amount) for item in coppia) if coppia else match.amount),
-                            "description": " + ".join(filter(None, (item.details for item in coppia))) if coppia
-                            else match.details} if match else None,
+            "duplicateOf": _doppione_mostrato(match, coppia) if match else None,
         }
         # Una riga che non si e' potuta leggere dal file porta il suo motivo: e'
         # lo stesso campo con cui l'anteprima segnala le righe scartate al
@@ -519,10 +530,17 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
             # come sempre - mentre una riga che li' era pulita e che ora
             # corrisponde a un movimento esistente si salta invece di entrare
             # due volte.
-            if not tx_data.get('duplicate') and doppioni.abbina(
-                    occurred, amount, str(tx_data.get('details') or tx_data.get('description') or ''),
-                    transaction_type)[0] is not None:
-                errors.append({"index": index, "code": "statementDuplicateRow"})
+            corrisponde, coppia = doppioni.abbina(
+                occurred, amount, str(tx_data.get('details') or tx_data.get('description') or ''), transaction_type)
+            if not tx_data.get('duplicate') and corrisponde is not None:
+                # La riga torna all'anteprima insieme al movimento che le
+                # somiglia, come se l'anteprima l'avesse gia' segnata: cosi' la
+                # casella vuota e' il consenso che manca, e spuntandola la riga
+                # entra lo stesso. Senza, una riga rifiutata qui non aveva
+                # nessuna strada per entrare: riconfermare la stessa lista la
+                # faceva rifiutare di nuovo, all'infinito.
+                errors.append({"index": index, "code": "statementDuplicateRow",
+                               "duplicateOf": _doppione_mostrato(corrisponde, coppia)})
                 continue
             transaction = Transaction(
                 import_batch_id=lotto.id,
