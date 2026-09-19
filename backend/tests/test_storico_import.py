@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import os
 import unittest
-from datetime import date
+from datetime import datetime, timezone
 from decimal import Decimal
 from io import BytesIO
 from uuid import uuid4
@@ -66,7 +66,11 @@ class StoricoImportTests(unittest.TestCase):
         self.assertEqual("estratto.csv", riga.source_name)
         self.assertIsNotNone(riga.imported_at)
         # Il registro e' dello stesso giorno dell'import, non del movimento.
-        self.assertEqual(date.today(), riga.imported_at.date())
+        # La data si confronta in UTC, che e' l'ora con cui la riga nasce
+        # (`func.now()`): `date.today()` e' l'ora locale, e fra mezzanotte e le
+        # due in Italia e' il giorno prima - il test era rosso a quell'ora,
+        # tutti i giorni, senza che niente fosse rotto.
+        self.assertEqual(datetime.now(timezone.utc).date(), riga.imported_at.date())
 
     def test_accettate_e_scartate_sono_quelle_che_la_rotta_ha_davvero_fatto(self) -> None:
         # Il conto esiste, il tipo no: la prima passa, la seconda no.
