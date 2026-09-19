@@ -311,6 +311,58 @@ def _coppia(per_giorno, usati: set[int], giorno: date, importo: Decimal, opposto
     return []
 
 
+class _Doppioni:
+    """Riconosce, fra i movimenti gia' in archivio, i doppioni di un estratto conto.
+
+    Lo usano l'anteprima e il salvataggio, e devono rispondere la stessa cosa:
+    se l'anteprima lascia la casella vuota e il salvataggio rifiuta la riga, la
+    casella diventa una bugia. Per questo la ricerca sta qui e non in due posti.
+
+    L'archivio si legge **una volta sola**, quando nasce l'oggetto: cosi' i
+    movimenti salvati durante l'import non entrano fra i candidati. Senza,
+    il secondo caffe' dello stesso giorno - legittimo, sono due - verrebbe
+    scartato come doppione del primo che si e' appena scritto.
+    """
+
+    def __init__(self, session: Session):
+        self.per_importo: dict[Decimal, list] = defaultdict(list)
+        self.per_giorno: dict[date, list] = defaultdict(list)
+        for item in session.execute(select(Transaction.id, Transaction.occurred_on, Transaction.amount,
+                                           Transaction.details, Transaction.transaction_type, Transaction.account_name)
+                                    .where(REAL_MOVEMENT)).all():
+            self.per_importo[abs(item.amount)].append(item)
+            self.per_giorno[item.occurred_on].append(item)
+        # Ogni movimento gia' presente vale per una riga sola: due caffe' da
+        # 1,50 nello stesso giorno sono due, e se nell'app ce n'e' uno solo il
+        # secondo va importato.
+        self.usati: set[int] = set()
+
+    def abbina(self, giorno: date | None, importo: Decimal, descrizione: str,
+               tipo: str | None) -> tuple[Any | None, list]:
+        """Il movimento che corrisponde a questa riga, e i movimenti che lo compongono.
+
+        La coppia torna insieme al movimento perche' l'anteprima la mostra come
+        una cosa sola ("questi due sono la riga che stai importando"): sono i
+        due pezzi della spesa divisa, e chi legge deve vederli entrambi. Al
+        salvataggio la coppia non serve, conta solo se qualcosa corrisponde.
+        """
+        # Un'entrata non e' mai il doppione di una spesa, ne' il contrario; un
+        # giroconto puo' essere l'uno o l'altro, a seconda del conto.
+        opposto = {"Income": "Expenses", "Expenses": "Income"}.get(tipo)
+        candidati = [item for item in self.per_importo[importo]
+                     if item.id not in self.usati and giorno and item.occurred_on
+                     and abs((giorno - item.occurred_on).days) <= GIORNI_DUPLICATO
+                     and item.transaction_type != opposto]
+        parole = _parole(descrizione)
+        match = min(candidati, key=lambda item: (-len(parole & _parole(item.details)),
+                                                 abs((giorno - item.occurred_on).days), item.id), default=None)
+        coppia = [] if match or not giorno else _coppia(self.per_giorno, self.usati, giorno, importo, opposto)
+        if match is not None:
+            self.usati.add(match.id)
+        self.usati.update(item.id for item in coppia)
+        return (match, [match]) if match is not None else ((coppia[0], coppia) if coppia else (None, []))
+
+
 def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
     """Le righe lette da un estratto conto, con i possibili doppioni gia' segnati.
 
@@ -327,13 +379,7 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
     """
     if not raw_transactions:
         raise HTTPException(422, detail="statementEmpty")
-    per_importo = defaultdict(list)
-    per_giorno = defaultdict(list)
-    for item in session.execute(select(Transaction.id, Transaction.occurred_on, Transaction.amount,
-                                       Transaction.details, Transaction.transaction_type, Transaction.account_name)
-                                .where(REAL_MOVEMENT)).all():
-        per_importo[abs(item.amount)].append(item)
-        per_giorno[item.occurred_on].append(item)
+    doppioni = _Doppioni(session)
     regole = carica_regole(session)
     # La categoria e' un id: qui si legge per mostrarla, ma l'anteprima non
     # scrive niente. Se il nome che arriva dal file non esiste ancora,
@@ -342,28 +388,13 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
     # chiude senza salvare.
     nomi_cat = nomi_categorie(session)
     id_di_nome = {nome.casefold(): identificativo for identificativo, nome in nomi_cat.items()}
-    usati: set[int] = set()
     rows = []
     for tx in raw_transactions:
         occurred = tx.get("occurredOn")
         description = tx.get("details") or tx.get("description") or ""
         amount = abs(Decimal(str(tx.get("rawAmount", tx.get("amount", 0)))))
         day = date.fromisoformat(occurred) if occurred else None
-        # Un'entrata non e' mai il doppione di una spesa, ne' il contrario; un
-        # giroconto puo' essere l'uno o l'altro, a seconda del conto.
-        opposto = {"Income": "Expenses", "Expenses": "Income"}.get(tx.get("transactionType"))
-        candidati = [item for item in per_importo[amount]
-                     if item.id not in usati and day and item.occurred_on
-                     and abs((day - item.occurred_on).days) <= GIORNI_DUPLICATO
-                     and item.transaction_type != opposto]
-        parole = _parole(description)
-        match = min(candidati, key=lambda item: (-len(parole & _parole(item.details)),
-                                                 abs((day - item.occurred_on).days), item.id), default=None)
-        coppia = [] if match or not day else _coppia(per_giorno, usati, day, amount, opposto)
-        if match is not None:
-            usati.add(match.id)
-        usati.update(item.id for item in coppia)
-        match = match or (coppia[0] if coppia else None)
+        match, coppia = doppioni.abbina(day, amount, description, tx.get("transactionType"))
         # Nessuno ha scelto a mano questa categoria: se una regola decide, la
         # categoria resta automatica e il pattern dice da quale regola viene.
         tipo = tx.get("transactionType", "Expenses")
@@ -430,10 +461,21 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
     ``source`` e' il nome del file da cui vengono le righe: e' facoltativo
     perche' un client che non lo manda deve continuare a funzionare come prima,
     e serve solo a scrivere una riga leggibile nello storico degli import.
+
+    Una riga che l'anteprima non aveva segnato come doppione e che al momento
+    di salvare corrisponde a un movimento gia' in archivio non si salva: fra le
+    due schermate l'archivio puo' essere cambiato, e un movimento entrato due
+    volte non si disfa con un clic come si disfa un annullamento. Una riga che
+    l'anteprima aveva segnato e che chi importa ha tenuto si salva: la casella
+    era il consenso.
     """
     saved_count = 0
     errors = []
     accounts = {a.name: a for a in session.scalars(select(Account)).all()}
+    # L'archivio si legge qui, prima di scrivere: le righe che si salvano adesso
+    # non devono entrare fra i candidati, altrimenti il secondo caffe' dello
+    # stesso giorno verrebbe scartato come doppione del primo.
+    doppioni = _Doppioni(session)
     for index, tx_data in enumerate(transactions):
         try:
             occurred = date.fromisoformat(str(tx_data.get('date') or ''))
@@ -449,6 +491,18 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
                 raise ValueError("statementAccountRequired")
             if transaction_type in SPOSTAMENTI and (destination is None or destination.is_active is False or destination.name == account.name):
                 raise ValueError("statementDestinationRequired")
+            # Il doppione si ricontrolla adesso perche' fra l'anteprima e il
+            # salvataggio l'archivio puo' essere cambiato: un'altra sessione, un
+            # altro import. La casella dell'anteprima resta il consenso - una
+            # riga che li' era gia' segnata e che chi importa ha tenuto si salva
+            # come sempre - mentre una riga che li' era pulita e che ora
+            # corrisponde a un movimento esistente si salta invece di entrare
+            # due volte.
+            if not tx_data.get('duplicate') and doppioni.abbina(
+                    occurred, amount, str(tx_data.get('details') or tx_data.get('description') or ''),
+                    transaction_type)[0] is not None:
+                errors.append({"index": index, "code": "statementDuplicateRow"})
+                continue
             transaction = Transaction(
                 occurred_on=occurred,
                 effective_on=compute_effective_on(session, occurred, transaction_type),

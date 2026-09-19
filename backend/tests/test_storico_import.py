@@ -122,6 +122,63 @@ class StoricoImportTests(unittest.TestCase):
         origine.close()
 
 
+class DoppioniAlSalvataggioTests(unittest.TestCase):
+    """Il salvataggio ricontrolla i doppioni che l'anteprima aveva segnato.
+
+    Fra le due schermate l'archivio puo' essere cambiato (un'altra sessione, un
+    altro import): senza il ricontrollo una riga che li' era pulita entra due
+    volte, e l'unica rete era la casella che l'utente non aveva motivo di
+    guardare.
+    """
+
+    def setUp(self) -> None:
+        self.engine = create_engine("sqlite://")
+        Base.metadata.create_all(self.engine)
+        self.session = Session(self.engine)
+        self.session.add(Account(name="Banca", source_group="bank", starting_balance=Decimal("1000")))
+        self.session.commit()
+
+    def tearDown(self) -> None:
+        self.session.close()
+        self.engine.dispose()
+
+    def salva(self, righe: list[dict]) -> dict:
+        return asyncio.run(main.save_pdf_transactions(righe, source="estratto.csv", session=self.session))
+
+    def storico(self) -> list[ImportBatch]:
+        return list(self.session.scalars(select(ImportBatch).order_by(ImportBatch.id)))
+
+    def test_una_riga_che_l_archivio_ha_gia_non_entra_di_nuovo(self) -> None:
+        self.assertEqual(1, self.salva([_riga()])["saved"])
+
+        esito = self.salva([_riga()])
+
+        self.assertEqual(0, esito["saved"])
+        self.assertEqual([{"index": 0, "code": "statementDuplicateRow"}], esito["errors"])
+        riga = self.storico()[-1]
+        self.assertEqual((0, 1), (riga.rows_accepted, riga.rows_rejected))
+        # Anche questo motivo si conta: "una riga saltata" da sola non direbbe
+        # che e' stata saltata perche' c'era gia'.
+        self.assertEqual('{"statementDuplicateRow": 1}', riga.rejected_reasons)
+
+    def test_una_riga_segnata_duplicata_e_tenuta_si_salva(self) -> None:
+        # La casella e' il consenso: chi importa l'ha vista piena, l'ha tenuta,
+        # e il movimento entra una seconda volta perche' l'ha deciso lui.
+        self.assertEqual(1, self.salva([_riga()])["saved"])
+
+        esito = self.salva([{**_riga(), "duplicate": True}])
+
+        self.assertEqual((1, []), (esito["saved"], esito["errors"]))
+
+    def test_due_righe_uguali_nello_stesso_file_entrano_entrambe(self) -> None:
+        # Due caffe' da 1,50 nello stesso giorno sono due movimenti, non un
+        # doppione: l'archivio si legge una volta sola, prima di scrivere,
+        # quindi la seconda riga non trova la prima che si e' appena salvata.
+        esito = self.salva([_riga(), _riga()])
+
+        self.assertEqual((2, []), (esito["saved"], esito["errors"]))
+
+
 class MigrazioneStoricoTests(unittest.TestCase):
     def test_le_righe_gia_esistenti_diventano_ripristini(self) -> None:
         """Le righe che c'erano sono tutte ripristini di un backup.

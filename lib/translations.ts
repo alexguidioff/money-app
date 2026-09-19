@@ -52,6 +52,10 @@ const it = {
   statementAllDates: "Vengono lette tutte le date del file, indipendentemente dal periodo della dashboard. Puoi escludere le singole righe.",
   statementEmpty: "Nessun movimento riconosciuto. Verifica che il file contenga data, descrizione e importo diverso da zero.",
   statementParseFailed: "Impossibile leggere l’estratto conto. Controlla il formato del file.",
+  // Una riga che c'era gia': non e' un errore di lettura, e' un movimento che
+  // l'app ha gia'. Dirlo con le parole di "riga non valida" manderebbe a
+  // cercare nei dati un problema che non c'e'.
+  statementDuplicateRow: "Movimento già in archivio: non è stato importato di nuovo.",
   statementRowInvalid: "Riga non salvata: controlla data, importo e conti.",
   statementDateInvalid: "Data non leggibile nel file: scrivila qui.",
   statementAmountInvalid: "Importo non leggibile nel file: scrivilo qui.",
@@ -1436,6 +1440,7 @@ const en: TranslationTable = {
   statementAllDates: "All dates in the file are read, regardless of the dashboard period. You can exclude individual rows.",
   statementEmpty: "No transactions recognised. Check that the file contains date, description and a non-zero amount.",
   statementParseFailed: "Cannot read the statement. Check the file format.",
+  statementDuplicateRow: "Already in the ledger: not imported again.",
   statementRowInvalid: "Row not saved: check date, amount and accounts.",
   statementDateInvalid: "Date not readable in the file: type it here.",
   statementAmountInvalid: "Amount not readable in the file: type it here.",
@@ -2788,6 +2793,7 @@ const de: TranslationTable = {
   statementAllDates: "Alle Daten der Datei werden unabhängig vom Dashboard-Zeitraum gelesen. Einzelne Zeilen können ausgeschlossen werden.",
   statementEmpty: "Keine Buchungen erkannt. Die Datei muss Datum, Beschreibung und einen Betrag ungleich null enthalten.",
   statementParseFailed: "Kontoauszug nicht lesbar. Dateiformat prüfen.",
+  statementDuplicateRow: "Bereits im Bestand: nicht erneut importiert.",
   statementRowInvalid: "Zeile nicht gespeichert: Datum, Betrag und Konten prüfen.",
   statementDateInvalid: "Datum in der Datei nicht lesbar: hier eintragen.",
   statementAmountInvalid: "Betrag in der Datei nicht lesbar: hier eintragen.",
@@ -4140,6 +4146,7 @@ const es: TranslationTable = {
   statementAllDates: "Se leen todas las fechas del archivo, sin depender del periodo del panel. Puedes excluir filas individuales.",
   statementEmpty: "No se reconocen movimientos. Comprueba que haya fecha, descripción e importe distinto de cero.",
   statementParseFailed: "No se puede leer el extracto. Revisa el formato.",
+  statementDuplicateRow: "Ya está en el registro: no se importó de nuevo.",
   statementRowInvalid: "Fila no guardada: revisa fecha, importe y cuentas.",
   statementDateInvalid: "Fecha no legible en el archivo: escríbela aquí.",
   statementAmountInvalid: "Importe no legible en el archivo: escríbelo aquí.",
@@ -5492,6 +5499,7 @@ const fr: TranslationTable = {
   statementAllDates: "Toutes les dates du fichier sont lues, indépendamment de la période du tableau de bord. Tu peux exclure des lignes.",
   statementEmpty: "Aucun mouvement reconnu. Vérifie la présence d’une date, d’une description et d’un montant non nul.",
   statementParseFailed: "Impossible de lire le relevé. Vérifie le format du fichier.",
+  statementDuplicateRow: "Déjà au registre : pas importé de nouveau.",
   statementRowInvalid: "Ligne non enregistrée : vérifie la date, le montant et les comptes.",
   statementDateInvalid: "Date illisible dans le fichier : écris-la ici.",
   statementAmountInvalid: "Montant illisible dans le fichier : écris-le ici.",
