@@ -3296,6 +3296,18 @@ function SectionView({
   // dipende dai filtri attivi, o filtrando per un evento sparirebbero gli altri.
   const [eventFilter, setEventFilter] = useState('all');
   const [transactionEvents, setTransactionEvents] = useState<EventSummary[]>([]);
+  // Gli eventi della card in fondo: qui servono anche gli importi, quindi si
+  // chiedono alla rotta loro invece di leggere l'elenco della pagina.
+  const [eventiCard, setEventiCard] = useState<EventData[]>([]);
+  useEffect(() => {
+    if (section !== 'Movimenti') return undefined;
+    const controller = new AbortController();
+    fetch(`${apiUrl}/api/events`, { signal: controller.signal })
+      .then((risposta) => risposta.ok ? risposta.json() as Promise<EventsData> : Promise.reject(new Error('eventi')))
+      .then((dati) => setEventiCard(dati.items))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [apiUrl, section, movimentiVersione]);
   const [yearFilter, setYearFilter] = useState('all');
   const [monthFilter, setMonthFilter] = useState('all');
   // I movimenti non stanno piu' tutti in memoria: si chiede al server la pagina
@@ -3400,6 +3412,7 @@ function SectionView({
           {bulkError && <p role="alert" className="px-6 text-[#bd5e46]">{bulkError}</p>}
           <CardContent className="px-3 sm:px-6">{movimenti.length ? <><div className={`divide-y divide-black/5 ${caricandoMovimenti ? 'opacity-60' : ''}`}>{movimenti.map((transaction) => <div key={transaction.id} className="flex items-center gap-2"><input type="checkbox" aria-label={t('selectMovement', { description: transaction.description })} checked={selection.has(String(transaction.id))} onChange={e => setSelection(old => { const next = new Set(old); e.target.checked ? next.add(String(transaction.id)) : next.delete(String(transaction.id)); return next; })} /><div className="min-w-0 flex-1"><TransactionRow transaction={transaction} onRefund={openRefundedTransaction} onEdit={onEditTransaction} onDuplicate={onDuplicateTransaction} onDelete={onDeleteTransaction} onSplit={onSplitTransaction} /></div></div>)}</div>{movimenti.length < totaleMovimenti && <div className="border-t border-black/5 py-4 text-center"><Button type="button" variant="outline" disabled={caricandoMovimenti} onClick={() => setPagina((corrente) => corrente + 1)}>{caricandoMovimenti ? t('updating') : t('showMore100')}</Button></div>}</> : <p className="py-12 text-center text-sm text-[#71807c]">{caricandoMovimenti ? t('updating') : t('noMovementsMatchFilters')}</p>}</CardContent>
         </Card>
+        <EventsCard events={eventiCard} apiUrl={apiUrl} />
         {selection.size > 0 && <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-xl border bg-white p-4 shadow-lg">
           <span>{t('selectedCount', { count: selection.size })}</span>
           {selezioneTroncata > 0 && <span className="rounded-lg bg-[#f4f5f1] px-2 py-1 text-xs text-[#52615d]">{t('bulkSelectionCapped', { total: selezioneTroncata })}</span>}
@@ -6549,6 +6562,65 @@ const TransactionRow = memo(function TransactionRow({ transaction, onEdit, onDup
       : transaction.linkedLedger?.map((item) => `${item.name} (${item.transactionType})`).join(', ');
   return <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3.5 sm:flex-nowrap"><span className={`grid size-9 shrink-0 place-items-center rounded-xl ${style.className}`}><Icon className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{transaction.description}</p><div className="flex gap-2 text-[11px]">{transaction.incomplete && <span className="text-[#a05f4e]">{t('incompleteMovements')}</span>}{transaction.countsInBudget === false && !['Transfers', 'Investment', 'Debt'].includes(transaction.transactionType) && <span className="text-[#87918e]">{t('excludeBudget')}</span>}{transaction.refundedById && <button type="button" className="text-[#2d7b65] underline" onClick={() => onRefund?.(transaction)}>{t('refunded')}</button>}{transaction.event && <span className="rounded-full bg-[#eef1ec] px-1.5 text-[#52615d]">{transaction.event.name}</span>}{transaction.liabilitySplit && <span className={transaction.liabilitySplit.classified ? 'text-[#8a5a46]' : 'text-[#a05f4e]'}>{transaction.liabilitySplit.classified ? t('debtSplitSummary', { principal: formatEuro(transaction.liabilitySplit.principal), interest: formatEuro(transaction.liabilitySplit.interest) }) : t('debtUnclassified')}</span>}</div><p className="mt-0.5 truncate text-xs text-[#87918e]">{transaction.category}{transaction.accountName ? ` · ${transaction.accountName}` : ''}{transaction.destinationName ? ` → ${transaction.destinationName}` : ''}</p></div><div className="hidden text-right text-xs text-[#87918e] sm:block"><p>{formatDate(`${transaction.effectiveOn}T12:00:00`, { day: 'numeric', month: 'short' })}</p>{transaction.effectiveOn !== transaction.occurredOn && <p className="mt-0.5 text-[11px] text-[#a0a8a5]">{t('occurredOnNote', { date: formatDate(`${transaction.occurredOn}T12:00:00`, { day: 'numeric', month: 'short' }) })}</p>}</div><p className={`w-24 text-right text-sm font-semibold tabular-nums ${!spostamento && transaction.amount > 0 ? 'text-[#2d7b65]' : 'text-[#28312f]'}`}>{spostamento ? '' : transaction.amount > 0 ? '+' : '−'}{formatEuro(Math.abs(transaction.amount))}</p>{linkedCount > 0 && <span title={linkedTooltip} aria-label={linkedCount === 1 ? t('ledgerLinkedCount_one') : t('ledgerLinkedCount_other', { count: linkedCount })} className="grid size-7 shrink-0 place-items-center rounded-full bg-[#e5f3ed] text-[#2d7b65]"><LineChartIcon className="size-3.5" /></span>}{onEdit && onDuplicate && onDelete && <div className="flex shrink-0 basis-full justify-end sm:basis-auto"><Button type="button" size="icon" variant="ghost" title={t('edit')} aria-label={`${t('edit')} ${transaction.description}`} onClick={() => onEdit(transaction)}><Pencil className="size-4" /></Button><Button type="button" size="icon" variant="ghost" title={t('duplicate')} aria-label={`${t('duplicate')} ${transaction.description}`} onClick={() => onDuplicate(transaction)}><Copy className="size-4" /></Button>{onSplit && divisibile(transaction) && <Button type="button" size="icon" variant="ghost" title={t('splitRow')} aria-label={`${t('splitRow')} ${transaction.description}`} onClick={() => onSplit(transaction)}><Split className="size-4" /></Button>}<Button type="button" size="icon" variant="ghost" title={t('delete')} aria-label={`${t('delete')} ${transaction.description}`} onClick={() => onDelete(transaction)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button></div>}</div>;
 })
+/* Gli eventi, in fondo alla pagina Movimenti: una riga per evento con i suoi
+   numeri, e aprendola i movimenti e la ripartizione per categoria. Una card e
+   non una voce di menu perche' con pochi eventi l'anno una sezione sua non la
+   merita. Gli eventi chiusi stanno in fondo - li mette in fondo il server. */
+function EventsCard({ events, apiUrl }: { events: EventData[]; apiUrl: string }) {
+  const { t, formatEuro, formatDate } = useI18n();
+  const [aperto, setAperto] = useState<number | null>(null);
+  const [dettagli, setDettagli] = useState<Record<number, EventDetailData>>({});
+  // Il dettaglio si chiede la prima volta che serve: chi non apre niente non
+  // scarica i movimenti di tutti gli eventi.
+  useEffect(() => {
+    if (aperto === null || dettagli[aperto]) return undefined;
+    const controller = new AbortController();
+    fetch(`${apiUrl}/api/events/${aperto}`, { signal: controller.signal })
+      .then((risposta) => risposta.ok ? risposta.json() as Promise<EventDetailData> : Promise.reject(new Error('evento')))
+      .then((dati) => setDettagli((precedenti) => ({ ...precedenti, [aperto]: dati })))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [apiUrl, aperto, dettagli]);
+  // Le date dell'evento non hanno un ordine garantito in creazione, quindi si
+  // mostrano come sono state scritte; senza nemmeno una, si dice cosi'.
+  const periodo = (evento: EventData) => {
+    const giorni = [evento.startDate, evento.endDate].filter((giorno): giorno is string => Boolean(giorno));
+    return giorni.length
+      ? giorni.map((giorno) => formatDate(`${giorno}T12:00:00`, { day: 'numeric', month: 'short', year: 'numeric' })).join(' – ')
+      : t('eventNoDates');
+  };
+  return (
+    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+      <CardHeader><CardTitle className="text-[17px]">{t('eventTitle')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('eventHint')}</p></CardHeader>
+      <CardContent className="px-3 sm:px-6">
+        {!events.length ? <p className="py-8 text-center text-sm text-[#71807c]">{t('eventEmpty')}</p>
+          : <div className="divide-y divide-black/5">{events.map((evento) => <div key={evento.id}>
+            <button type="button" aria-expanded={aperto === evento.id} onClick={() => setAperto((corrente) => corrente === evento.id ? null : evento.id)} className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 py-3.5 text-left">
+              <ChevronDown className={`size-4 shrink-0 text-black/35 transition ${aperto === evento.id ? 'rotate-180' : ''}`} />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2 text-sm font-medium">{evento.name}{evento.closed && <span className="rounded-full bg-[#f4f5f1] px-1.5 text-[10px] font-normal text-[#7b8784]">{t('eventClosedBadge')}</span>}</span>
+                <span className="block truncate text-xs text-[#87918e]">{periodo(evento)} · {evento.movimenti === 1 ? t('eventMovementCount_one') : t('eventMovementCount_other', { count: evento.movimenti })}</span>
+              </span>
+              {/* Speso e incassato restano due numeri separati: un rimborso non
+                  e' un introito, e un totale solo nasconderebbe meta' della
+                  storia. Il netto e' la differenza, come lo calcola il server. */}
+              <span className="text-right text-[11px] text-[#87918e]">{t('eventSpent')}<span className="block text-sm font-semibold tabular-nums text-[#28312f]">{formatEuro(evento.spese)}</span></span>
+              <span className="text-right text-[11px] text-[#87918e]">{t('eventReceived')}<span className="block text-sm font-semibold tabular-nums text-[#2d7b65]">{formatEuro(evento.entrate)}</span></span>
+              <span className="w-24 text-right text-[11px] text-[#87918e]">{t('eventNet')}<span className="block text-sm font-semibold tabular-nums text-[#28312f]">{formatEuro(evento.netto)}</span></span>
+            </button>
+            {aperto === evento.id && <div className="pb-4 pl-8">
+              {!dettagli[evento.id] ? <p className="py-3 text-center text-xs text-[#7b8784]">{t('updating')}</p> : <>
+                <p className="mb-1.5 text-xs font-medium text-[#52615d]">{t('eventByCategory')}</p>
+                <div className="mb-3 divide-y divide-black/5 rounded-xl bg-[#fafaf8] px-3">{dettagli[evento.id].categories.map((voce) => <div key={voce.name} className="flex items-center gap-3 py-1.5 text-xs"><span className="min-w-0 flex-1 truncate">{voce.name || t('eventNoCategory')}</span><span className="tabular-nums text-[#87918e]">{formatEuro(voce.spese)}</span><span className="tabular-nums text-[#2d7b65]">{formatEuro(voce.entrate)}</span></div>)}</div>
+                <div className="divide-y divide-black/5">{dettagli[evento.id].movements.map((movimento) => <TransactionRow key={movimento.id} transaction={movimento} />)}</div>
+              </>}
+            </div>}
+          </div>)}</div>}
+      </CardContent>
+    </Card>
+  );
+}
+
 function CategoryRulesCard({ rules, categories, apiUrl, onChanged }: {
   rules: CategorizationRuleData[]; categories: string[]; apiUrl: string; onChanged: () => void;
 }) {

@@ -1282,6 +1282,18 @@ const it = {
   eventNewPlaceholder: 'Es. Viaggio a Lisbona',
   eventAll: 'Tutti gli eventi',
   eventAttachFailed: 'Movimento salvato, ma l\'evento non è stato agganciato: riapri il movimento e riprova.',
+  eventTitle: 'Eventi',
+  eventHint: 'Un evento taglia le categorie: quanto è costato il viaggio, tutto compreso.',
+  eventEmpty: 'Nessun evento ancora: si crea dal modulo di un movimento, scegliendo "＋ nuovo evento…".',
+  eventNoDates: 'Senza date',
+  eventClosedBadge: 'chiuso',
+  eventSpent: 'Speso',
+  eventReceived: 'Incassato',
+  eventNet: 'Netto',
+  eventMovementCount_one: '1 movimento',
+  eventMovementCount_other: '{{count}} movimenti',
+  eventByCategory: 'Per categoria',
+  eventNoCategory: 'Senza categoria',
 
 };
 
@@ -2529,6 +2541,18 @@ const en: TranslationTable = {
   eventNewPlaceholder: 'E.g. Trip to Lisbon',
   eventAll: 'All events',
   eventAttachFailed: 'Transaction saved, but the event was not attached: reopen the transaction and try again.',
+  eventTitle: 'Events',
+  eventHint: 'An event cuts across categories: what the trip cost, all of it.',
+  eventEmpty: 'No events yet: create one from a movement form, by picking "＋ new event…".',
+  eventNoDates: 'No dates',
+  eventClosedBadge: 'closed',
+  eventSpent: 'Spent',
+  eventReceived: 'Received',
+  eventNet: 'Net',
+  eventMovementCount_one: '1 transaction',
+  eventMovementCount_other: '{{count}} transactions',
+  eventByCategory: 'By category',
+  eventNoCategory: 'No category',
 
 };
 
@@ -3773,6 +3797,18 @@ const de: TranslationTable = {
   eventNewPlaceholder: 'Z. B. Reise nach Lissabon',
   eventAll: 'Alle Ereignisse',
   eventAttachFailed: 'Buchung gespeichert, das Ereignis wurde aber nicht angehängt: öffne die Buchung erneut und versuche es noch einmal.',
+  eventTitle: 'Ereignisse',
+  eventHint: 'Ein Ereignis schneidet die Kategorien: was die Reise gekostet hat, alles zusammen.',
+  eventEmpty: 'Noch kein Ereignis: es entsteht im Formular einer Buchung über "＋ neues Ereignis…".',
+  eventNoDates: 'Ohne Daten',
+  eventClosedBadge: 'geschlossen',
+  eventSpent: 'Ausgegeben',
+  eventReceived: 'Eingenommen',
+  eventNet: 'Netto',
+  eventMovementCount_one: '1 Buchung',
+  eventMovementCount_other: '{{count}} Buchungen',
+  eventByCategory: 'Nach Kategorie',
+  eventNoCategory: 'Ohne Kategorie',
 
 };
 
@@ -5017,6 +5053,18 @@ const es: TranslationTable = {
   eventNewPlaceholder: 'Ej. Viaje a Lisboa',
   eventAll: 'Todos los eventos',
   eventAttachFailed: 'Movimiento guardado, pero el evento no se ha vinculado: vuelve a abrir el movimiento e inténtalo de nuevo.',
+  eventTitle: 'Eventos',
+  eventHint: 'Un evento corta las categorías: cuánto ha costado el viaje, todo incluido.',
+  eventEmpty: 'Todavía no hay eventos: se crean desde el formulario de un movimiento, eligiendo "＋ nuevo evento…".',
+  eventNoDates: 'Sin fechas',
+  eventClosedBadge: 'cerrado',
+  eventSpent: 'Gastado',
+  eventReceived: 'Ingresado',
+  eventNet: 'Neto',
+  eventMovementCount_one: '1 movimiento',
+  eventMovementCount_other: '{{count}} movimientos',
+  eventByCategory: 'Por categoría',
+  eventNoCategory: 'Sin categoría',
 
 };
 
@@ -6281,6 +6329,18 @@ const fr: TranslationTable = {
   eventNewPlaceholder: 'Ex. Voyage à Lisbonne',
   eventAll: 'Tous les événements',
   eventAttachFailed: 'Mouvement enregistré, mais l\'événement n\'a pas été rattaché : rouvre le mouvement et réessaie.',
+  eventTitle: 'Événements',
+  eventHint: 'Un événement coupe les catégories : ce que le voyage a coûté, tout compris.',
+  eventEmpty: 'Pas encore d\'événement : il se crée depuis le formulaire d\'un mouvement, en choisissant « ＋ nouvel événement… ».',
+  eventNoDates: 'Sans dates',
+  eventClosedBadge: 'clôturé',
+  eventSpent: 'Dépensé',
+  eventReceived: 'Encaissé',
+  eventNet: 'Net',
+  eventMovementCount_one: '1 mouvement',
+  eventMovementCount_other: '{{count}} mouvements',
+  eventByCategory: 'Par catégorie',
+  eventNoCategory: 'Sans catégorie',
 
 };
 
