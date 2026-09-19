@@ -357,15 +357,24 @@ test('Analisi: il periodo si dichiara, e cambiandolo i totali cambiano', async (
   await anni.selectOption(String(anno - 1));
   await expect(page.getByText(`dal 01/01/${anno - 1} al 31/12/${anno - 1}`)).toBeVisible();
   await expect(casa.getByRole('cell').nth(1)).toHaveText(/^500\s*€$/);
-  // Le schede annuali sotto non seguono la finestra: seguono un anno solare, e
-  // adesso lo dicono. Se l'anno scelto qui restasse attaccato anche agli ultimi
-  // dodici mesi, la pagina dichiarerebbe una finestra e disegnerebbe un altro
-  // anno - che e' quello che si vedeva: i grafici fermi sull'anno prima.
-  await expect(page.getByText(`su ciascun mese del ${anno - 1}`)).toBeVisible();
+
+  // E le schede mensili scorrono con la finestra: l'ultimo mese dell'asse e'
+  // quello su cui la finestra finisce. Con gli ultimi dodici mesi e' il mese di
+  // oggi, con l'anno scelto e' dicembre. E' il difetto che si vedeva: la pagina
+  // dichiarava una finestra e disegnava i grafici di un altro anno.
+  const MESI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
+  const etichetta = (data: Date) => `${MESI[data.getMonth()]} ${String(data.getFullYear() % 100).padStart(2, '0')}`;
+  const scheda = page.locator('[data-slot="card"]', { has: page.getByText('Budget vs tracciato per mese') });
+  const ultimoMese = () => expect.poll(async () => (await scheda
+    .locator('svg .recharts-cartesian-axis-tick-value').allTextContents())
+    .filter((testo) => /^[A-Z][a-z]{2} \d{2}$/.test(testo)).at(-1));
+  await ultimoMese().toBe(`Dic ${String((anno - 1) % 100).padStart(2, '0')}`);
+  // E la scheda dice il periodo, non un anno: l'anno scritto accanto a un asse
+  // che scorre e' la riga che non torna.
+  await expect(scheda).toContainText('del periodo dichiarato in alto');
 
   await anni.selectOption('last12');
   await expect(casa.getByRole('cell').nth(1)).toHaveText(/^300\s*€$/);
-  await expect(page.getByText(`su ciascun mese del ${anno}`)).toBeVisible();
-  await expect(page.getByText(`su ciascun mese del ${anno - 1}`)).toHaveCount(0);
+  await ultimoMese().toBe(etichetta(fine));
   expect(errori).toEqual([]);
 });

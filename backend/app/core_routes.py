@@ -712,17 +712,19 @@ def summary_breakdown(
     return {"period": _period_label(year, month), "sections": sections, "pie": pie}
 
 
-def _invested_by_month(session: Session, year: int) -> list[dict[str, Any]]:
-    """Denaro nuovo entrato negli strumenti, mese per mese: acquisti meno vendite.
+def _invested_by_month(session: Session, inizio: date, fine: date,
+                       mesi: list[tuple[int, int]]) -> list[dict[str, Any]]:
+    """Denaro nuovo entrato negli strumenti, mese per mese della finestra.
 
     Al netto, perche' un ribilanciamento vende uno strumento per comprarne un
     altro e non e' denaro nuovo: contando solo gli acquisti ogni ribilanciamento
-    sembrerebbe un versamento.
+    sembrerebbe un versamento. I mesi sono quelli della finestra - nel grafico
+    stanno accanto al risparmio, che scorre con lei, e due assi che partono da
+    mesi diversi raccontano due periodi diversi nella stessa figura.
     """
-    monthly = [0.0] * 12
-    rows = session.scalars(
-        select(InvestmentTransaction).where(extract("year", InvestmentTransaction.occurred_on) == year)
-    ).all()
+    versato: dict[tuple[int, int], float] = defaultdict(float)
+    rows = session.scalars(select(InvestmentTransaction).where(
+        InvestmentTransaction.occurred_on >= inizio, InvestmentTransaction.occurred_on <= fine)).all()
     for row in rows:
         # Solo acquisti e vendite. Un dividendo e' reddito del portafoglio, non
         # denaro versato: aggiungerlo qui direbbe che questo mese si e'
@@ -730,8 +732,8 @@ def _invested_by_month(session: Session, year: int) -> list[dict[str, Any]]:
         if row.transaction_type not in ("Buy", "Sell"):
             continue
         amount = num(row.amount)
-        monthly[row.occurred_on.month - 1] += amount if row.transaction_type == "Buy" else -amount
-    return [{"month": MONTHS[i], "amount": round(monthly[i], 2)} for i in range(12)]
+        versato[(row.occurred_on.year, row.occurred_on.month)] += amount if row.transaction_type == "Buy" else -amount
+    return [{"month": etichetta_mese(*chiave), "amount": round(versato.get(chiave, 0.0), 2)} for chiave in mesi]
 
 
 def _finestra_periodo(scope: str, year: int, oggi: date) -> tuple[date, date]:
@@ -781,6 +783,17 @@ def _mediana(valori: list[float]) -> float:
     ordinati = sorted(valori)
     meta = len(ordinati) // 2
     return ordinati[meta] if len(ordinati) % 2 else (ordinati[meta - 1] + ordinati[meta]) / 2
+
+
+def etichetta_mese(anno: int, mese: int) -> str:
+    """Il nome breve del mese con il suo anno: "Ott 25".
+
+    Le schede mensili di Andamento annuale seguono la finestra dichiarata, e una
+    finestra che scorre ne attraversa due: senza l'anno, un asse che comincia a
+    ottobre non dice se quell'ottobre e' quello di adesso o quello di un anno fa.
+    Il formato e' quello che il frontend gia' traduce (`period-label.ts`).
+    """
+    return f"{MONTHS[mese - 1]} {anno % 100:02d}"
 
 
 def _mesi_del_periodo(inizio: date, fine: date, oggi: date) -> list[tuple[int, int]]:
@@ -981,17 +994,22 @@ def analysis(
     category: str | None = Query(None, description="Categoria per Category Analysis; se omessa nessuna transazione viene restituita"),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    """Vista 'Andamento annuale': quattro blocchi sull'anno solare, e il periodo dichiarato accanto.
-    - monthlyBudget: per Income/Expenses/Savings, 12 mesi x {inBudget, remaining, excess},
-      con isCurrentMonth per evidenziare il mese in corso (Budget Dashboard AF52:AN72).
-    - topExpenseCategories: le 10 categorie di spesa maggiori dell'anno, per un treemap
-      (Budget Trends, 'Top 10 impactful Exp. Category').
-    - savingsByMonth: risparmio netto per ciascuno dei 12 mesi (Budget Trends, 'Savings by month').
+    """Vista 'Andamento annuale': il periodo dichiarato, e tutto quello che ci sta dentro.
+    - period: su quale finestra la pagina racconta, date comprese. Da qui in giu'
+      tutto segue questa finestra - con l'anno scelto sono gennaio-dicembre, con
+      gli ultimi dodici mesi i dodici che finiscono con il mese di oggi. Chi
+      legge deve sapere su cosa sono calcolati i numeri: un report che non lo
+      dice costringe a fidarsi, e uno che lo dice e poi disegna un altro periodo
+      e' peggio che non dirlo.
+    - monthlyBudget: per Income/Expenses/Savings, i dodici mesi della finestra x
+      {inBudget, remaining, excess}, con isCurrentMonth per evidenziare il mese in
+      corso (Budget Dashboard AF52:AN72). Etichette con l'anno: "Ott 25".
+    - topExpenseCategories: le 10 categorie di spesa maggiori della finestra, per
+      un treemap (Budget Trends, 'Top 10 impactful Exp. Category').
+    - savingsByMonth: risparmio netto per ciascuno dei dodici mesi della finestra,
+      e `investedByMonth` sugli stessi mesi (Budget Trends, 'Savings by month').
     - categoryTransactions: le 10 transazioni di importo piu' alto per category_type/category
-      nell'anno (Budget Trends, 'Category Analysis' + 'Top 10 Transactions').
-    - period: su quale finestra la pagina racconta, date comprese. I quattro blocchi
-      qui sopra restano annuali; i numeri nuovi no, e chi li legge deve sapere su
-      cosa sono calcolati: un report che non lo dice costringe a fidarsi.
+      nella finestra (Budget Trends, 'Category Analysis' + 'Top 10 Transactions').
     - comparison: il periodo precedente di pari durata, e se i dati cominciano
       abbastanza indietro da poterlo confrontare (`available`, `since`).
     - flow: entrato, uscito e rimasto nel periodo, ciascuno con il periodo prima
@@ -1006,51 +1024,73 @@ def analysis(
     """
     types = ("Income", "Expenses", "Savings")
     today = date.today()
+    inizio, fine = _finestra_periodo(scope, year, today)
+    # Tutti i mesi della finestra, anche quelli non ancora cominciati: e' l'asse
+    # delle schede mensili, e per un anno solare in corso resta a dodici barre
+    # come prima, le ultime mezze vuote.
+    mesi_finestra = _mesi_del_periodo(inizio, fine, fine)
 
-    # Una sola query per tipo per tutto l'anno (grazie a `budget_actual_year`,
-    # che gestisce anche i rimborsi in un'unica sotto-query) invece di dodici
-    # chiamate di `period_total` o `derived_savings` per ciascuno. Sull'analisi
-    # annuale fa la differenza fra una pagina che si apre e una che pensa.
-    speso_per_tipo: dict[str, dict[int, float]] = {t: {} for t in types}
-    for t in types:
-        per_mese_categorie = budget_actual_year(session, year, t)
-        for mese, valori in per_mese_categorie.items():
-            speso_per_tipo[t][mese] = round(sum(valori.values()), 2)
+    # Una sola query per tipo su tutta la finestra (grazie a
+    # `budget_actual_fra_date`, che gestisce anche i rimborsi in un'unica
+    # sotto-query) invece di dodici chiamate di `period_total` o
+    # `derived_savings` per ciascuno. Il risparmio si ricava da entrate meno
+    # spese dello stesso mese: chiederlo al database una terza volta era la
+    # stessa domanda fatta tre volte.
+    speso_fra_date = {t: budget_actual_fra_date(session, inizio, fine, t) for t in ("Income", "Expenses")}
+    entrate_mese = {chiave: round(sum(valori.values()), 2) for chiave, valori in speso_fra_date["Income"].items()}
+    spese_mese = {chiave: round(sum(valori.values()), 2) for chiave, valori in speso_fra_date["Expenses"].items()}
+    risparmio_mese = {chiave: round(entrate_mese.get(chiave, 0.0) - spese_mese.get(chiave, 0.0), 2)
+                      for chiave in set(entrate_mese) | set(spese_mese)}
+    speso_per_tipo: dict[str, dict[tuple[int, int], float]] = {
+        "income": entrate_mese, "expenses": spese_mese, "savings": risparmio_mese}
+
+    # I piani della finestra, una query sola, cercati per anno e mese: a ottobre
+    # 2025 non si applica il budget di ottobre 2026, e in una finestra che scorre
+    # i due convivono.
+    piani = session.scalars(select(BudgetPlan).where(
+        BudgetPlan.period >= date(inizio.year, inizio.month, 1),
+        BudgetPlan.period <= date(fine.year, fine.month, 1))).all()
+    pianificato: dict[tuple[str, int, int], float] = defaultdict(float)
+    for piano in piani:
+        pianificato[(piano.budget_type, piano.period.year, piano.period.month)] += num(piano.amount)
 
     monthly_budget: dict[str, list[dict[str, Any]]] = {}
     for t in types:
-        plans = session.scalars(select(BudgetPlan).where(extract("year", BudgetPlan.period) == year, BudgetPlan.budget_type == t)).all()
-        planned_by_month: dict[int, float] = defaultdict(float)
-        for plan in plans:
-            planned_by_month[plan.period.month] += num(plan.amount)
-        # Per Income/Expenses il tracked viene direttamente dall'aggregazione
-        # annuale; per Savings, che `budget_actual_year` deriva come entrate
-        # meno spese, e' lo stesso numero. Niente piu' loop sui 12 mesi.
         rows = []
-        for m in range(1, 13):
-            tracked = speso_per_tipo[t].get(m, 0.0)
-            budget = round(planned_by_month.get(m, 0), 2)
+        for anno, mese in mesi_finestra:
+            tracked = speso_per_tipo[t.lower()].get((anno, mese), 0.0)
+            budget = round(pianificato.get((t, anno, mese), 0), 2)
             delta = round(budget - tracked, 2)
             rows.append({
-                "month": MONTHS[m - 1],
+                "month": etichetta_mese(anno, mese),
                 "inBudget": round(min(budget, tracked), 2),
                 "remaining": delta if delta > 0 else 0,
                 "excess": round(-delta, 2) if delta < 0 else 0,
-                "isCurrentMonth": year == today.year and m == today.month,
+                # L'unico mese acceso e' quello in corso, e nella finestra che
+                # scorre e' l'ultimo: e' il mese che si sta vivendo adesso.
+                "isCurrentMonth": (anno, mese) == (today.year, today.month),
             })
         monthly_budget[t.lower()] = rows
 
-    expense_categories = _period_category_breakdown(session, year, None, "Expenses")
-    tracked_only = sorted((c for c in expense_categories if c["amount"] > 0), key=lambda c: c["amount"], reverse=True)
-    top_expense_categories = [{"name": c["name"], "value": c["amount"], "color": PIE_COLORS[i % len(PIE_COLORS)]} for i, c in enumerate(tracked_only[:10])]
-
-    savings_by_month = [{"month": MONTHS[m - 1], "amount": speso_per_tipo["Savings"].get(m, 0.0)} for m in range(1, 13)]
-
+    # Le categorie piu' pesanti della finestra, con il valore proprio di
+    # ciascuna: il padre non si porta dietro i figli, che sono righe loro.
+    per_categoria: dict[int, float] = defaultdict(float)
+    for valori in speso_fra_date["Expenses"].values():
+        for categoria_id, importo in valori.items():
+            per_categoria[categoria_id] += importo
     nomi = nomi_categorie(session)
+    pesanti = sorted((voce for voce in per_categoria.items() if voce[1] > 0), key=lambda voce: voce[1], reverse=True)
+    top_expense_categories = [{"name": nomi.get(categoria_id, ""), "value": round(importo, 2),
+                               "color": PIE_COLORS[i % len(PIE_COLORS)]}
+                              for i, (categoria_id, importo) in enumerate(pesanti[:10])]
+
+    savings_by_month = [{"month": etichetta_mese(anno, mese), "amount": risparmio_mese.get((anno, mese), 0.0)}
+                        for anno, mese in mesi_finestra]
+
     category_transactions: list[dict[str, Any]] = []
     if category:
         rows = session.scalars(select(Transaction).where(
-            extract("year", Transaction.effective_on) == year,
+            Transaction.effective_on >= inizio, Transaction.effective_on <= fine,
             Transaction.transaction_type == category_type,
             Transaction.category_id.in_(categoria_per_nome(category)),
             BUDGET_MOVEMENT,
@@ -1058,15 +1098,15 @@ def analysis(
         category_transactions = [{"date": row.effective_on.isoformat(), "amount": num(row.amount),
                                   "description": row.details or nomi.get(row.category_id, "")} for row in rows]
 
-    # Le categorie da scegliere sono quelle dell'anno analizzato e del tipo
+    # Le categorie da scegliere sono quelle del periodo dichiarato e del tipo
     # scelto. Il frontend le prendeva dalla Panoramica, cioe' dal mese
     # selezionato li': una categoria senza movimenti in quel mese non c'era.
     category_options = sorted({nomi.get(categoria_id, "") for categoria_id in session.scalars(
         select(Transaction.category_id).where(
-            extract("year", Transaction.effective_on) == year, Transaction.transaction_type == category_type,
+            Transaction.effective_on >= inizio, Transaction.effective_on <= fine,
+            Transaction.transaction_type == category_type,
             BUDGET_MOVEMENT).distinct()) if nomi.get(categoria_id)}, key=str.casefold)
 
-    inizio, fine = _finestra_periodo(scope, year, today)
     # Il periodo precedente di pari durata, e se c'e' storia abbastanza per
     # confrontarlo. Le due cose viaggiano insieme: "non si confronta" senza dire
     # da quando esistono i dati sarebbe un silenzio, non una risposta.
@@ -1084,7 +1124,6 @@ def analysis(
                                                  confrontabile, today))
 
     return {
-        "year": year,
         "period": {"scope": scope, "from": inizio.isoformat(), "to": fine.isoformat()},
         "comparison": {"from": precedente[0].isoformat(), "to": precedente[1].isoformat(),
                        "available": confrontabile,
@@ -1095,7 +1134,7 @@ def analysis(
         "monthlyBudget": monthly_budget,
         "topExpenseCategories": top_expense_categories,
         "savingsByMonth": savings_by_month,
-        "investedByMonth": _invested_by_month(session, year),
+        "investedByMonth": _invested_by_month(session, inizio, fine, mesi_finestra),
         "categoryTransactions": category_transactions,
         "categoryOptions": category_options,
     }
@@ -1989,19 +2028,33 @@ def budget_actual_year(session: Session, year: int, budget_type: str = "Expenses
         categoria = savings_category_id(session)
         mensili = _totali_mensili(session, year, "Savings")
         return {mese: {categoria: mensili.get(mese, 0.0)} for mese in range(1, 13)}
-    per_mese: dict[int, dict[int, float]] = {mese: defaultdict(float) for mese in range(1, 13)}
-    # Una query per le transazioni "budgeable" dell'anno, aggregate per mese e
+    per_data = budget_actual_fra_date(session, date(year, 1, 1), date(year, 12, 31), budget_type)
+    return {mese: per_data.get((year, mese), {}) for mese in range(1, 13)}
+
+
+def budget_actual_fra_date(session: Session, inizio: date, fine: date,
+                           budget_type: str = "Expenses") -> dict[tuple[int, int], dict[int, float]]:
+    """Lo speso fra due date, mese per mese e categoria per categoria.
+
+    E' `budget_actual_year` senza l'anno: le chiavi sono `(anno, mese)` perche'
+    una finestra di dodici mesi che scorre ne attraversa due, e a ottobre 2025
+    non si applica il budget di ottobre 2026. Una query sola, come la', e i
+    rimborsi si nettono allo stesso modo - sulla data dell'originale.
+    """
+    per_mese: dict[tuple[int, int], dict[int, float]] = defaultdict(lambda: defaultdict(float))
+    # Una query per le transazioni "budgeable" del periodo, aggregate per mese e
     # categoria.
     righe = session.execute(select(
-        extract("month", Transaction.effective_on), Transaction.category_id, Transaction.amount,
+        extract("year", Transaction.effective_on), extract("month", Transaction.effective_on),
+        Transaction.category_id, Transaction.amount,
     ).where(
-        extract("year", Transaction.effective_on) == year,
+        Transaction.effective_on >= inizio, Transaction.effective_on <= fine,
         Transaction.transaction_type == budget_type,
         BUDGET_MOVEMENT,
     )).all()
-    for mese, categoria_id, importo in righe:
+    for anno, mese, categoria_id, importo in righe:
         if categoria_id is not None:
-            per_mese[int(mese)][categoria_id] += float(importo or 0)
+            per_mese[(int(anno), int(mese))][categoria_id] += float(importo or 0)
     # I rimborsi nettono dall'importo della categoria dell'originale nello stesso
     # mese dell'originale (non del rimborso: uno puo' rimborsare a gennaio una
     # spesa di novembre, e il netting va applicato dove il budget era stato
@@ -2011,19 +2064,20 @@ def budget_actual_year(session: Session, year: int, budget_type: str = "Expenses
     if budget_type in {"Income", "Expenses"}:
         Originale = aliased(Transaction, name="originale")
         rimborsi = session.execute(select(
-            extract("month", Originale.effective_on), Originale.category_id, Transaction.amount,
+            extract("year", Originale.effective_on), extract("month", Originale.effective_on),
+            Originale.category_id, Transaction.amount,
         ).join(Originale, Transaction.refund_of_id == Originale.id).where(
             REAL_MOVEMENT,
             Transaction.refund_of_id.is_not(None),
             Originale.counts_in_budget.is_(True),
             Originale.transaction_type == budget_type,
-            extract("year", Originale.effective_on) == year,
+            Originale.effective_on >= inizio, Originale.effective_on <= fine,
         )).all()
-        for mese, categoria_originale, importo in rimborsi:
+        for anno, mese, categoria_originale, importo in rimborsi:
             if categoria_originale is not None:
-                per_mese[int(mese)][categoria_originale] -= float(importo or 0)
-    return {mese: {chiave: round(valore, 2) for chiave, valore in valori.items()}
-            for mese, valori in per_mese.items()}
+                per_mese[(int(anno), int(mese))][categoria_originale] -= float(importo or 0)
+    return {chiave: {categoria: round(valore, 2) for categoria, valore in valori.items()}
+            for chiave, valori in per_mese.items()}
 
 
 @router.get("/api/budgets")

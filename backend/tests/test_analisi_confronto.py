@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core_routes import _finestra_periodo, analysis
 from app.database import Base, reset_current_user, set_current_user
-from app.models import Category, Transaction
+from app.models import BudgetPlan, Category, InvestmentTransaction, Transaction
 from tests.test_categorie_albero import SchemaIsolato
 
 
@@ -115,14 +115,144 @@ class RispostaTests(AnalisiTestBase):
         self.assertEqual("last12", risposta["period"]["scope"])
         self.assertEqual("2025-10-01", risposta["period"]["from"])
         self.assertEqual("2026-09-30", risposta["period"]["to"])
-        # L'anno resta quello delle quattro cose che restano annuali.
-        self.assertEqual(2026, risposta["year"])
 
     def test_con_l_anno_solare_il_periodo_e_l_anno(self) -> None:
         risposta = analysis(2025, "year", "Expenses", None, self.session)
         self.assertEqual("year", risposta["period"]["scope"])
         self.assertEqual("2025-01-01", risposta["period"]["from"])
         self.assertEqual("2025-12-31", risposta["period"]["to"])
+
+
+class SchedeDellaFinestraTests(AnalisiTestBase):
+    """Le quattro schede mensili seguono il periodo dichiarato, non un anno solare.
+
+    Erano l'ultima cosa ferma a gennaio-dicembre: con "ultimi dodici mesi" la
+    pagina dichiarava una finestra (ottobre 2025 - settembre 2026) e disegnava
+    l'anno solare, cioe' dodici mesi diversi da quelli appena dichiarati. Qui si
+    controlla che seguano la finestra: l'asse, il budget di ogni mese, il
+    risparmio, le categorie piu' pesanti e quelle delle tendine.
+
+    Con `oggi` finto al 19 settembre 2026 la finestra scorrevole e' ottobre 2025
+    - settembre 2026; l'anno 2025 e' gennaio-dicembre 2025, e il 2026 tutto
+    intero, ottobre compreso.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.casa = self._radice("Casa")
+        viaggi = self._radice("Viaggi")
+        stipendio = self._radice("Stipendio", scope="income")
+        # Dentro la finestra scorrevole e dentro il 2025.
+        self._movimento(self.casa, "100", date(2025, 10, 5))
+        self._movimento(stipendio, "900", date(2025, 10, 20), tipo="Income")
+        # Fuori dalla finestra scorrevole, dentro il 2025.
+        self._movimento(self.casa, "500", date(2025, 2, 10))
+        # Il mese di oggi, che chiude la finestra.
+        self._movimento(self.casa, "300", date(2026, 9, 10))
+        # Dentro il 2026, fuori dalla finestra: ottobre 2026 non e' cominciato.
+        self._movimento(viaggi, "700", date(2026, 10, 5))
+        # Due piani con lo stesso mese e anni diversi: e' il caso che una
+        # domanda per solo mese sbaglia, e in una finestra che scorre i due
+        # ottobre convivono.
+        self.session.add(BudgetPlan(period=date(2025, 10, 1), budget_type="Expenses",
+                                    category_id=self.casa, amount=Decimal("50")))
+        self.session.add(BudgetPlan(period=date(2026, 10, 1), budget_type="Expenses",
+                                    category_id=self.casa, amount=Decimal("400")))
+        # Un versamento negli strumenti nello stesso periodo del risparmio.
+        self.session.add(InvestmentTransaction(occurred_on=date(2025, 11, 10), name="ETF di prova",
+                                               transaction_type="Buy", amount=Decimal("1000")))
+        self.session.commit()
+
+    def _analisi(self, anno: int = 2026, scope: str = "last12") -> dict:
+        with patch("app.core_routes.date", OggiFinto):
+            return analysis(anno, scope, "Expenses", None, self.session)
+
+    def _riga(self, risposta: dict, etichetta: str) -> dict:
+        return {mese["month"]: mese for mese in risposta["monthlyBudget"]["expenses"]}[etichetta]
+
+    def test_l_asse_e_quello_della_finestra_e_porta_l_anno(self) -> None:
+        """Dodici mesi che partono da ottobre, e ogni etichetta dice il suo anno.
+
+        Senza l'anno, un asse che comincia a ottobre non direbbe se quell'ottobre
+        e' quello di adesso o quello di un anno fa - ed e' esattamente la
+        domanda a cui la pagina risponde con questa finestra.
+        """
+        scorrevole = [mese["month"] for mese in self._analisi()["monthlyBudget"]["expenses"]]
+        self.assertEqual(["Ott 25", "Nov 25", "Dic 25", "Gen 26", "Feb 26", "Mar 26", "Apr 26",
+                          "Mag 26", "Giu 26", "Lug 26", "Ago 26", "Set 26"], scorrevole)
+        solare = [mese["month"] for mese in self._analisi(2025, "year")["monthlyBudget"]["expenses"]]
+        self.assertEqual(["Gen 25", "Feb 25", "Mar 25", "Apr 25", "Mag 25", "Giu 25", "Lug 25",
+                          "Ago 25", "Set 25", "Ott 25", "Nov 25", "Dic 25"], solare)
+
+    def test_il_budget_di_ogni_mese_e_quello_del_suo_anno(self) -> None:
+        """A ottobre 2025 il piano di ottobre 2025, a ottobre 2026 quello suo.
+
+        `inBudget` piu' `remaining` e' il pianificato del mese: la riga dice
+        insieme quanto se ne e' usato e quanto ne resta.
+        """
+        ottobre_25 = self._riga(self._analisi(), "Ott 25")
+        self.assertEqual(50.0, ottobre_25["inBudget"] + ottobre_25["remaining"])
+        self.assertEqual(50.0, ottobre_25["inBudget"])
+        self.assertEqual(50.0, ottobre_25["excess"])
+        ottobre_26 = self._riga(self._analisi(2026, "year"), "Ott 26")
+        self.assertEqual(400.0, ottobre_26["inBudget"] + ottobre_26["remaining"])
+
+    def test_l_ultimo_mese_della_finestra_e_quello_in_corso(self) -> None:
+        """Nella finestra che scorre il mese acceso e' l'ultimo: e' oggi.
+
+        In un anno passato nessun mese e' acceso.
+        """
+        scorrevole = self._analisi()["monthlyBudget"]["expenses"]
+        self.assertEqual([False] * 11 + [True], [mese["isCurrentMonth"] for mese in scorrevole])
+        self.assertEqual("Set 26", scorrevole[-1]["month"])
+        self.assertEqual([False] * 12, [mese["isCurrentMonth"] for mese in self._analisi(2025, "year")["monthlyBudget"]["expenses"]])
+
+    def test_risparmio_e_investito_stanno_sugli_stessi_mesi(self) -> None:
+        """I due grafici si leggono affiancati, indice per indice: stesso asse.
+
+        Il risparmio e' entrate meno spese del mese (900 meno 100 a ottobre
+        2025), non la somma dei movimenti di tipo Savings, che non esistono
+        piu': l'investito e' acquisti meno vendite dello stesso mese.
+        """
+        risposta = self._analisi()
+        risparmio = {mese["month"]: mese["amount"] for mese in risposta["savingsByMonth"]}
+        investito = {mese["month"]: mese["amount"] for mese in risposta["investedByMonth"]}
+        self.assertEqual(800.0, risparmio["Ott 25"])
+        self.assertEqual(0.0, risparmio["Nov 25"])
+        self.assertEqual(0.0, risparmio["Dic 25"])
+        self.assertEqual(1000.0, investito["Nov 25"])
+        self.assertEqual(list(risparmio), list(investito))
+
+    def test_le_categorie_sono_quelle_della_finestra(self) -> None:
+        """Fuori dalla finestra non si vede niente, dentro si vede tutto.
+
+        Viaggi ha una spesa a ottobre 2026, che negli ultimi dodici mesi non
+        c'e': fra le piu' pesanti e fra le categorie da scegliere compare solo
+        guardando il 2026. La prima riga del treemap e' la categoria maggiore
+        della finestra, con il valore della finestra (100 piu' 300).
+        """
+        scorrevole = self._analisi()
+        self.assertEqual([("Casa", 400.0)], [(voce["name"], voce["value"]) for voce in scorrevole["topExpenseCategories"]])
+        self.assertEqual(["Casa"], scorrevole["categoryOptions"])
+        solare = self._analisi(2026, "year")
+        self.assertEqual(["Viaggi", "Casa"], [voce["name"] for voce in solare["topExpenseCategories"]])
+        self.assertEqual(["Casa", "Viaggi"], solare["categoryOptions"])
+
+    def test_le_transazioni_mostrate_sono_quelle_della_finestra(self) -> None:
+        """L'elenco delle transazioni di una categoria taglia come tutto il resto.
+
+        Le stesse due categorie si guardano dalle due finestre: quello che una
+        mostra e l'altra no e' tutto qui.
+        """
+        def elenco(scope: str, categoria: str) -> list[str]:
+            with patch("app.core_routes.date", OggiFinto):
+                risposta = analysis(2026, scope, "Expenses", categoria, self.session)
+            return [voce["date"] for voce in risposta["categoryTransactions"]]
+
+        self.assertEqual(["2026-09-10", "2025-10-05"], elenco("last12", "Casa"))
+        self.assertEqual(["2026-09-10"], elenco("year", "Casa"))
+        self.assertEqual([], elenco("last12", "Viaggi"))
+        self.assertEqual(["2026-10-05"], elenco("year", "Viaggi"))
 
 
 class ConfrontoTests(AnalisiTestBase):

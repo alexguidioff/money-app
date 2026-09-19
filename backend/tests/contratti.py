@@ -131,7 +131,11 @@ def _semina(session: Session) -> None:
     def movimento(**campi: Any) -> None:
         create_transaction(TransactionPayload(**campi), session)
 
-    for mese in (2, 5, 9):
+    # Novembre compreso: e' l'unico di questi mesi dentro gli ultimi dodici mesi
+    # di chi guarda l'analisi a settembre (che partono da ottobre dell'anno
+    # scorso), e senza almeno un movimento li' dentro le categorie e le
+    # transazioni dell'analisi tornerebbero vuote nel file delle risposte.
+    for mese in (2, 5, 9, 11):
         movimento(occurred_on=f"{anno_scorso}-{mese:02d}-10", transaction_type="Income", category="Salary",
                   amount=3000, account_name="Banca")
         movimento(occurred_on=f"{anno_scorso}-{mese:02d}-12", transaction_type="Expenses", category="Housing",
