@@ -5466,7 +5466,23 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
           <div className="flex min-w-0 items-start gap-1.5">
             {padre && <span aria-hidden className="mt-3.5 h-3 w-px shrink-0 bg-[#dfe4e1]" />}
             <div className="min-w-0 flex-1">
-            <Input aria-label={`${t('category')} ${item.categoryLabel}`} disabled={!canEdit} value={draft.category} onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: { ...draft, category: event.target.value } }))} className="h-9 bg-[#fafaf8]" />
+            {/* Si sceglie, non si scrive: un campo libero qui faceva nascere una
+                categoria nuova a ogni errore di battitura, e spostare una riga
+                su un'altra categoria e' l'unica cosa che serve davvero. Le
+                categorie si creano e si rinominano nella scheda Categorie. */}
+            <select aria-label={`${t('category')} ${item.categoryLabel}`} disabled={!canEdit} value={draft.category}
+                    onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: { ...draft, category: event.target.value } }))}
+                    className="h-9 w-full rounded-md border border-input bg-[#fafaf8] px-2 text-sm outline-none focus:border-ring">
+              {/* La sua resta in elenco anche se un'altra riga la usa gia': senza,
+                  una riga aperta si troverebbe la tendina vuota della sua voce. */}
+              {!categorieDelVerso.some((nome) => nome.trim().toLowerCase() === item.category.trim().toLowerCase())
+                && <option value={item.category}>{item.categoryLabel}</option>}
+              {categorieDelVerso.filter((nome) => {
+                const chiave = nome.trim().toLowerCase();
+                return chiave === item.category.trim().toLowerCase()
+                  || !data.items.some((altra) => altra.id !== item.id && altra.category.trim().toLowerCase() === chiave);
+              }).map((nome) => <option key={nome} value={nome}>{nome}</option>)}
+            </select>
             {usefulSuggestion && <button type="button" disabled={!canEdit} title={t('budgetSuggestionTitle', { average: formatEuro(usefulSuggestion.average), max: formatEuro(usefulSuggestion.max) })} onClick={() => setDrafts((current) => ({ ...current, [item.id]: { ...draft, amount: usefulSuggestion.median.toFixed(2) } }))} className="mt-1 text-left text-[11px] leading-4 text-[#397867] hover:underline disabled:cursor-default disabled:text-[#9aa5a2] disabled:no-underline">
               {t('budgetSuggestion', { amount: formatEuro(usefulSuggestion.median), months: usefulSuggestion.monthsWithSpending, total: usefulSuggestion.monthsConsidered })}
             </button>}
