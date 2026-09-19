@@ -34,10 +34,12 @@ CATEGORIE = [
     ("Savings", None, 0, 0),
 ]
 
-# Quante volte ogni categoria compare come spesa e come entrata: serve al test
-# 10, che confronta prima e dopo la migrazione.
-CONTEGGI_PRIMA = {"Housing": (3, 2), "Clothes": (1, 0), "Utilities": (0, 1), "Groceries": (4, 0),
-                  "Other": (1, 0), "Others": (0, 2), "Income": (0, 1), "Da categorizzare": (0, 1)}
+# Quante volte ogni categoria compare come spesa e come entrata: e' quello che
+# il test 10 confronta prima e dopo la migrazione, e viene dalla stessa tabella
+# che riempie il database, cosi' le due cose non possono divergere.
+CONTEGGI_PRIMA = {(nome, verso): quante
+                  for nome, _padre, spese, entrate in CATEGORIE
+                  for verso, quante in (("Expenses", spese), ("Income", entrate)) if quante}
 
 
 class MigrazioneB3bTests(unittest.TestCase):
@@ -98,6 +100,79 @@ class MigrazioneB3bTests(unittest.TestCase):
             chiave = (nomi[movimento.category_id], movimento.transaction_type)
             conteggi[chiave] = conteggi.get(chiave, 0) + 1
         return conteggi
+
+    def test_8_i_bisogni_padri_non_esistono_piu(self):
+        """Needs e Wants erano due dimensioni schiacciate su un asse solo.
+
+        Quello che dicevano e' passato sulle due categorie che contenevano, e le
+        due radici vuote se ne vanno: lasciarle vorrebbe dire lasciare in giro
+        due contenitori che non contengono piu' niente e che qualcuno
+        risceglierebbe per sbaglio.
+        """
+        self.migra()
+        nomi = set(self.categorie())
+        self.assertNotIn("Needs", nomi)
+        self.assertNotIn("Wants", nomi)
+
+    def test_9_housing_radice_e_clothes_sotto_shopping(self):
+        """Le due associazioni dichiarate sopravvivono come attributo.
+
+        Housing torna in cima - sotto di lei ci vanno le sottocategorie della
+        casa - e dice "bisogno"; Clothes diventa una categoria di spesa come le
+        altre sotto Shopping, e dice "piacere". Nessun'altra categoria si porta
+        addosso un giudizio che l'utente non ha dato.
+        """
+        self.migra()
+        categorie = self.categorie()
+        self.assertIsNone(categorie["Housing"].parent_id)
+        self.assertEqual(categorie["Housing"].scope, "expense")
+        self.assertEqual(categorie["Housing"].essenziale, "needs")
+        self.assertEqual(categorie["Clothes"].essenziale, "wants")
+        self.assertEqual(categorie["Clothes"].parent_id, categorie["Shopping"].id)
+        dichiarate = {riga.name for riga in categorie.values() if riga.essenziale is not None}
+        self.assertEqual(dichiarate, {"Housing", "Clothes"})
+
+    def test_10_solo_i_quattordici_movimenti_cambiano_categoria(self):
+        """La regola d'oro: nessun movimento cambia categoria tranne i dichiarati.
+
+        Il confronto e' per nome, non per id: e' quello che l'utente vede nella
+        lista. Le entrate di Housing e Utilities finiscono sugli affitti, quelle
+        del segnaposto su Other Income, e tutto il resto resta identico.
+        """
+        prima = dict(CONTEGGI_PRIMA)
+        self.migra()
+        dopo = {(nome, verso): quante for (nome, verso), quante in self.movimenti_per_categoria().items()}
+        spostate = {("Housing", "Income"), ("Utilities", "Income"), ("Da categorizzare", "Income")}
+        for chiave, quante in prima.items():
+            if chiave in spostate:
+                self.assertEqual(dopo.get(chiave, 0), 0, f"{chiave} doveva svuotarsi")
+            else:
+                self.assertEqual(dopo.get(chiave, 0), quante, f"{chiave} e' cambiata")
+        arrivate = {chiave: quante for chiave, quante in dopo.items()
+                    if chiave[0] in ("Rental Income", "Other Income")}
+        self.assertEqual(dopo[("Rental Income", "Income")], prima[("Housing", "Income")]
+                         + prima[("Utilities", "Income")])
+        self.assertEqual(dopo[("Other Income", "Income")], prima[("Da categorizzare", "Income")])
+        self.assertEqual(sum(arrivate.values()), 4)
+
+    def test_11_due_giri_non_duplicano_niente(self):
+        """La migrazione gira a ogni avvio: il secondo giro non cambia niente.
+
+        E' la Proprieta' che conta di piu' qui: se un giro creasse una radice in
+        piu' o rispostasse un movimento, l'app se ne accorgerebbe solo dopo un
+        riavvio, con l'albero ormai doppio.
+        """
+        self.migra()
+        prima = self.fotografia()
+        self.migra()
+        self.assertEqual(self.fotografia(), prima)
+
+    def fotografia(self):
+        """L'albero come sta: nome, padre, ordine e verso, piu' i movimenti."""
+        nomi = {riga.id: riga.name for riga in self.session.scalars(select(Category))}
+        albero = sorted((riga.name, nomi.get(riga.parent_id), riga.scope, riga.essenziale)
+                        for riga in self.session.scalars(select(Category)))
+        return albero, sorted(self.movimenti_per_categoria().items())
 
     def test_12_ogni_categoria_ha_uno_scope(self):
         """Le colonne nascono con l'ALTER, e nessuna riga resta senza verso.

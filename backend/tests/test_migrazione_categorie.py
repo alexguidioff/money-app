@@ -15,8 +15,14 @@ from sqlalchemy.orm import Session
 from app.database import Base
 from app.interchange import FORMAT_VERSION, build_export
 from app.interchange_import import import_data
-from app.migrations import tracked_changes
+from app.migrations import ALBERO_ENTRATE, ALBERO_SPESE, tracked_changes
 from app.models import Account, BudgetPlan, CategorizationRule, Category, Transaction
+
+# Tutti i nomi che l'app pianta da sola: le due migrazioni girano una dopo
+# l'altra, e per parlare di quello che nasce dalle colonne di testo - cio' che
+# questi test controllano - vanno tolti dal mezzo.
+VOCABOLARIO = (set(ALBERO_SPESE) | set(ALBERO_ENTRATE)
+               | {figlio for figli in (*ALBERO_SPESE.values(), *ALBERO_ENTRATE.values()) for figlio in figli})
 
 
 class MigrazioneCategorieTests(unittest.TestCase):
@@ -63,7 +69,9 @@ class MigrazioneCategorieTests(unittest.TestCase):
         self.session.expire_all()
         radici = self.radici()
         # I nomi vengono da tutti e tre i posti: movimenti, budget e vocabolario.
-        self.assertEqual(set(radici), {"Vitto", "Trasporti", "Casa", "Salute"})
+        # Sono un sottoinsieme e non tutto l'elenco: il vocabolario dell'app lo
+        # pianta la migrazione dei due alberi, che gira subito dopo questa.
+        self.assertTrue({"Vitto", "Trasporti", "Casa", "Salute"} <= set(radici))
         movimenti = self.session.scalars(select(Transaction).order_by(Transaction.id)).all()
         self.assertEqual([riga.category_id for riga in movimenti],
                          [radici["Vitto"].id, radici["Vitto"].id, radici["Trasporti"].id, None, None])
@@ -100,7 +108,11 @@ class MigrazioneCategorieTests(unittest.TestCase):
                          radici["Necessario"].id)
         for nome in ("Vitto", "Trasporti", "Salute"):
             self.assertIsNone(radici[nome].parent_id)
-        self.assertEqual(len(self.session.scalars(select(Category)).all()), 5)
+        # Le cinque categorie nate dalle colonne di testo, e nessuna in piu': le
+        # altre che si vedono le pianta il vocabolario dell'app, non questa
+        # migrazione, che di suo non inventa nessuna gerarchia.
+        nate = {riga.name for riga in self.session.scalars(select(Category))} - VOCABOLARIO
+        self.assertEqual(nate, {"Vitto", "Trasporti", "Casa", "Salute", "Necessario"})
 
     def test_16_le_colonne_di_testo_spariscono_dopo_il_collegamento(self):
         # Una copia che invecchia e' peggio di nessuna copia, ma il nome serve

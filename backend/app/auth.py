@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 
 from .database import (SessionLocal, current_user_id, dimentica_utente_predefinito, get_session,
                        reset_current_user, set_current_user)
+from .migrations import ALBERO_ENTRATE, ALBERO_SPESE
 from .models import AppSetting, Category, LookupOption, User, UserSession
 
 router = APIRouter()
@@ -293,19 +294,29 @@ def prepara_account(user_id: int) -> None:
             for gruppo, valori in OPZIONI_INIZIALI.items():
                 for posizione, valore in enumerate(valori, start=1):
                     sessione.add(LookupOption(user_id=user_id, option_group=gruppo, position=posizione, value=valore))
-            # Le stesse categorie anche come righe dell'albero, radici e senza
-            # figli. Il vocabolario dice quali nomi l'app offre, l'albero quali
-            # esistono: senza questa copia una persona appena creata avrebbe le
-            # tendine piene e l'albero vuoto, e non potrebbe organizzare in
-            # Impostazioni nemmeno una delle categorie che sta usando. Le
-            # gerarchia non si inventa qui piu' di quanto si inventi nella
-            # migrazione: nascono tutte radici, e l'utente le sistema.
+            # Le stesse categorie anche come righe dell'albero. Il vocabolario
+            # dice quali nomi l'app offre, l'albero quali esistono: senza questa
+            # copia una persona appena creata avrebbe le tendine piene e l'albero
+            # vuoto, e non potrebbe organizzare nemmeno una delle categorie che
+            # sta usando.
+            #
+            # I due alberi sono gli stessi che pianta la migrazione su un
+            # database che c'e' gia': qui nascono gia' ordinati, altrimenti una
+            # persona nuova avrebbe un albero piatto e in disordine mentre chi
+            # usa l'app da prima ce l'ha fatto, e la stessa app avrebbe due
+            # forme diverse a seconda di quando ci si e' iscritti.
             posizione_categoria = 0
-            for gruppo in ("categories_expenses", "categories_income", "categories_savings"):
-                for valore in OPZIONI_INIZIALI[gruppo]:
+            for albero, verso in ((ALBERO_SPESE, "expense"), (ALBERO_ENTRATE, "income")):
+                for radice, figli in albero.items():
                     posizione_categoria += 1
-                    sessione.add(Category(user_id=user_id, name=valore, parent_id=None,
-                                          position=posizione_categoria))
+                    padre = Category(user_id=user_id, name=radice, parent_id=None,
+                                     position=posizione_categoria, scope=verso)
+                    sessione.add(padre)
+                    # Il padre serve subito: i figli lo nominano per id.
+                    sessione.flush()
+                    for posizione_figlio, figlio in enumerate(figli, start=1):
+                        sessione.add(Category(user_id=user_id, name=figlio, parent_id=padre.id,
+                                              position=posizione_figlio, scope=verso))
             for posizione, anno_opzione in enumerate(range(anno - 2, anno + 25), start=1):
                 sessione.add(LookupOption(user_id=user_id, option_group="years",
                                           position=posizione, value=str(anno_opzione)))

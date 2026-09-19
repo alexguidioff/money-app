@@ -226,6 +226,8 @@ def tracked_changes(engine: Engine) -> None:
             if "essenziale" not in colonne_cat:
                 conn.execute(text("ALTER TABLE categories ADD COLUMN essenziale VARCHAR(10)"))
 
+            _due_alberi(conn)
+
             # Le colonne di testo hanno fatto il loro giro: i nomi sono
             # diventati righe, i riferimenti puntano agli id, e l'app non le
             # legge piu'. Una copia che invecchia e' peggio di nessuna copia -
@@ -243,6 +245,198 @@ def tracked_changes(engine: Engine) -> None:
                 for colonna in colonne:
                     if colonna in presenti:
                         conn.execute(text(f"ALTER TABLE {tabella} DROP COLUMN {colonna}"))
+
+# --- I due alberi (PIANO-B3b) ------------------------------------------
+# A cosa servono i soldi, e per quali soldi. La voce della mappa e' il nome che
+# la categoria ha gia' ("Travels" e non "Travel", "Study" e non "Education"):
+# il nome non e' un'etichetta da riscrivere, e' la chiave con cui l'import di
+# un estratto conto e l'utente ritrovano la categoria, quindi le voci che
+# esistono restano quelle e le altre nascono accanto.
+#
+# Le sottocategorie vuote si creano lo stesso: costano niente e dicono dove
+# mettere le cose quando capiteranno.
+ALBERO_SPESE: dict[str, list[str]] = {
+    "Housing": ["Rent/Mortgage", "Home Insurance", "Maintenance & Repairs", "Furnishing", "Utilities"],
+    "Groceries": [],
+    "Food & Dining": ["Eating out", "Restaurants", "Coffee Shops", "Food Delivery", "Bars & Alcohol"],
+    "Transportation": ["Car", "Gas & Fuel", "Parking", "Public Transit", "Rideshare & Taxi", "Auto Insurance"],
+    "Entertainment": ["Leisure", "Cardmarket", "Sports", "Games", "Blog", "Streaming Services", "Movies & Events",
+                      "Hobbies"],
+    "Health & Wellness": ["Health", "Insurance", "Medical", "Pharmacy", "Dental", "Vision", "Gym & Fitness"],
+    "Bills & Utilities": ["Recurrings", "Cellular", "Phone", "Internet", "Subscriptions", "Software & Services"],
+    "Shopping": ["Clothes", "Electronics", "Home Goods", "Online Shopping"],
+    "Fees & Charges": ["Commissions", "Bank Fees", "ATM Fees", "Interest Charges", "Late Fees"],
+    "Gifts & Donations": ["Gifts", "Charity"],
+    "Travels": [],
+    "Study": [],
+    "Personal Care": [],
+    "Other Expenses": ["Other", "Da categorizzare"],
+}
+
+ALBERO_ENTRATE: dict[str, list[str]] = {
+    "Employment": ["Salary", "Bonus", "Commission", "Buoni pasto", "Income"],
+    "Self-Employment": ["Freelance", "Business Income"],
+    "Investment Income": ["Dividends", "Interest", "Rental Income", "Capital Gains"],
+    "Other Income": ["Gifts Received", "Refunds", "Reimbursements", "Tax Refund", "Others"],
+}
+
+# Le due associazioni dichiarate: sono le uniche che si sanno, e le uniche che
+# questa migrazione scrive. Un bisogno o un piacere dedotto sarebbe un giudizio
+# dell'utente messo in bocca all'utente.
+DICHIARATE = (("Housing", "needs"), ("Clothes", "wants"))
+
+# L'unica rietichettatura: un'entrata non puo' stare su una categoria di spesa.
+# Housing e Utilities hanno contributi e rimborsi per la casa, e Da
+# categorizzare e' il segnaposto dove sono finiti i movimenti che nessuno ha
+# ancora guardato. Tutto il resto delle entrate resta dov'e'.
+SPOSTAMENTI = (("Housing", "Rental Income"), ("Utilities", "Rental Income"),
+               ("Da categorizzare", "Other Income"))
+
+
+def _categoria_per_nome(conn, user_id: int, nome: str) -> int | None:
+    """L'id della categoria con quel nome, a qualunque livello stia.
+
+    La radice vince sul figlio omonimo, e fra pari vince la riga nata prima:
+    cosi' due giri della migrazione trovano la stessa riga e non ne creano una
+    seconda. Il nome si confronta senza badare alle maiuscole, come dappertutto.
+    """
+    return conn.execute(text(
+        "SELECT id FROM categories WHERE user_id = :u AND lower(name) = lower(:n) "
+        "ORDER BY (parent_id IS NOT NULL), id LIMIT 1"), {"u": user_id, "n": nome}).scalar()
+
+
+def _due_alberi(conn) -> None:
+    """Rimette le categorie nei due alberi di spese ed entrate.
+
+    Tre passi, in quest'ordine, per ogni persona: si disfano i bisogni-padri
+    (erano due dimensioni schiacciate su un asse solo), si piantano gli alberi,
+    e si spostano le entrate rimaste su categorie di spesa. Gira a ogni avvio,
+    quindi ogni passo guarda prima cosa c'e' gia'.
+    """
+    if "user_id" not in _colonne_di(conn, "categories"):
+        return
+    for (user_id,) in conn.execute(text("SELECT DISTINCT user_id FROM categories")).all():
+        _disciogli_bisogni(conn, user_id)
+        for albero, verso in ((ALBERO_SPESE, "expense"), (ALBERO_ENTRATE, "income")):
+            _pianta(conn, user_id, albero, verso)
+        # Un bisogno o un piacere su una categoria di entrate non vuol dire
+        # niente: se una categoria e' finita fra le entrate con un valore
+        # addosso, quel valore resta orfano e va tolto.
+        conn.execute(text("UPDATE categories SET essenziale = NULL WHERE user_id = :u "
+                          "AND scope = 'income' AND essenziale IS NOT NULL"), {"u": user_id})
+        _sposta_le_entrate(conn, user_id)
+
+
+def _disciogli_bisogni(conn, user_id: int) -> None:
+    """Disfa i bisogni-padri: le due categorie tornano radici, le radici spariscono.
+
+    Quello che dicevano non si butta: era l'unica cosa che si sapeva di quelle
+    due categorie, e diventa il valore dichiarato di Housing e Clothes. Se una
+    delle due lo dichiara gia' per conto suo - l'utente l'ha scelto - vince
+    quello.
+
+    Le radici Needs e Wants si cancellano solo se sono rimaste vuote: se
+    qualcuno ci ha attaccato altro, resta dov'e' invece di sparire con quello
+    che conteneva. Una categoria che qualcuno usa non si cancella mai.
+    """
+    for nome, gruppo in DICHIARATE:
+        id_categoria = _categoria_per_nome(conn, user_id, nome)
+        if id_categoria is None:
+            continue
+        riga = conn.execute(text("SELECT parent_id FROM categories WHERE id = :i"),
+                            {"i": id_categoria}).one()
+        conn.execute(text("UPDATE categories SET essenziale = coalesce(essenziale, :g) WHERE id = :i"),
+                     {"g": gruppo, "i": id_categoria})
+        padre = (conn.execute(text("SELECT id, name FROM categories WHERE id = :i"), {"i": riga[0]})
+                 .one_or_none() if riga[0] else None)
+        if padre is not None and padre[1].strip().casefold() in ("needs", "wants"):
+            conn.execute(text("UPDATE categories SET parent_id = NULL WHERE id = :i"), {"i": id_categoria})
+    for radice in ("Needs", "Wants"):
+        id_radice = _categoria_per_nome(conn, user_id, radice)
+        if id_radice is None or _ha_un_padre(conn, id_radice) is not None or _in_uso(conn, id_radice):
+            continue
+        conn.execute(text("DELETE FROM categories WHERE id = :i"), {"i": id_radice})
+
+
+def _in_uso(conn, category_id: int) -> bool:
+    """Se qualcosa pende da quella categoria: figli, movimenti, budget, regole."""
+    for tabella, colonna in (("categories", "parent_id"), ("transactions", "category_id"),
+                             ("budget_plans", "category_id"), ("categorization_rules", "category_id")):
+        if colonna in _colonne_di(conn, tabella):
+            if conn.execute(text(f"SELECT 1 FROM {tabella} WHERE {colonna} = :i LIMIT 1"),
+                            {"i": category_id}).scalar():
+                return True
+    return False
+
+
+def _ha_figli(conn, category_id: int) -> bool:
+    """Se quella categoria ha figli suoi: con un padre in piu' sarebbe un terzo livello."""
+    return bool(conn.execute(text("SELECT 1 FROM categories WHERE parent_id = :i LIMIT 1"),
+                             {"i": category_id}).scalar())
+
+
+def _pianta(conn, user_id: int, albero: dict[str, list[str]], verso: str) -> None:
+    """Crea le voci mancanti di un albero e aggancia quelle che ci sono gia'.
+
+    Una categoria dell'utente che ha lo stesso nome di una voce dell'albero
+    **e' quella voce**: non se ne crea una seconda, e guadagna soltanto il
+    padre e il verso. La gerarchia scritta a mano dall'utente non si tocca:
+    una voce che sta sotto un altro padre resta dove sta, perche' spostarla
+    sarebbe riscrivere una scelta che non e' nostra.
+    """
+    for radice, figli in albero.items():
+        id_radice = _categoria_per_nome(conn, user_id, radice)
+        if id_radice is None:
+            id_radice = conn.execute(text(
+                "INSERT INTO categories (user_id, parent_id, name, position, active, scope) "
+                "VALUES (:u, NULL, :n, 0, true, :v) RETURNING id"),
+                {"u": user_id, "n": radice, "v": verso}).scalar()
+        else:
+            conn.execute(text("UPDATE categories SET scope = :v WHERE id = :i"), {"v": verso, "i": id_radice})
+        for posizione, figlio in enumerate(figli, start=1):
+            id_figlio = _categoria_per_nome(conn, user_id, figlio)
+            if id_figlio is None:
+                conn.execute(text(
+                    "INSERT INTO categories (user_id, parent_id, name, position, active, scope) "
+                    "VALUES (:u, :p, :n, :o, true, :v)"),
+                    {"u": user_id, "p": id_radice, "n": figlio, "o": posizione, "v": verso})
+                continue
+            if id_figlio == id_radice:
+                continue
+            conn.execute(text("UPDATE categories SET scope = :v WHERE id = :i"), {"v": verso, "i": id_figlio})
+            # Solo chi non ha figli propri si sposta: sotto di se' avrebbe un
+            # terzo livello, e l'albero ne ha due. Se ha figli resta dov'e':
+            # un ramo dell'utente vale piu' di una voce dell'elenco. I
+            # movimenti invece non fermano niente: una radice tiene i suoi e
+            # puo' avere figli, e' la regola che questa specifica ripristina.
+            if _ha_figli(conn, id_figlio) or _ha_un_padre(conn, id_figlio) == id_radice:
+                continue
+            conn.execute(text("UPDATE categories SET parent_id = :p WHERE id = :i"),
+                         {"p": id_radice, "i": id_figlio})
+
+
+def _ha_un_padre(conn, category_id: int) -> int | None:
+    return conn.execute(text("SELECT parent_id FROM categories WHERE id = :i"),
+                        {"i": category_id}).scalar()
+
+
+def _sposta_le_entrate(conn, user_id: int) -> None:
+    """Le entrate che stavano su una categoria di spesa vanno dove si dice qui.
+
+    Sono quattordici movimenti in tutto, piu' quelli del segnaposto: e' l'unica
+    cosa che cambia categoria in questa migrazione. Il resto delle entrate resta
+    dov'e', anche dove sembrerebbe fuori posto - smistarle sarebbe indovinare
+    cosa l'utente voleva dire.
+    """
+    for partenza, arrivo in SPOSTAMENTI:
+        id_partenza = _categoria_per_nome(conn, user_id, partenza)
+        id_arrivo = _categoria_per_nome(conn, user_id, arrivo)
+        if id_partenza is None or id_arrivo is None or id_partenza == id_arrivo:
+            continue
+        conn.execute(text("UPDATE transactions SET category_id = :a WHERE user_id = :u "
+                          "AND transaction_type = 'Income' AND category_id = :p"),
+                     {"a": id_arrivo, "p": id_partenza, "u": user_id})
+
 
 def _colonne_di(conn, tabella: str) -> set[str]:
     """Le colonne di una tabella, o niente se la tabella non c'e'.
