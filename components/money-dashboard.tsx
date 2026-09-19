@@ -908,11 +908,17 @@ function MoneyDashboardInner() {
   const overviewMonth = period.scope === 'month' ? period.month : null;
   const [overviewCompareTo, setOverviewCompareTo] = useState<'none' | 'prior_period' | 'prior_year'>('prior_year');
   const [overviewView, setOverviewView] = useState<'panoramica' | 'analisi'>('panoramica');
-  const analysisYear = period.year;
   // L'Analisi e' l'unica a saper raccontare gli ultimi dodici mesi, ed e' la
   // finestra da cui parte: un mese solo non lo sa mostrare, quindi tutto quello
   // che non e' "anno" qui vale "ultimi dodici mesi".
   const analysisScope: 'last12' | 'year' = period.scope === 'year' ? 'year' : 'last12';
+  // Le quattro schede annuali dell'Analisi (budget per mese, categorie piu'
+  // pesanti, risparmio per mese, movimenti per categoria) non seguono la
+  // finestra: seguono un anno solare. Con gli ultimi dodici mesi quell'anno e'
+  // quello in cui la finestra finisce, cioe' oggi: lasciandoci l'ultimo anno
+  // scelto altrove, la pagina dichiarava una finestra e disegnava i grafici di
+  // un altro anno, senza che niente lo dicesse.
+  const analysisYear = analysisScope === 'last12' ? MESE_CORRENTE.anno : period.year;
   const [analysisCategoryType, setAnalysisCategoryType] = useState<'Income' | 'Expenses' | 'Savings'>('Expenses');
   const [analysisCategory, setAnalysisCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -6617,6 +6623,10 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
     invested: data?.investedByMonth[index]?.amount ?? 0,
   }));
   const treemapData = data?.topExpenseCategories.map((c) => ({ name: c.name, size: c.value, fill: c.color })) ?? [];
+  // Le quattro schede annuali lo dicono: l'anno lo prende dalla risposta, cioe'
+  // dallo stesso posto da cui vengono i numeri, cosi' la riga e il grafico non
+  // possono raccontare due anni diversi.
+  const annoSchede = String(data?.year ?? period.year);
 
   return (
     <div className="space-y-5">
@@ -6723,7 +6733,7 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
 
       <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
         <CardHeader className="flex-row items-start justify-between pb-2">
-          <div><CardTitle className="text-[17px]">{t('monthlyBudgetVsTracked')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('monthlyBudgetVsTrackedSubtitle')}</p></div>
+          <div><CardTitle className="text-[17px]">{t('monthlyBudgetVsTracked')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('monthlyBudgetVsTrackedSubtitle', { year: annoSchede })}</p></div>
           <div className="flex gap-1.5">{ANALYSIS_TYPE_TABS.map(([value, labelKey]) => <button key={value} type="button" onClick={() => setBudgetTab(value)} className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${budgetTab === value ? 'bg-[var(--money-primary)] text-white' : 'bg-[#f4f5f1] text-[#66736f] hover:bg-[#eceee8]'}`}>{t(labelKey)}</button>)}</div>
         </CardHeader>
         <CardContent>
@@ -6733,7 +6743,7 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
-          <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('topExpenseCategoriesTitle')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('topExpenseCategoriesSubtitle')}</p></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('topExpenseCategoriesTitle')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('topExpenseCategoriesSubtitle', { year: annoSchede })}</p></CardHeader>
           <CardContent>
             {data && treemapData.length ? (
               <ChartContainer config={{}} className="h-[280px] w-full">
@@ -6754,7 +6764,7 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
         </Card>
 
         <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
-          <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('savingsByMonthTitle')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('savingsByMonthSubtitle')}</p></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('savingsByMonthTitle')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('savingsByMonthSubtitle', { year: annoSchede })}</p></CardHeader>
           <CardContent>
             {data ? (
               <ChartContainer config={savingsConfig} className="h-[280px] w-full">
@@ -6781,7 +6791,7 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
       <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
         <CardHeader className="pb-3">
           <CardTitle className="text-[17px]">{t('categoryAnalysisTitle')}</CardTitle>
-          <p className="mt-1 text-xs text-[#7b8784]">{t('categoryAnalysisSubtitle')}</p>
+          <p className="mt-1 text-xs text-[#7b8784]">{t('categoryAnalysisSubtitle', { year: annoSchede })}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <label className="relative">
               <span className="sr-only">{t('type')}</span>

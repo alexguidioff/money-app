@@ -357,8 +357,15 @@ test('Analisi: il periodo si dichiara, e cambiandolo i totali cambiano', async (
   await anni.selectOption(String(anno - 1));
   await expect(page.getByText(`dal 01/01/${anno - 1} al 31/12/${anno - 1}`)).toBeVisible();
   await expect(casa.getByRole('cell').nth(1)).toHaveText(/^500\s*€$/);
+  // Le schede annuali sotto non seguono la finestra: seguono un anno solare, e
+  // adesso lo dicono. Se l'anno scelto qui restasse attaccato anche agli ultimi
+  // dodici mesi, la pagina dichiarerebbe una finestra e disegnerebbe un altro
+  // anno - che e' quello che si vedeva: i grafici fermi sull'anno prima.
+  await expect(page.getByText(`su ciascun mese del ${anno - 1}`)).toBeVisible();
 
   await anni.selectOption('last12');
   await expect(casa.getByRole('cell').nth(1)).toHaveText(/^300\s*€$/);
+  await expect(page.getByText(`su ciascun mese del ${anno}`)).toBeVisible();
+  await expect(page.getByText(`su ciascun mese del ${anno - 1}`)).toHaveCount(0);
   expect(errori).toEqual([]);
 });
