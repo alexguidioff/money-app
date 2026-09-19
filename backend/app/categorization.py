@@ -17,10 +17,10 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import BudgetPlan, CategorizationRule, LookupOption, Transaction
+from .models import BudgetPlan, Category, CategorizationRule, LookupOption, Transaction
 from .transaction_rules import REAL_MOVEMENT
 
 # La categoria di chi non ne ha una. Sta qui e non in ``main`` perche' la usano
@@ -60,6 +60,31 @@ def categorie_ammesse(session: Session) -> set[str]:
     valori.update(session.scalars(select(Transaction.category).distinct()).all())
     valori.update(session.scalars(select(BudgetPlan.category).distinct()).all())
     return {valore.strip() for valore in valori if valore and valore.strip()}
+
+
+def categoria_da_nome(session: Session, nome: str | None) -> int | None:
+    """L'id della categoria con quel nome, creandola come radice se non c'e'.
+
+    Serve a chi riceve un nome invece di un id: i file di scambio esportati
+    prima che le categorie fossero un albero, e le regole scritte allora. Il
+    segnaposto dei trasferimenti (``"_"``: non ne ha) vale ``None``: creare una
+    categoria chiamata underscore sarebbe un dato inventato.
+
+    Si cerca fra le radici. Un nome ripetuto sotto due padri diversi e'
+    legittimo, quindi senza sapere il padre l'unica risposta non ambigua e' la
+    radice; e se nemmeno quella c'e' il nome e' nuovo, e nasce radice.
+    """
+    nome = (nome or "").strip()
+    if not nome or nome == "_":
+        return None
+    esistente = session.scalar(select(Category.id).where(Category.parent_id.is_(None),
+                                                         func.lower(Category.name) == nome.lower()))
+    if esistente is not None:
+        return esistente
+    radice = Category(parent_id=None, name=nome)
+    session.add(radice)
+    session.flush()
+    return radice.id
 
 
 def normalizza(descrizione: str | None) -> str:

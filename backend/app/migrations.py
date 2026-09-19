@@ -189,8 +189,109 @@ def tracked_changes(engine: Engine) -> None:
                 "WHERE id IN (SELECT transaction_id FROM liability_transaction_details WHERE kind='refund')"))
             conn.execute(text("DELETE FROM liability_transaction_details WHERE kind='refund'"))
 
+        # --- Le categorie diventano un albero (PIANO-B3) --------------------
+        # Finora una categoria non era una riga da nessuna parte: era una
+        # stringa scritta dentro movimenti, budget e regole. Qui nascono le
+        # righe, e i riferimenti passano dall'id. Gira a ogni avvio, quindi
+        # ogni passo guarda prima se l'ha gia' fatto.
+        if inspect(conn).has_table("categories"):
+            _albero_delle_categorie(conn)
+
+def _colonne_di(conn, tabella: str) -> set[str]:
+    """Le colonne di una tabella, o niente se la tabella non c'e'.
+
+    Serve alle migrazioni che devono leggere colonne poi rimosse: su un
+    database creato dopo la rimozione quelle colonne non esistono, e il passo
+    che le legge si salta invece di far fallire tutto l'avvio.
+    """
+    return ({colonna["name"] for colonna in inspect(conn).get_columns(tabella)}
+            if inspect(conn).has_table(tabella) else set())
+
+
+def _albero_delle_categorie(conn) -> None:
+    """Crea le categorie dai nomi scritti nelle colonne, e collega i riferimenti.
+
+    Tre cose, in quest'ordine: le radici, i riferimenti, e le tre associazioni
+    di gruppo che erano gia' dichiarate.
+
+    **Non inventa la gerarchia.** Solo tre categorie hanno un gruppo scritto
+    (``budget_plans.category_group``); le altre ventidue no. Decidere se
+    "Cardmarket" sia un bisogno o un piacere vorrebbe dire inventare un dato
+    dell'utente: l'albero nasce piatto, e i rami li costruisce lui.
+    """
+    letture = []
+    for tabella in ("transactions", "budget_plans"):
+        if "category" in _colonne_di(conn, tabella):
+            letture.append(
+                f"SELECT DISTINCT user_id, trim(category) AS nome FROM {tabella} "
+                "WHERE category IS NOT NULL AND trim(category) NOT IN ('', '_')")
+    if "value" in _colonne_di(conn, "lookup_options"):
+        letture.append(
+            "SELECT DISTINCT user_id, trim(value) AS nome FROM lookup_options "
+            "WHERE option_group IN ('categories_expenses', 'categories_income', 'categories_savings') "
+            "AND trim(value) <> ''")
+    if not letture:
+        return
+
+    # Un nome che esiste gia' non si duplica: e' anche il modo in cui questo
+    # blocco resta innocuo se gira una seconda volta.
+    for user_id, nome in conn.execute(text(" UNION ".join(letture))).all():
+        if conn.execute(text("SELECT 1 FROM categories WHERE user_id = :u AND parent_id IS NULL "
+                             "AND lower(name) = lower(:n)"), {"u": user_id, "n": nome}).scalar():
+            continue
+        conn.execute(text("INSERT INTO categories (user_id, parent_id, name, position, active) "
+                          "VALUES (:u, NULL, :n, 0, true)"), {"u": user_id, "n": nome})
+
+    # I riferimenti: dal nome all'id, solo dove l'id non c'e' gia'. La radice si
+    # cerca per nome, quindi un movimento scritto "Alimentari" continua a
+    # puntare alla stessa categoria anche dopo che qualcuno l'ha rinominata da
+    # un'altra parte della migrazione.
+    for tabella in ("transactions", "budget_plans", "categorization_rules"):
+        colonne = _colonne_di(conn, tabella)
+        if "category" not in colonne or "category_id" not in colonne:
+            continue
+        conn.execute(text(
+            f"UPDATE {tabella} AS t SET category_id = c.id FROM categories c "
+            f"WHERE c.user_id = t.user_id AND c.parent_id IS NULL "
+            f"AND lower(c.name) = lower(trim(t.category)) AND t.category_id IS NULL"))
+        conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{tabella}_category_id ON {tabella} (category_id)"))
+
+    # Le tre associazioni che erano dichiarate diventano rami veri: Needs e
+    # Wants nascono come radici e le categorie ci finiscono sotto. Per "Other"
+    # il nome del gruppo e' anche il nome della categoria, quindi la radice e'
+    # gia' li': crearne una seconda darebbe due voci identiche nell'elenco.
+    if "category_group" in _colonne_di(conn, "budget_plans") and "category" in _colonne_di(conn, "budget_plans"):
+        dichiarati = conn.execute(text(
+            "SELECT DISTINCT user_id, trim(category_group) AS gruppo, trim(category) AS nome "
+            "FROM budget_plans WHERE category_group IS NOT NULL AND trim(category_group) <> '' "
+            "AND category IS NOT NULL AND trim(category) NOT IN ('', '_')")).all()
+        for user_id, gruppo, nome in dichiarati:
+            radice = conn.execute(text("SELECT id FROM categories WHERE user_id = :u AND parent_id IS NULL "
+                                       "AND lower(name) = lower(:n)"), {"u": user_id, "n": gruppo}).scalar()
+            if radice is None:
+                radice = conn.execute(text("INSERT INTO categories (user_id, parent_id, name, position, active) "
+                                           "VALUES (:u, NULL, :n, 0, true) RETURNING id"),
+                                      {"u": user_id, "n": gruppo}).scalar()
+            conn.execute(text("UPDATE categories SET parent_id = :padre "
+                              "WHERE user_id = :u AND parent_id IS NULL AND id <> :padre AND lower(name) = lower(:n)"),
+                         {"padre": radice, "u": user_id, "n": nome})
+
+    # Il vincolo che c'era sui budget (uno per categoria e periodo) resta, sulla
+    # colonna nuova: su Postgres si puo' aggiungere a una tabella esistente, e su
+    # un database appena creato l'ha gia' messo ``create_all``.
+    if conn.dialect.name == "postgresql" and "category_id" in _colonne_di(conn, "budget_plans"):
+        nomi = {vincolo["name"] for vincolo in inspect(conn).get_unique_constraints("budget_plans")}
+        if "budget_plans_period_budget_type_category_id_key" not in nomi:
+            conn.execute(text("ALTER TABLE budget_plans ADD CONSTRAINT "
+                              "budget_plans_period_budget_type_category_id_key "
+                              "UNIQUE (user_id, period, budget_type, category_id)"))
+
+
 # Tabelle i cui dati appartengono a una persona.
 PER_UTENTE = [
+    # Le categorie sono di chi le ha create: senza l'isolamento, l'albero di
+    # una persona comparirebbe nell'elenco di un'altra.
+    "categories",
     "accounts", "budget_plans", "goals", "transactions", "investment_transactions",
     "investment_transaction_details", "transaction_ledger_links", "investment_instruments",
     "app_settings", "lookup_options", "notes",

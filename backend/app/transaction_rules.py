@@ -25,7 +25,9 @@ MISSING = {
     "date": Transaction.occurred_on.is_(None),
     "amount": or_(Transaction.amount.is_(None), Transaction.amount <= 0),
     "account": blank(Transaction.account_name),
-    "category": and_(Transaction.transaction_type.not_in(SPOSTAMENTI), blank(Transaction.category)),
+    # La categoria e' un id: manca quando e' NULL. Gli spostamenti non ne
+    # hanno una e non e' una mancanza.
+    "category": and_(Transaction.transaction_type.not_in(SPOSTAMENTI), Transaction.category_id.is_(None)),
     "destination": or_(and_(Transaction.transaction_type.in_(SPOSTAMENTI),
                        or_(blank(Transaction.destination_name), Transaction.destination_name == Transaction.account_name)),
                        and_(Transaction.transaction_type.in_(["Income", "Expenses"]), ~blank(Transaction.destination_name))),
@@ -45,7 +47,7 @@ def missing_fields(tx):
     if tx.transaction_type in SPOSTAMENTI:
         if not (tx.destination_name or "").strip() or tx.destination_name == tx.account_name:
             fields.append("destination")
-    elif not (tx.category or "").strip():
+    elif tx.category_id is None:
         fields.append("category")
     if tx.transaction_type in {"Income", "Expenses"} and (tx.destination_name or "").strip():
         fields.append("destination")

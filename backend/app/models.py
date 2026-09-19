@@ -180,16 +180,59 @@ class LiabilityTransactionDetail(Base):
     is_classified: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
 
 
+class Category(Base):
+    """Una voce dell'albero delle categorie: una radice o un figlio, niente altro.
+
+    L'albero e' ``parent_id`` che punta a questa stessa tabella, come in
+    Wealthfolio 3.8 (``taxonomy_categories``). Da li' **non** si copiano
+    ``taxonomies`` e ``activity_taxonomy_assignments``: quelle esistono perche'
+    la stessa spesa puo' stare in piu' tassonomie e in piu' categorie insieme.
+    Qui la tassonomia e' una sola e la scelta e' **una categoria per
+    movimento**, quindi una chiave esterna dice la stessa cosa di una tabella
+    di assegnazioni con un vincolo di unicita' - con un join in meno in ogni
+    somma per categoria. Chi confronta i due modelli e "corregge" verso le
+    assegnazioni aggiunge quel join senza aggiungere nessuna informazione.
+
+    Due livelli, non di piu': radice e figlio. Con ventisei categorie un terzo
+    livello non serve a niente e raddoppia i casi da gestire in ogni somma.
+
+    Il gruppo bisogni/piaceri non e' un campo: e' il nome della radice. Stava
+    scritto sulle righe di budget, una per mese, ma descriveva la categoria -
+    la spesa non e' un bisogno a gennaio e un piacere a febbraio.
+
+    Il vincolo di unicita' vale per i figli; per le radici, dove ``parent_id``
+    e' NULL, il database considera le righe diverse fra loro e il controllo lo
+    fa la rotta, che risponde con un codice invece che con un errore di
+    integrita'.
+    """
+
+    __tablename__ = "categories"
+    __table_args__ = (UniqueConstraint("user_id", "parent_id", "name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, default=current_user_id)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    # L'ordine scelto a mano dall'utente, non alfabetico: l'elenco a tendina
+    # deve somigliare a come ragiona lui, non a come ordina il database.
+    position: Mapped[int] = mapped_column(default=0)
+    # Spenta resta nell'elenco dei movimenti vecchi ma non si offre piu' da
+    # scegliere: e' il modo di mettere via una categoria senza riscrivere la
+    # storia di chi l'ha usata.
+    active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+
+
 class BudgetPlan(Base):
     __tablename__ = "budget_plans"
-    __table_args__ = (UniqueConstraint("user_id", "period", "budget_type", "category"),)
+    __table_args__ = (UniqueConstraint("user_id", "period", "budget_type", "category_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, index=True, default=current_user_id)
     period: Mapped[date] = mapped_column(Date, index=True)
     budget_type: Mapped[str] = mapped_column(String(30), index=True)
-    category_group: Mapped[str | None] = mapped_column(String(80))
-    category: Mapped[str] = mapped_column(String(255), index=True)
+    # Il gruppo non c'e' piu': era il nome della radice scritto su ogni riga di
+    # budget, e la radice adesso si legge dall'albero.
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(16, 2), default=0)
 
 
@@ -226,7 +269,10 @@ class Transaction(Base):
     occurred_on: Mapped[date] = mapped_column(Date, index=True)
     effective_on: Mapped[date] = mapped_column(Date, index=True)
     transaction_type: Mapped[str] = mapped_column(String(30), index=True)
-    category: Mapped[str] = mapped_column(String(255), index=True)
+    # La categoria e' un riferimento, non il suo nome scritto dentro: e' quello
+    # che permette di rinominare "Alimentari" senza riscrivere quattromila
+    # movimenti. NULL vuol dire "non ne ha" - un giroconto, per esempio.
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(16, 2))
     account_type: Mapped[str | None] = mapped_column(String(80))
     account_name: Mapped[str | None] = mapped_column(String(255), index=True)
@@ -491,7 +537,9 @@ class CategorizationRule(Base):
     # la spunta accesa e' un'espressione regolare, che si compila una volta
     # sola per import e non una volta per riga.
     is_regex: Mapped[bool] = mapped_column(default=False)
-    category: Mapped[str] = mapped_column(String(255))
+    # Come per i movimenti: la regola punta alla categoria, e rinominarla
+    # aggiorna anche le regole che la nominavano.
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), index=True)
     # Nullo vale per entrambi i tipi: la stessa regola serve a una spesa e a
     # un'entrata con la stessa descrizione.
     transaction_type: Mapped[str | None] = mapped_column(String(30))

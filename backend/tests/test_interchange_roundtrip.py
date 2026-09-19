@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.database import Base
 from app.interchange import SHEETS, build_export
 from app.interchange_import import InterchangeError, import_data
-from app.models import (Account, AppSetting, BudgetPlan, Goal,
+from app.models import (Account, AppSetting, BudgetPlan, Category, Goal,
                         InvestmentInstrument, InvestmentTransaction, InvestmentTransactionDetail,
                         LookupOption, Note, Transaction)
 
@@ -28,20 +28,28 @@ def _populate(session: Session) -> None:
     booleani, decimali, date, campi vuoti e riferimenti fra tabelle."""
     session.add(Account(source_group="bank", name="Conto corrente",
                         starting_balance=Decimal("100.00"), current_balance=Decimal("1234.56"), status="active"))
+    # Un albero di due livelli: una radice con un figlio, e una radice sola.
+    alimentari = Category(parent_id=None, name="Alimentari")
+    session.add_all([alimentari, Category(parent_id=None, name="Stipendio")])
+    session.flush()
+    supermercato = Category(parent_id=alimentari.id, name="Supermercato")
+    session.add(supermercato)
+    session.flush()
     template = Transaction(occurred_on=date(2026, 1, 31), effective_on=date(2026, 1, 31),
-                           transaction_type="Expenses", category="Groceries", amount=Decimal("42.50"),
+                           transaction_type="Expenses", category_id=supermercato.id, amount=Decimal("42.50"),
                            account_type="Bank", account_name="Conto corrente", details=None,
                            balance=Decimal("-63.48"), is_recurring_template=True, recurrence_rule="monthly",
                            recurrence_end_date=date(2026, 12, 31))
     session.add(template)
     session.flush()
     session.add(Transaction(occurred_on=date(2026, 2, 28), effective_on=date(2026, 2, 28),
-                            transaction_type="Income", category="Salary", amount=Decimal("2000.00"),
+                            transaction_type="Income", category_id=session.scalar(select(Category.id).where(Category.name == "Stipendio")),
+                            amount=Decimal("2000.00"),
                             account_type="Bank", account_name="Conto corrente", goal="Investire",
                             balance=Decimal("0"), is_recurring_template=False,
                             recurrence_parent_id=template.id))
-    session.add(BudgetPlan(period=date(2026, 3, 1), budget_type="Expenses", category_group="Casa",
-                           category="Affitto", amount=Decimal("750.00")))
+    session.add(BudgetPlan(period=date(2026, 3, 1), budget_type="Expenses",
+                           category_id=alimentari.id, amount=Decimal("750.00")))
     session.add(Goal(name="Fondo emergenza", starting_amount=Decimal("0"), target_amount=Decimal("10000"),
                      start_date=date(2026, 1, 1), target_date=date(2027, 1, 1)))
     ledger = InvestmentTransaction(occurred_on=date(2026, 1, 15), ticker="VWCE.DE", name="Vanguard All-World",
@@ -85,6 +93,39 @@ class InterchangeRoundTripTests(unittest.TestCase):
             before = [tuple(row) for row in self.source.execute(query)]
             after = [tuple(row) for row in self.target.execute(query)]
             self.assertEqual(before, after, f"il foglio {title} non torna identico")
+
+    def test_i_padri_si_riattaccano_agli_id_nuovi(self) -> None:
+        """Il padre di una categoria e' un riferimento interno: nel file sono id
+        di un altro database. Sono il caso piu' delicato del formato, perche' un
+        figlio appeso a un id che non esiste non fa fallire niente: sparisce
+        dall'albero e basta."""
+        from openpyxl import load_workbook
+        workbook = load_workbook(build_export(self.source))
+        # Id riconoscibili, e diversi da quelli che il database di arrivo
+        # assegnerebbe da solo: un rimappaggio mancato si vede subito.
+        sposta = {"Categorie": ["id", "parent_id"], "Movimenti": ["category_id"],
+                  "Budget": ["category_id"], "RegoleCategoria": ["category_id"]}
+        for titolo, colonne in sposta.items():
+            sheet = workbook[titolo]
+            intestazione = [cella.value for cella in sheet[1]]
+            for riga in range(2, sheet.max_row + 1):
+                for nome in colonne:
+                    cella = sheet.cell(riga, intestazione.index(nome) + 1)
+                    if cella.value is not None:
+                        cella.value = int(cella.value) + 50
+        spostato = BytesIO()
+        workbook.save(spostato)
+        spostato.seek(0)
+
+        import_data(self.target, spostato, source_name="altrove.xlsx")
+        padre = self.target.scalar(select(Category).where(Category.parent_id.is_(None),
+                                                          Category.name == "Alimentari"))
+        figlio = self.target.scalar(select(Category).where(Category.name == "Supermercato"))
+        self.assertNotEqual(padre.id, 51)
+        self.assertEqual(figlio.parent_id, padre.id)
+        self.assertEqual(self.target.scalar(select(Transaction).where(Transaction.is_recurring_template.is_(False))).category_id,
+                         self.target.scalar(select(Category.id).where(Category.name == "Stipendio")))
+        self.assertEqual(self.target.scalar(select(BudgetPlan)).category_id, padre.id)
 
     def test_effective_date_is_recomputed_not_copied(self) -> None:
         """La competenza non viaggia nel file: si ricava dalle impostazioni.

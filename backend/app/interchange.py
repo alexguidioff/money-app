@@ -27,13 +27,13 @@ from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import (Account, AccountValuation, AppSetting, BudgetPlan, CategorizationRule, Event, Goal, IncomeStream,
+from .models import (Account, AccountValuation, AppSetting, BudgetPlan, Category, CategorizationRule, Event, Goal, IncomeStream,
                      RetirementProfile, InvestmentInstrument, InvestmentTransaction,
                      InvestmentTransactionDetail,
                      LiabilityProfile, LiabilityTransactionDetail, LookupOption, Note, Transaction, TransactionEvent,
                      TransactionLedgerLink)
 
-FORMAT_VERSION = "1.9"
+FORMAT_VERSION = "1.10"
 
 
 def _cell(value: Any) -> Any:
@@ -52,6 +52,9 @@ def _cell(value: Any) -> Any:
 
 
 SHEETS: dict[str, tuple[Any, list[str]]] = {
+    # Le categorie vengono prima di chi le nomina: il foglio si legge da solo e
+    # un padre puo' stare in una riga sotto il figlio.
+    "Categorie": (Category, ["id", "parent_id", "name", "position", "active"]),
     "Conti": (Account, ["id", "source_group", "name", "starting_balance", "current_balance", "status",
                         "counts_in_net_worth", "is_active", "is_liquid", "notes", "needs_manual_valuation", "is_broker"]),
     "ValutazioniConti": (AccountValuation, ["id", "account_id", "observed_on", "value", "notes"]),
@@ -62,11 +65,11 @@ SHEETS: dict[str, tuple[Any, list[str]]] = {
     "RateDebiti": (LiabilityTransactionDetail, ["id", "liability_account_id", "transaction_id",
                                                  "refund_of_id", "kind", "principal_amount",
                                                  "interest_amount", "is_classified"]),
-    "Movimenti": (Transaction, ["id", "occurred_on", "transaction_type", "category", "amount", "account_type",
+    "Movimenti": (Transaction, ["id", "occurred_on", "transaction_type", "category_id", "amount", "account_type",
                                 "account_name", "destination_type", "destination_name", "goal", "details",
                                 "balance", "is_recurring_template", "recurrence_rule", "recurrence_end_date",
                                 "recurrence_parent_id", "counts_in_budget", "refund_of_id", "incomplete_accepted"]),
-    "Budget": (BudgetPlan, ["id", "period", "budget_type", "category_group", "category", "amount"]),
+    "Budget": (BudgetPlan, ["id", "period", "budget_type", "category_id", "amount"]),
     "Obiettivi": (Goal, ["id", "name", "starting_amount", "target_amount", "start_date", "target_date", "completed_at", "kind", "target_account"]),
     "ProfiloPensione": (RetirementProfile, ["id", "birth_year", "country", "target_retirement_age",
         "real_return", "return_volatility", "withdrawal_rate", "withdrawal_tax_rate", "inflation", "expense_basis",
@@ -79,7 +82,7 @@ SHEETS: dict[str, tuple[Any, list[str]]] = {
     "CollegamentiLedger": (TransactionLedgerLink, ["id", "transaction_id", "ledger_id"]),
     "Strumenti": (InvestmentInstrument, ["id", "name", "provider_symbol", "isin", "asset_class", "area", "sector",
                                          "currency", "target_weight"]),
-    "RegoleCategoria": (CategorizationRule, ["id", "position", "pattern", "is_regex", "category",
+    "RegoleCategoria": (CategorizationRule, ["id", "position", "pattern", "is_regex", "category_id",
                                               "transaction_type", "min_amount", "max_amount", "active"]),
     "Note": (Note, ["id", "section", "title", "body", "status"]),
     "Impostazioni": (AppSetting, ["key", "label", "value"]),

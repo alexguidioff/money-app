@@ -30,15 +30,24 @@ from openpyxl import load_workbook
 from sqlalchemy import Boolean, Date, DateTime, Integer, Numeric, delete, func, select
 from sqlalchemy.orm import Session
 
+from .categorization import categoria_da_nome
 from .interchange import FORMAT_VERSION, SHEETS
 from .transaction_rules import SPOSTAMENTI, TIPI_MOVIMENTO
 from .models import ImportBatch
 
 # L'ordine conta: le entita' referenziate da altre vengono scritte prima, cosi'
 # il file resta leggibile anche da uno strumento che controlla i riferimenti.
-WRITE_ORDER = ["Conti", "ValutazioniConti", "Debiti", "Movimenti", "RateDebiti", "Budget", "Obiettivi", "LedgerInvestimenti", "DettagliLedger", "CollegamentiLedger",
+# Le categorie stanno in testa: le nominano movimenti, budget e regole, e
+# l'ordine inverso le cancella per ultime, quando nessuno le punta piu'.
+WRITE_ORDER = ["Categorie", "Conti", "ValutazioniConti", "Debiti", "Movimenti", "RateDebiti", "Budget", "Obiettivi", "LedgerInvestimenti", "DettagliLedger", "CollegamentiLedger",
                "Strumenti", "RegoleCategoria", "Note", "Impostazioni", "Opzioni", "ProfiloPensione", "FlussiPensione",
                "Eventi", "EventiMovimenti"]
+
+# Il nome della colonna che portava la categoria quando non era ancora una riga
+# sua. Un file senza la colonna nuova ma con questa si legge lo stesso, e il
+# nome si scioglie in una categoria: cosi' un export fatto prima dell'albero
+# non perde le categorie. Vedi ``_read_sheet`` e ``write_imported_data``.
+NOMI_CATEGORIA_LEGACY = {"Movimenti": "category", "Budget": "category", "RegoleCategoria": "category"}
 
 TRUE_VALUES = {"true", "vero", "1", "si", "yes"}
 FALSE_VALUES = {"false", "falso", "0", "no"}
@@ -57,7 +66,10 @@ def _read_meta(workbook) -> dict[str, Any]:
         raise InterchangeError(f"Formato non riconosciuto: {meta.get('formato')!r}.")
     version = str(meta.get("versione", "")).strip()
     # Il numero maggiore segnala un cambio incompatibile; il minore aggiunge
-    # soltanto colonne, e un file piu' vecchio resta leggibile.
+    # soltanto colonne, e un file piu' vecchio resta leggibile. I numeri si
+    # leggono come numeri: '1.10' viene dopo '1.9', non prima.
+    if not all(parte.isdigit() for parte in version.split(".")):
+        raise InterchangeError(f"Versione del formato non riconosciuta: {version!r}.")
     if version.split(".")[0] != FORMAT_VERSION.split(".")[0]:
         raise InterchangeError(f"Versione del formato non compatibile: {version} (attesa {FORMAT_VERSION}).")
     return meta
@@ -125,6 +137,15 @@ def _read_sheet(workbook, title: str, model, columns: list[str], version: str = 
     }.get(title, {})
     if version in {"1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6"}:
         additions.update(legacy_additions)
+    # Il nome della categoria al posto del suo id: i fogli scritti prima che le
+    # categorie fossero una tabella. Si legge la colonna vecchia e la si tiene
+    # da parte, fuori dalle colonne del modello, perche' la scrittura la
+    # sciolga in una categoria vera e propria.
+    nome_legacy = NOMI_CATEGORIA_LEGACY.get(title)
+    posizione_legacy = (header.index(nome_legacy)
+                        if nome_legacy and nome_legacy in header and "category_id" not in header else None)
+    if posizione_legacy is not None:
+        additions["category_id"] = None
     missing = [name for name in columns if name not in header and name not in additions]
     if missing:
         raise InterchangeError(f"Nel foglio '{title}' mancano le colonne: {', '.join(missing)}.")
@@ -140,6 +161,9 @@ def _read_sheet(workbook, title: str, model, columns: list[str], version: str = 
         try:
             records.append({name: (additions[name] if name not in positions else _coerce(table_columns[name], row[positions[name]] if positions[name] < len(row) else None))
                             for name in columns})
+            if posizione_legacy is not None:
+                valore = row[posizione_legacy] if posizione_legacy < len(row) else None
+                records[-1][nome_legacy] = str(valore).strip() if valore is not None else None
             if title == "Conti" and "is_active" not in header:
                 records[-1]["is_active"] = (records[-1].get("status") or "").strip().lower() not in {"closed", "chiusa"} and (records[-1].get("name") or "").strip().lower() != "soldi da investire"
             if title == "Conti" and "is_liquid" not in header:
@@ -169,11 +193,17 @@ def _check_declared_counts(meta: dict[str, Any], data: dict[str, list]) -> None:
 
 
 REFERENCES = {
+    "Categorie": {"parent_id": "Categorie"},
     "ValutazioniConti": {"account_id": "Conti"},
     "Debiti": {"account_id": "Conti"},
     "RateDebiti": {"liability_account_id": "Conti", "transaction_id": "Movimenti",
                     "refund_of_id": "Movimenti"},
-    "Movimenti": {"recurrence_parent_id": "Movimenti", "refund_of_id": "Movimenti"},
+    # La categoria di un movimento e' un id interno come gli altri: senza
+    # rimappatura un file reimportato in un altro account scriverebbe id che
+    # laggiu' sono di un'altra categoria, o di nessuna.
+    "Movimenti": {"recurrence_parent_id": "Movimenti", "refund_of_id": "Movimenti", "category_id": "Categorie"},
+    "Budget": {"category_id": "Categorie"},
+    "RegoleCategoria": {"category_id": "Categorie"},
     "DettagliLedger": {"transaction_id": "LedgerInvestimenti"},
     "CollegamentiLedger": {"transaction_id": "Movimenti", "ledger_id": "LedgerInvestimenti"},
     "EventiMovimenti": {"transaction_id": "Movimenti", "event_id": "Eventi"},
@@ -194,8 +224,13 @@ def read_and_validate(source: str | Path | BinaryIO) -> tuple[dict, dict]:
         meta = _read_meta(workbook)
         # Prima si legge tutto e si valida, poi si scrive: se il file ha un
         # problema il database resta com'era.
+        # Le categorie sono diventate un foglio proprio nella 1.10: prima erano
+        # il nome scritto dentro movimenti, budget e regole, e di quel nome si
+        # occupa ``_read_sheet``.
+        senza_albero = tuple(int(parte) for parte in str(meta["versione"]).split(".")) < (1, 10)
         data = {title: ([] if title not in workbook.sheetnames
                         and (title == "CollegamentiLedger" and str(meta["versione"]) == "1.0"
+                             or title == "Categorie" and senza_albero
                              or title == "Debiti" and str(meta["versione"]) in {"1.0", "1.1", "1.2"}
                              or title == "RateDebiti" and str(meta["versione"]) in {"1.0", "1.1", "1.2", "1.3"}
                              or title in {"ValutazioniConti", "ProfiloPensione", "FlussiPensione"}
@@ -277,13 +312,29 @@ def write_imported_data(session: Session, meta: dict, data: dict, *, source_name
         objects = []
         for original in records:
             record = {k: v for k, v in original.items() if k != "id"}
+            # I file scritti prima dell'albero portano il nome della categoria
+            # invece del suo id, e il nome si scioglie in una categoria. Va dopo
+            # la rimappatura: qui non c'e' nessun id da rimappare.
+            dal_nome = "category" in record
+            nome = record.pop("category", None) if dal_nome else None
             if title == "Movimenti":
                 record["effective_on"] = record["occurred_on"]
                 record["recurrence_parent_id"] = None
                 record["refund_of_id"] = None
+                # La categoria non punta a un altro movimento: si rimappa qui,
+                # come fanno gli altri fogli. Solo i riferimenti a se stesso
+                # aspettano lo scarico.
+                record["category_id"] = (id_maps["Categorie"][record["category_id"]]
+                                         if record["category_id"] is not None else None)
+            elif title == "Categorie":
+                # Il padre puo' stare in una riga sotto il figlio, e il suo id
+                # nuovo non esiste ancora: si riattacca dopo lo scarico.
+                record["parent_id"] = None
             else:
                 for key, target in REFERENCES.get(title, {}).items():
                     record[key] = id_maps[target][record[key]] if record[key] is not None else None
+            if dal_nome:
+                record["category_id"] = categoria_da_nome(session, nome)
             objects.append(model(**record))
         session.add_all(objects)
         session.flush()
@@ -295,6 +346,10 @@ def write_imported_data(session: Session, meta: dict, data: dict, *, source_name
                 obj.recurrence_parent_id = id_maps[title][parent] if parent is not None else None
                 refund = record["refund_of_id"]
                 obj.refund_of_id = id_maps[title][refund] if refund is not None else None
+        if title == "Categorie":
+            for record, obj in zip(records, objects):
+                parent = record["parent_id"]
+                obj.parent_id = id_maps[title][parent] if parent is not None else None
     session.flush()
 
     # La data di competenza dipende dalle impostazioni, non dal file.
