@@ -22,12 +22,13 @@ from .calculation_engine import (account_balances_at, account_balances_series, a
                                  investment_positions, normalized_name, savings_rate, source_effect)
 from .categorization import MAX_REGOLE, categorie_ammesse, suggest
 from .database import get_session
-from .models import (Account, AppSetting, BudgetPlan, CategorizationRule,
+from .models import (Account, AppSetting, BudgetPlan, CategorizationRule, Event,
                      Goal, InvestmentInstrument, InvestmentTransaction,
                      InvestmentTransactionDetail,
                      InstrumentProfile as InstrumentProfileModel,
                      AccountValuation, LiabilityTransactionDetail,
-                     LookupOption, MarketPrice, Note, Transaction, TransactionLedgerLink)
+                     LookupOption, MarketPrice, Note, Transaction, TransactionEvent,
+                     TransactionLedgerLink)
 from .rendimenti import Flusso, Rendimento, Valutazione, catena, da_cento, twr, xirr
 from .ribilanciamento import PosizionePeso, riequilibrio
 
@@ -43,15 +44,21 @@ def num(value: Decimal | int | float | None) -> float:
     return round(float(value or 0), 2)
 
 
+_EVENTO_NON_CHIESTO = object()
+
+
 def transaction_json(row: Transaction, session: Session | None = None, *,
                      linked: list[dict[str, Any]] | None = None,
-                     liability: dict[str, Any] | None = None) -> dict[str, Any]:
+                     liability: dict[str, Any] | None = None,
+                     evento: dict[str, Any] | None | object = _EVENTO_NON_CHIESTO) -> dict[str, Any]:
     """Un movimento come lo vuole l'interfaccia.
 
     ``linked`` serve a chi ne serializza tanti: le operazioni di portafoglio
     collegate si caricano una volta sola per l'intero elenco e si passano qui
     gia' pronte. Senza, ogni riga si andrebbe a cercare le proprie, che con
-    quattromila movimenti sono quattromila interrogazioni.
+    quattromila movimenti sono quattromila interrogazioni. Come ``evento``, che
+    per lo stesso motivo accetta ``None``: "non appartiene a nessun evento" e'
+    una risposta, "non me l'hai chiesto" e' un'altra.
     """
     amount = num(row.amount)
     signed = amount if row.transaction_type == "Income" else -amount
@@ -78,6 +85,8 @@ def transaction_json(row: Transaction, session: Session | None = None, *,
         "destinationName": row.destination_name, "goal": row.goal, "details": row.details,
         "linkedLedger": linked if linked is not None
                         else (_linked_ledger_for_transactions(session, [row.id]).get(row.id, []) if session is not None else []),
+        "event": (evento if evento is not _EVENTO_NON_CHIESTO
+                  else (_eventi_per_movimenti(session, [row.id]).get(row.id) if session is not None else None)),
         "liabilitySplit": liability if liability is not None
                           else (_liability_details_for_transactions(session, [row.id]).get(row.id) if session is not None else None),
     }
@@ -779,6 +788,7 @@ def transactions(
     incomplete: bool = False,
     ids_only: bool = False,
     budget_only: bool = False,
+    event_id: int | None = None,
 ) -> dict[str, Any]:
     """Una pagina di movimenti, filtrata dal database.
 
@@ -799,6 +809,13 @@ def transactions(
     if budget_only:
         query = query.where(BUDGET_MOVEMENT)
         count_query = count_query.where(BUDGET_MOVEMENT)
+    if event_id is not None:
+        # L'evento si guarda dai suoi agganci, non dalle date: un movimento
+        # pagato fuori dal periodo dell'evento ne fa parte lo stesso.
+        evento_clause = Transaction.id.in_(
+            select(TransactionEvent.transaction_id).where(TransactionEvent.event_id == event_id))
+        query = query.where(evento_clause)
+        count_query = count_query.where(evento_clause)
     if category:
         query = query.where(func.lower(Transaction.category) == category.strip().lower())
         count_query = count_query.where(func.lower(Transaction.category) == category.strip().lower())
@@ -859,6 +876,7 @@ def transactions(
     ids_righe = [row.id for row in rows]
     collegati = _linked_ledger_for_transactions(session, ids_righe)
     rate = _liability_details_for_transactions(session, ids_righe)
+    eventi_dei_movimenti = _eventi_per_movimenti(session, ids_righe)
     # Gli anni con almeno un movimento: servono al menu a tendina, e non
     # dipendono dai filtri attivi - altrimenti filtrando per il 2025 sparirebbe
     # dall'elenco il 2026, cioe' il modo per tornare indietro.
@@ -872,9 +890,285 @@ def transactions(
         select(distinct(Transaction.goal)).where(REAL_MOVEMENT, ~blank(Transaction.goal))
         .order_by(Transaction.goal)).all()]
     refunds = dict(session.execute(select(Transaction.refund_of_id, Transaction.id).where(Transaction.refund_of_id.in_([row.id for row in rows]))).all())
-    return {"items": [{**transaction_json(row, linked=collegati.get(row.id, []), liability=rate.get(row.id)), "refundedById": refunds.get(row.id)} for row in rows],
+    # Gli eventi da mettere nella tendina del filtro e in quella del modulo: come
+    # gli anni e gli obiettivi, non dipendono dai filtri attivi, altrimenti
+    # filtrando per un evento sparirebbero gli altri due.
+    elenco_eventi = [{"id": riga.id, "name": riga.name, "closed": riga.closed} for riga in session.scalars(
+        select(Event).order_by(Event.closed, Event.start_date.is_(None), Event.start_date, Event.id))]
+    return {"items": [{**transaction_json(row, linked=collegati.get(row.id, []), liability=rate.get(row.id),
+                                          evento=eventi_dei_movimenti.get(row.id)), "refundedById": refunds.get(row.id)} for row in rows],
             "total": session.scalar(count_query) or 0,
-            "offset": offset, "limit": limit, "years": anni, "goals": obiettivi}
+            "offset": offset, "limit": limit, "years": anni, "goals": obiettivi,
+            "events": elenco_eventi}
+
+
+# Eventi: quanto e' costato quel viaggio, tutto compreso
+# ---------------------------------------------------------------------------
+#
+# Un evento taglia le categorie invece di essere una categoria: il viaggio non
+# sta solo in "Viaggi", ci sono i ristoranti, i trasporti e la benzina di quei
+# giorni. L'appartenenza e' una riga in `transaction_events` - una sola per
+# movimento - e le date servono a proporre i movimenti del periodo, non a
+# decidere chi ne fa parte.
+
+class EventPayload(BaseModel):
+    """Il nome c'e' sempre; note, date e chiusura si aggiungono dopo."""
+
+    name: str
+    notes: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    closed: bool = False
+
+
+class TransactionEventPayload(BaseModel):
+    """L'evento da agganciare a un movimento. Nullo vuol dire "sgancia"."""
+
+    event_id: int | None = None
+
+
+def _ordine_eventi() -> list[Any]:
+    """Aperti prima, chiusi in fondo, e dentro ognuno per data d'inizio.
+
+    Un evento senza date non si sa quando sia successo e sta in fondo anche fra
+    i chiusi: in mezzo agli altri sembrerebbe cominciato chissa' quando.
+    """
+    return [Event.closed, Event.start_date.is_(None), Event.start_date, Event.id]
+
+
+def _eventi_per_movimenti(session: Session, tx_ids: list[int]) -> dict[int, dict[str, Any]]:
+    """L'evento di ogni movimento, in una interrogazione sola.
+
+    Uno per movimento: la chiave primaria di `transaction_events` e' il
+    movimento stesso, quindi non ci sono due righe fra cui scegliere.
+    """
+    if not tx_ids:
+        return {}
+    righe = session.execute(
+        select(TransactionEvent.transaction_id, Event)
+        .join(Event, Event.id == TransactionEvent.event_id)
+        .where(TransactionEvent.transaction_id.in_(tx_ids))).all()
+    return {tx_id: {"id": evento.id, "name": evento.name, "closed": evento.closed}
+            for tx_id, evento in righe}
+
+
+def _ripartizione_evento(session: Session, event_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+    """Quanto ha pesato ogni categoria dentro ogni evento, in una interrogazione.
+
+    Stessa aritmetica dei conteggi del budget: solo i movimenti che contano
+    (`BUDGET_MOVEMENT`, quindi fuori i giriconti e i modelli delle ricorrenze),
+    e i rimborsi tolti dalla categoria del movimento che rimborsano. Un
+    rimborso agganciato a un evento senza il suo originale non muove niente,
+    come non muove niente nel budget: da solo non e' ne' una spesa ne' un
+    introito.
+
+    La categoria si legge dal campo che esiste adesso: PIANO-B3 la sta
+    portando a un riferimento, e quando sara' fatto si cambia questa riga.
+    Un movimento senza categoria non si perde: entra nella ripartizione con il
+    nome vuoto, che l'interfaccia sa come chiamare.
+    """
+    voci: dict[int, dict[str, dict[str, float]]] = {event_id: defaultdict(lambda: {"spese": 0.0, "entrate": 0.0})
+                                                    for event_id in event_ids}
+    if not event_ids:
+        return {}
+    righe = session.execute(
+        select(TransactionEvent.event_id, Transaction.id, Transaction.category,
+               Transaction.transaction_type, Transaction.amount)
+        .join(Transaction, Transaction.id == TransactionEvent.transaction_id)
+        .where(TransactionEvent.event_id.in_(event_ids), BUDGET_MOVEMENT)).all()
+    # Dove sottrarre il rimborso: la categoria e la parte del movimento che
+    # rimborsa. Un movimento sta in un evento solo, quindi la mappa non si
+    # sovrascrive.
+    originali: dict[int, tuple[int, str, str]] = {}
+    for event_id, tx_id, categoria, tipo, importo in righe:
+        nome = (categoria or "").strip()
+        chiave = "entrate" if tipo == "Income" else "spese"
+        voci[event_id][nome][chiave] += num(importo)
+        originali[tx_id] = (event_id, nome, chiave)
+    if originali:
+        for rimborso in session.scalars(select(Transaction).where(
+                Transaction.refund_of_id.in_(list(originali)), REAL_MOVEMENT)).all():
+            event_id, nome, chiave = originali[rimborso.refund_of_id]
+            voci[event_id][nome][chiave] -= num(rimborso.amount)
+    return {event_id: [{"name": nome, "spese": num(valori["spese"]), "entrate": num(valori["entrate"])}
+                       for nome, valori in sorted(per_categoria.items(), key=_ordine_ripartizione)]
+            for event_id, per_categoria in voci.items()}
+
+
+def _ordine_ripartizione(voce: tuple[str, dict[str, float]]) -> tuple[float, str]:
+    """Prima le categorie che hanno pesato di piu', e a parita' per nome."""
+    return (-voce[1]["spese"], voce[0].casefold())
+
+
+def _numeri_eventi(session: Session, event_ids: list[int]) -> dict[int, dict[str, Any]]:
+    """Movimenti, spese, entrate e netto di ogni evento chiesto.
+
+    I totali sono la somma della ripartizione, non un conto fatto a parte: se
+    le due cose si calcolassero per conto loro, prima o poi una direbbe un
+    numero e l'altra un altro.
+
+    Il numero di movimenti invece conta tutti quelli agganciati, anche quelli
+    che non entrano nei totali: dice quanto materiale c'e' dentro l'evento, e
+    sotto c'e' comunque l'elenco che li mostra tutti.
+    """
+    numeri: dict[int, dict[str, Any]] = {event_id: {"movimenti": 0, "spese": 0.0, "entrate": 0.0}
+                                         for event_id in event_ids}
+    if not event_ids:
+        return numeri
+    for event_id, voci in _ripartizione_evento(session, event_ids).items():
+        for voce in voci:
+            numeri[event_id]["spese"] += voce["spese"]
+            numeri[event_id]["entrate"] += voce["entrate"]
+    for event_id, quanti in session.execute(
+            select(TransactionEvent.event_id, func.count(TransactionEvent.transaction_id))
+            .join(Transaction, Transaction.id == TransactionEvent.transaction_id)
+            .where(TransactionEvent.event_id.in_(event_ids), REAL_MOVEMENT)
+            .group_by(TransactionEvent.event_id)).all():
+        numeri[event_id]["movimenti"] = quanti
+    for valori in numeri.values():
+        valori["spese"], valori["entrate"] = num(valori["spese"]), num(valori["entrate"])
+    return numeri
+
+
+def _evento_json(riga: Event, numeri: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Un evento con i suoi numeri.
+
+    Spese ed entrate restano separate: un viaggio con un rimborso e' costato il
+    lordo meno il rimborso, ma un numero solo nasconderebbe meta' della storia.
+    Il netto e' la differenza, e il suo segno dice da che parte pende.
+    """
+    valori = numeri or {}
+    spese, entrate = num(valori.get("spese")), num(valori.get("entrate"))
+    return {"id": riga.id, "name": riga.name, "notes": riga.notes,
+            "startDate": riga.start_date.isoformat() if riga.start_date else None,
+            "endDate": riga.end_date.isoformat() if riga.end_date else None,
+            "closed": riga.closed, "movimenti": int(valori.get("movimenti") or 0),
+            "spese": spese, "entrate": entrate, "netto": num(entrate - spese)}
+
+
+def _valida_evento(payload: EventPayload, session: Session, *, esistente: Event | None = None) -> None:
+    """Le regole che valgono sia creando sia rinominando."""
+    nome = (payload.name or "").strip()
+    if not nome:
+        raise HTTPException(status_code=422, detail="eventNameRequired")
+    if payload.start_date and payload.end_date and payload.end_date < payload.start_date:
+        raise HTTPException(status_code=422, detail="eventDateRange")
+    # Il vincolo sulla tabella c'e' gia' e resta come rete per due salvataggi
+    # simultanei; questo lo anticipa per rispondere con un codice invece che con
+    # un errore di integrita', e vale anche rinominando un evento che esiste.
+    condizione = [Event.name == nome]
+    if esistente is not None:
+        condizione.append(Event.id != esistente.id)
+    if session.scalar(select(Event.id).where(*condizione)) is not None:
+        raise HTTPException(status_code=422, detail="eventDuplicate")
+
+
+@router.get("/api/events")
+def events(session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Tutti gli eventi con i loro numeri: e' quello che si vede nella card."""
+    righe = session.scalars(select(Event).order_by(*_ordine_eventi())).all()
+    numeri = _numeri_eventi(session, [riga.id for riga in righe])
+    return {"items": [_evento_json(riga, numeri.get(riga.id)) for riga in righe]}
+
+
+@router.post("/api/events", status_code=201)
+def create_event(payload: EventPayload, session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Crea un evento: nasce aperto, vuoto e senza date se non gliele dai."""
+    _valida_evento(payload, session)
+    riga = Event(name=payload.name.strip(), notes=payload.notes,
+                 start_date=payload.start_date, end_date=payload.end_date, closed=payload.closed)
+    session.add(riga)
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(status_code=422, detail="eventDuplicate") from error
+    return _evento_json(riga)
+
+
+@router.put("/api/events/{event_id}")
+def update_event(event_id: int, payload: EventPayload, session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Rinomina, sposta nel tempo, chiude o riapre. I movimenti restano dove sono."""
+    riga = session.get(Event, event_id)
+    if riga is None:
+        raise HTTPException(status_code=404, detail="eventNotFound")
+    _valida_evento(payload, session, esistente=riga)
+    riga.name, riga.notes = payload.name.strip(), payload.notes
+    riga.start_date, riga.end_date = payload.start_date, payload.end_date
+    riga.closed = payload.closed
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(status_code=422, detail="eventDuplicate") from error
+    return _evento_json(riga, _numeri_eventi(session, [riga.id]).get(riga.id))
+
+
+@router.delete("/api/events/{event_id}")
+def delete_event(event_id: int, session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Elimina l'evento e i suoi agganci. I movimenti restano tutti.
+
+    Un viaggio cancellato non deve portarsi via le spese: sono soldi spesi
+    davvero, con la loro categoria e il loro posto nei conti. Gli agganci se ne
+    vanno con l'evento per via della chiave esterna.
+    """
+    riga = session.get(Event, event_id)
+    if riga is None:
+        raise HTTPException(status_code=404, detail="eventNotFound")
+    session.delete(riga)
+    session.commit()
+    return {"success": True}
+
+
+@router.get("/api/events/{event_id}")
+def event_detail(event_id: int, session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Il dettaglio: i movimenti agganciati e la ripartizione per categoria."""
+    riga = session.get(Event, event_id)
+    if riga is None:
+        raise HTTPException(status_code=404, detail="eventNotFound")
+    movimenti = session.scalars(
+        select(Transaction).join(TransactionEvent, TransactionEvent.transaction_id == Transaction.id)
+        .where(TransactionEvent.event_id == event_id, REAL_MOVEMENT)
+        .order_by(Transaction.effective_on, Transaction.id)).all()
+    ids = [movimento.id for movimento in movimenti]
+    collegati = _linked_ledger_for_transactions(session, ids)
+    rate = _liability_details_for_transactions(session, ids)
+    eventi_dei_movimenti = _eventi_per_movimenti(session, ids)
+    rimborsati = dict(session.execute(select(Transaction.refund_of_id, Transaction.id).where(
+        Transaction.refund_of_id.in_(ids))).all())
+    return {"event": _evento_json(riga, _numeri_eventi(session, [riga.id]).get(riga.id)),
+            "movements": [{**transaction_json(row, linked=collegati.get(row.id, []), liability=rate.get(row.id),
+                                              evento=eventi_dei_movimenti.get(row.id)),
+                           "refundedById": rimborsati.get(row.id)} for row in movimenti],
+            "categories": _ripartizione_evento(session, [riga.id]).get(riga.id, [])}
+
+
+@router.put("/api/transactions/{tx_id}/event")
+def set_transaction_event(tx_id: int, payload: TransactionEventPayload,
+                          session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Aggancia un movimento a un evento, o lo sgancia con `event_id` nullo.
+
+    Uno solo per movimento: agganciarlo a un secondo evento sostituisce il
+    primo, non ne aggiunge uno. Un movimento che starebbe in due viaggi e' un
+    movimento da dividere, e dividerlo in due questa app la sa gia' fare.
+    """
+    tx = session.get(Transaction, tx_id)
+    if tx is None:
+        raise HTTPException(status_code=404, detail="movementNotFound")
+    aggancio = session.get(TransactionEvent, tx_id)
+    if payload.event_id is None:
+        if aggancio is not None:
+            session.delete(aggancio)
+    else:
+        evento = session.get(Event, payload.event_id)
+        if evento is None:
+            raise HTTPException(status_code=404, detail="eventNotFound")
+        if aggancio is None:
+            session.add(TransactionEvent(transaction_id=tx_id, event_id=evento.id))
+        else:
+            aggancio.event_id = evento.id
+    session.commit()
+    return {"success": True, "transaction": transaction_json(tx, session)}
 
 
 def movimenti_per_saldi(session: Session) -> list[Any]:

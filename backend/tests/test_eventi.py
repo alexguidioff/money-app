@@ -18,20 +18,47 @@ import os
 import unittest
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import create_engine, func, select, text
+from fastapi import HTTPException
+from sqlalchemy import create_engine, event, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core_routes import (EventPayload, TransactionEventPayload, create_event, delete_event, event_detail,
+                             events, set_transaction_event, transactions, update_event)
 from app.database import Base, reset_current_user, set_current_user
 from app.interchange import build_export
 from app.interchange_import import import_data
+from app.main import delete_transaction
 from app.models import Event, Transaction, TransactionEvent
+from app.transaction_rules import set_refund
+
+
+def _chiavi_esterne_accese(connessione, _record) -> None:
+    """Su sqlite le chiavi esterne nascono spente, e il cascade non si vedrebbe.
+
+    In produzione il database e' PostgreSQL e le applica sempre: qui vanno
+    accese a mano, o il test degli agganci che spariscono passerebbe anche se
+    il database non li togliesse affatto.
+    """
+    connessione.execute("PRAGMA foreign_keys=ON")
+
+
+def _motore_con_chiavi_esterne():
+    motore = create_engine("sqlite://")
+    event.listen(motore, "connect", _chiavi_esterne_accese)
+    return motore
 
 
 def _evento(nome: str = "Viaggio a Lisbona", **kwargs) -> Event:
     return Event(name=nome, **kwargs)
+
+
+def _categoria(movimento: Transaction) -> str:
+    """La categoria di un movimento, letta dal campo che esiste (PIANO-B3)."""
+    return movimento.category if "category" in Transaction.__table__.columns else ""
 
 
 def _movimento(quando: date = date(2026, 4, 3), tipo: str = "Expenses", importo: str = "80.00",
@@ -56,7 +83,7 @@ class EventiTests(unittest.TestCase):
     """Le due tabelle e le loro regole, senza passare dalle rotte."""
 
     def setUp(self):
-        self.engine = create_engine("sqlite://")
+        self.engine = _motore_con_chiavi_esterne()
         Base.metadata.create_all(self.engine)
         self.session = Session(self.engine)
         self.utente = set_current_user(1)
@@ -80,6 +107,12 @@ class EventiTests(unittest.TestCase):
         self.assertIsNone(evento.end_date)
         self.assertFalse(evento.closed)
 
+        # E dalla rotta si vede lo stesso: zero movimenti, totali a zero.
+        creato = create_event(EventPayload(name="Trasloco"), self.session)
+        riga = next(voce for voce in events(self.session)["items"] if voce["id"] == creato["id"])
+        self.assertEqual({"movimenti": 0, "spese": 0.0, "entrate": 0.0, "netto": 0.0},
+                         {chiave: riga[chiave] for chiave in ("movimenti", "spese", "entrate", "netto")})
+
     def test_due_eventi_con_lo_stesso_nome_per_lo_stesso_utente_sono_rifiutati(self):
         self.session.add_all([_evento("Trasloco"), _evento("Trasloco")])
         with self.assertRaises(IntegrityError):
@@ -97,10 +130,15 @@ class EventiTests(unittest.TestCase):
 
 
 class RoundtripEventiTests(unittest.TestCase):
-    """Un viaggio con i suoi movimenti deve sopravvivere a export e ritorno."""
+    """Un viaggio con i suoi movimenti deve sopravvivere a export e ritorno.
+
+    Con le chiavi esterne accese l'import deve anche svuotare le tabelle
+    nell'ordine giusto: gli agganci prima dei movimenti e degli eventi che
+    nominano, o la cancellazione non passerebbe.
+    """
 
     def setUp(self):
-        self.engines = [create_engine("sqlite://"), create_engine("sqlite://")]
+        self.engines = [_motore_con_chiavi_esterne(), _motore_con_chiavi_esterne()]
         for engine in self.engines:
             Base.metadata.create_all(engine)
         self.partenza, self.arrivo = (Session(engine) for engine in self.engines)
@@ -143,6 +181,182 @@ class RoundtripEventiTests(unittest.TestCase):
         self.assertEqual({eventi[0].id}, {a.event_id for a in agganci})
         self.assertEqual(set(movimenti), {a.transaction_id for a in agganci})
         self.assertEqual(set(), {a.transaction_id for a in agganci} & {11, 12})
+
+
+class ConteggiEventiTests(unittest.TestCase):
+    """I numeri di un evento, visti dalle rotte e non dalle tabelle.
+
+    I casi sono quelli del §8 di PIANO-B5-EVENTI: qui stanno i conteggi e le
+    regole delle rotte, sopra le tabelle e il giro dell'export.
+    """
+
+    def setUp(self):
+        self.engine = _motore_con_chiavi_esterne()
+        Base.metadata.create_all(self.engine)
+        self.session = Session(self.engine)
+        self.utente = set_current_user(1)
+
+    def tearDown(self):
+        reset_current_user(self.utente)
+        self.session.close()
+        self.engine.dispose()
+
+    def _salva_movimento(self, **kwargs: Any) -> Transaction:
+        movimento = _movimento(**kwargs)
+        self.session.add(movimento)
+        self.session.commit()
+        return movimento
+
+    def _evento_creato(self, nome: str = "Viaggio a Lisbona", **kwargs: Any) -> dict[str, Any]:
+        return create_event(EventPayload(name=nome, **kwargs), self.session)
+
+    def _aggancia(self, movimento: Transaction, evento: dict[str, Any]) -> None:
+        set_transaction_event(movimento.id, TransactionEventPayload(event_id=evento["id"]), self.session)
+
+    def _riga(self, evento: dict[str, Any]) -> dict[str, Any]:
+        return next(voce for voce in events(self.session)["items"] if voce["id"] == evento["id"])
+
+    def _agganci(self) -> int:
+        return self.session.scalar(select(func.count()).select_from(TransactionEvent)) or 0
+
+    def test_un_movimento_agganciato_fa_il_suo_importo(self):
+        viaggio = self._evento_creato()
+        pranzo = self._salva_movimento(importo="80.00")
+        self._aggancia(pranzo, viaggio)
+
+        riga = self._riga(viaggio)
+        self.assertEqual(80.0, riga["spese"])
+        self.assertEqual(0.0, riga["entrate"])
+        self.assertEqual(-80.0, riga["netto"])
+        self.assertEqual(1, riga["movimenti"])
+        # E il movimento dice a quale evento appartiene: e' la pastiglia che si
+        # vede nella lista.
+        in_lista = next(voce for voce in transactions(100, self.session)["items"] if voce["id"] == str(pranzo.id))
+        self.assertEqual({"id": viaggio["id"], "name": "Viaggio a Lisbona", "closed": False}, in_lista["event"])
+
+    def test_spese_ed_entrate_restano_separate_e_il_netto_e_la_differenza(self):
+        viaggio = self._evento_creato()
+        self._aggancia(self._salva_movimento(importo="300.00"), viaggio)
+        self._aggancia(self._salva_movimento(tipo="Income", importo="100.00"), viaggio)
+
+        riga = self._riga(viaggio)
+        self.assertEqual(300.0, riga["spese"])
+        self.assertEqual(100.0, riga["entrate"])
+        self.assertEqual(-200.0, riga["netto"])
+        # Un rimborso non e' un introito e la spesa non sparisce: sommare tutto
+        # in un numero solo nasconderebbe meta' della storia.
+        self.assertEqual(2, riga["movimenti"])
+
+    def test_un_movimento_sta_in_un_evento_solo(self):
+        primo = self._evento_creato("Trasloco")
+        secondo = self._evento_creato()
+        spesa = self._salva_movimento(importo="80.00")
+        self._aggancia(spesa, primo)
+        self._aggancia(spesa, secondo)
+
+        self.assertEqual(1, self._agganci())
+        self.assertEqual(0, self._riga(primo)["movimenti"])
+        self.assertEqual(80.0, self._riga(secondo)["spese"])
+
+    def test_sganciare_lascia_il_movimento_dov_era(self):
+        viaggio = self._evento_creato()
+        spesa = self._salva_movimento(importo="80.00")
+        prima = _categoria(spesa)
+        self._aggancia(spesa, viaggio)
+        set_transaction_event(spesa.id, TransactionEventPayload(event_id=None), self.session)
+
+        self.assertEqual(0, self._agganci())
+        self.assertEqual(0, self._riga(viaggio)["movimenti"])
+        dopo = self.session.get(Transaction, spesa.id)
+        self.assertIsNotNone(dopo, "sganciare non deve toccare il movimento")
+        self.assertEqual(prima, _categoria(dopo))
+        self.assertEqual([None], [voce["event"] for voce in transactions(100, self.session)["items"]])
+
+    def test_cancellare_l_evento_lascia_i_movimenti(self):
+        viaggio = self._evento_creato()
+        spesa = self._salva_movimento(importo="80.00")
+        self._aggancia(spesa, viaggio)
+        delete_event(viaggio["id"], self.session)
+
+        self.assertEqual(0, self._agganci())
+        self.assertEqual(1, self.session.scalar(select(func.count()).select_from(Transaction)))
+        self.assertEqual([], events(self.session)["items"])
+
+    def test_cancellare_il_movimento_porta_via_l_aggancio(self):
+        viaggio = self._evento_creato()
+        spesa = self._salva_movimento(importo="80.00")
+        self._aggancia(spesa, viaggio)
+        delete_transaction(spesa.id, self.session)
+
+        # Non c'e' codice che cancelli l'aggancio: lo fa la chiave esterna, ed e'
+        # per questo che il test accende le chiavi esterne su sqlite.
+        self.assertEqual(0, self._agganci())
+        self.assertEqual({"movimenti": 0, "spese": 0.0},
+                         {chiave: self._riga(viaggio)[chiave] for chiave in ("movimenti", "spese")})
+
+    def test_un_movimento_fuori_dalle_date_si_aggancia_lo_stesso(self):
+        viaggio = self._evento_creato(start_date=date(2026, 4, 1), end_date=date(2026, 4, 8))
+        acconto = self._salva_movimento(quando=date(2026, 1, 15), importo="120.00")
+        self._aggancia(acconto, viaggio)
+
+        # Le date propongono i movimenti del periodo, non decidono chi ne fa
+        # parte: l'acconto pagato a gennaio e' del viaggio di aprile.
+        self.assertEqual(120.0, self._riga(viaggio)["spese"])
+        self.assertEqual(1, transactions(100, self.session, event_id=viaggio["id"])["total"])
+
+    def test_i_movimenti_che_non_contano_nel_budget_non_contano_neanche_qui(self):
+        viaggio = self._evento_creato()
+        spesa = self._salva_movimento(importo="200.00")
+        rimborso = self._salva_movimento(tipo="Income", importo="50.00")
+        set_refund(self.session, rimborso, spesa.id)
+        fuori_budget = self._salva_movimento(importo="999.00")
+        fuori_budget.counts_in_budget = False
+        self.session.commit()
+        self._aggancia(spesa, viaggio)
+        self._aggancia(fuori_budget, viaggio)
+        self._aggancia(rimborso, viaggio)
+
+        riga = self._riga(viaggio)
+        # Il rimborso non e' un introito: toglie 50 dalle spese, che erano 200.
+        # Il movimento fuori budget non entra in nessuno dei due numeri, come non
+        # entra nel budget.
+        self.assertEqual(150.0, riga["spese"])
+        self.assertEqual(0.0, riga["entrate"])
+        self.assertEqual(-150.0, riga["netto"])
+        # Il numero di movimenti invece li conta tutti e tre: dice quanto
+        # materiale c'e' dentro, e l'elenco li mostra tutti.
+        self.assertEqual(3, riga["movimenti"])
+
+        dettaglio = event_detail(viaggio["id"], self.session)
+        self.assertEqual(150.0, round(sum(voce["spese"] for voce in dettaglio["categories"]), 2))
+        self.assertEqual(0.0, round(sum(voce["entrate"] for voce in dettaglio["categories"]), 2))
+        self.assertEqual(3, len(dettaglio["movements"]))
+
+    def test_lo_stesso_nome_si_rifiuta_e_il_nome_vuoto_anche(self):
+        self._evento_creato("Trasloco")
+        with self.assertRaises(HTTPException) as errore:
+            self._evento_creato("Trasloco")
+        self.assertEqual("eventDuplicate", errore.exception.detail)
+        with self.assertRaises(HTTPException) as vuoto:
+            self._evento_creato("   ")
+        self.assertEqual("eventNameRequired", vuoto.exception.detail)
+        # Un evento che non c'e' non si rinomina ne' si cancella.
+        for chiamata in (lambda: update_event(999, EventPayload(name="X"), self.session),
+                         lambda: delete_event(999, self.session)):
+            with self.assertRaises(HTTPException) as mancante:
+                chiamata()
+            self.assertEqual("eventNotFound", mancante.exception.detail)
+
+    def test_gli_eventi_chiusi_scendono_in_fondo(self):
+        aperto = self._evento_creato("Trasloco", start_date=date(2026, 5, 1))
+        chiuso = self._evento_creato("Viaggio a Lisbona", start_date=date(2026, 4, 1))
+        update_event(chiuso["id"], EventPayload(name="Viaggio a Lisbona", closed=True), self.session)
+
+        # La card li mostra cosi', e la tendina del modulo prende solo gli
+        # aperti: un evento finito non e' piu' qualcosa a cui stai lavorando.
+        self.assertEqual([aperto["id"], chiuso["id"]], [voce["id"] for voce in events(self.session)["items"]])
+        self.assertEqual([aperto["id"]], [voce["id"] for voce in transactions(100, self.session)["events"]
+                                          if not voce["closed"]])
 
 
 @unittest.skipUnless(os.getenv("MONEY_TEST_POSTGRES") == "1", "requires isolated PostgreSQL schema")

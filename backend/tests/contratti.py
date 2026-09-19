@@ -39,11 +39,13 @@ from sqlalchemy.orm import Session
 from app import backup
 from app.auth import OPZIONI_INIZIALI
 from app.categorization import suggest
-from app.core_routes import (RuleBulkPayload, RulePayload, accounts, analysis, balance_sheet_series, budget_annual, budget_dashboard,
+from app.core_routes import (EventPayload, RuleBulkPayload, RulePayload, TransactionEventPayload, accounts, analysis,
+                             balance_sheet_series, budget_annual, budget_dashboard,
                              budget_suggestions, budget_trends, budgets, calculations, categorization_rules,
-                             create_categorization_rule, create_categorization_rules, goals, instrument_history,
+                             create_categorization_rule, create_categorization_rules, create_event, event_detail, events,
+                             goals, instrument_history,
                              investments_allocation, investments_dashboard, investments_ledger, net_worth, notes,
-                             settings, summary, summary_breakdown, transactions)
+                             set_transaction_event, settings, summary, summary_breakdown, transactions)
 from app.database import Base
 from app.fire_routes import (FlussoPayload, ProfiloPayload, RegolePayload, crea_flusso, elenco_flussi, fire,
                              leggi_profilo, leggi_regole, salva_profilo, salva_regole, spostamento_pensioni)
@@ -52,7 +54,7 @@ from app.main import (AccountPayload, BudgetCreatePayload, BudgetUpdatePayload, 
                       create_account, create_budget, create_goal, create_investment_tx, create_note,
                       create_recurring_transaction, create_transaction, liabilities, list_backups_endpoint,
                       list_recurring_transactions, save_liability, split_transaction, update_budget, update_setting)
-from app.models import (Account, AccountValuation, AppSetting, BudgetPlan, CategorizationRule, Goal, IncomeStream,
+from app.models import (Account, AccountValuation, AppSetting, BudgetPlan, CategorizationRule, Event, Goal, IncomeStream,
                         InvestmentInstrument,
                         LiabilityProfile, LookupOption, MarketPrice, Note, RetirementProfile, Transaction, TransactionLedgerLink)
 from app.notifications import elenco as notifiche
@@ -207,6 +209,13 @@ def _semina(session: Session) -> None:
     asyncio.run(create_recurring_transaction(RecurringTransactionCreate(
         description="Affitto", category="Housing", amount=900, accountName="Banca",
         recurrence_rule="FREQ=MONTHLY;BYMONTHDAY=1", start_date=f"{oggi.year}-01-01"), session))
+    # Un evento con un movimento agganciato: senza, la card e il dettaglio
+    # sarebbero elenchi vuoti, compatibili con qualunque tipo.
+    evento = create_event(EventPayload(name="Trasloco", notes="Casa nuova",
+                                       start_date=f"{anno_scorso}-09-01", end_date=f"{anno_scorso}-09-30"), session)
+    affitto = session.scalars(select(Transaction).where(Transaction.transaction_type == "Expenses",
+                                                       Transaction.amount == Decimal("900")).order_by(Transaction.id)).first()
+    set_transaction_event(affitto.id, TransactionEventPayload(event_id=evento["id"]), session)
     assert vendita
 
 
@@ -246,6 +255,8 @@ def risposte() -> dict[str, Any]:
         "notes": notes(session),
         "categorizationRules": categorization_rules(session),
         "categorizationSuggestions": suggest(session),
+        "events": events(session),
+        "eventDetail": event_detail(session.scalar(select(Event.id).order_by(Event.id)), session),
         "recurring": asyncio.run(list_recurring_transactions(session)),
         "notifications": notifiche(session),
         "backups": _backup_di_prova(),
@@ -311,6 +322,10 @@ def _gestori(session: Session) -> dict[str, tuple[type[BaseModel], Any]]:
         "recurring": (RecurringTransactionCreate, lambda p: asyncio.run(create_recurring_transaction(p, session))),
         "categorizationRule": (RulePayload, lambda p: create_categorization_rule(p, session)),
         "categorizationBulk": (RuleBulkPayload, lambda p: create_categorization_rules(p, session)),
+        "event": (EventPayload, lambda p: create_event(p, session)),
+        "eventAttach": (TransactionEventPayload, lambda p: set_transaction_event(
+            session.scalars(select(Transaction.id).where(Transaction.transaction_type == "Expenses")
+                            .order_by(Transaction.id)).first(), p, session)),
         "split": (SplitPayload, lambda p: split_transaction(session.scalars(select(Transaction.id).where(
             Transaction.transaction_type == "Expenses", Transaction.category == "Housing")).first(), p, session)),
     }
