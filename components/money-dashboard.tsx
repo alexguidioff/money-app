@@ -6590,7 +6590,17 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
   const hiddenCount = totalCount - items.length;
   return (
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
-      <CardHeader onClick={onToggleExpand} className="flex-row cursor-pointer items-center justify-between select-none">
+      {/* L'intestazione si apre e si chiude col clic, ma non diceva di essere un
+          interruttore ne' si poteva raggiungere da tastiera: chi non usa il mouse
+          non poteva chiudere un gruppo, e nessuno sentiva se era aperto o chiuso.
+          `role`/`tabIndex`/`aria-expanded` lo dichiarano, il tasto Invio e la
+          barra spaziatrice fanno quello che fa il clic. */}
+      <CardHeader role="button" tabIndex={0} aria-expanded={expanded}
+        onClick={onToggleExpand}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onToggleExpand(); }
+        }}
+        className="flex-row cursor-pointer items-center justify-between select-none">
         <div>
           <CardTitle className="text-[17px]">{label}</CardTitle>
           <p className="mt-1 text-xs text-[#5e6c68]">{hiddenCount > 0 ? t('accountsVisibleOfTotal', { visible: items.length, total: totalCount }) : t('accountsCount', { count: totalCount })}</p>
