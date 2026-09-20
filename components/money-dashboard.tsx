@@ -3766,7 +3766,7 @@ function SectionView({
 
       {section === 'Obiettivi' && <GoalsView data={goalsData} accounts={accounts} onSave={onGoalSave} onDelete={onGoalDelete} onMilestoneAdd={onMilestoneAdd} onMilestoneDelete={onMilestoneDelete} />}
 
-      {section === 'Patrimonio' && <NetWorthView apiUrl={apiUrl} data={netWorthData} primoAnno={Number(years[0]) || selectedYear} accounts={accounts} alPresente={alPresente} onNewAccount={onNewAccount} onAccountEdit={onAccountEdit} onAccountValuations={onAccountValuations} onAccountDelete={onAccountDelete} />}
+      {section === 'Patrimonio' && <NetWorthView apiUrl={apiUrl} data={netWorthData} primoAnno={Number(years[0]) || selectedYear} accounts={accounts} alPresente={alPresente} onNewAccount={onNewAccount} onAccountEdit={onAccountEdit} onAccountValuations={onAccountValuations} onAccountDelete={onAccountDelete} impostazioni={{ valori: settingsData.settings, inCorso: settingSaving, onCambia: onSettingChange }} />}
 
       {section === 'Debiti' && <LiabilitiesView apiUrl={apiUrl} onDeleted={onReloadData} accounts={accounts} version={movimentiVersione} onPayment={onTransfer} onNewAccount={() => onNewAccount('liability')} onEditAccount={onAccountEdit} onEditTransaction={onEditTransaction} />}
 
@@ -3786,7 +3786,6 @@ function SectionView({
           <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]"><CardHeader><CardTitle className="text-[17px]">{t('preferences')}</CardTitle><p className="text-xs leading-5 text-[#7b8784]">{t('preferencesSubtitle')}</p></CardHeader><CardContent className="space-y-4">
             {settingError && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#bd5e46]">{settingError}</p>}
             <SettingSelect label={t('mainColor')} value={settingsData.settings.header_color} options={settingsData.options.colors} saving={settingSaving === 'header_color'} labels={{ Blue: t('colorBlue'), Orange: t('colorOrange'), Green: t('colorGreen'), Yellow: t('colorYellow'), Purple: t('colorPurple'), 'Light Blue': t('colorLightBlue') }} onChange={(value) => void onSettingChange('header_color', value)} />
-            <SettingCurrencies label={t('netWorthCurrenciesSetting')} value={settingsData.settings.net_worth_currencies ?? 'USD,CHF,BTC'} saving={settingSaving === 'net_worth_currencies'} onChange={(value) => void onSettingChange('net_worth_currencies', value)} />
           </CardContent></Card>
           </div>
         </div>
@@ -5558,7 +5557,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
 }
 
 function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAccount, onAccountEdit,
-                       onAccountValuations, onAccountDelete }: {
+                       onAccountValuations, onAccountDelete, impostazioni }: {
   apiUrl: string; data: NetWorthData; primoAnno: number; accounts: Account[];
   // Vero quando il periodo scelto e' il mese corrente: solo li' modificare un
   // conto significa qualcosa.
@@ -5567,12 +5566,15 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
   onAccountEdit: (account: Account) => void;
   onAccountValuations: (account: Account) => void;
   onAccountDelete: (account: Account) => Promise<void>;
+  impostazioni: ImpostazioniDellaPagina;
 }) {
   const { t, locale, formatEuro, formatDate } = useI18n();
-  // Due schede sulla stessa pagina: "Patrimonio" risponde a quanto vali e come
-  // ci sei arrivato, "Conti" a quali conti lo compongono e se tornano. Stesso
-  // periodo, stessi numeri, due domande diverse.
-  const [scheda, setScheda] = useState<'patrimonio' | 'conti'>('patrimonio');
+  // Tre schede sulla stessa pagina: "Patrimonio" risponde a quanto vali e come
+  // ci sei arrivato, "Conti" a quali conti lo compongono e se tornano, "Valute"
+  // in che monete si rilegge il totale. Stesso periodo, stesse cifre, domande
+  // diverse - e la terza e' l'unica che non mostra numeri, perche' sceglie in
+  // che moneta si leggono quelli delle altre due.
+  const [scheda, setScheda] = useState<'patrimonio' | 'conti' | 'valute'>('patrimonio');
   const [accountOrder, setAccountOrder] = useState<'balance' | 'name' | 'added'>('balance');
   const [accountOrderDirection, setAccountOrderDirection] = useState<'asc' | 'desc'>('desc');
   type BreakdownGroup = Account['group'];
@@ -5623,7 +5625,7 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
 
   return <div className="space-y-5">
     <div className="flex flex-wrap gap-2 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-      {([['patrimonio', t('tabNetWorth')], ['conti', t('tabAccounts')]] as const).map(([valore, etichetta]) => (
+      {([['patrimonio', t('tabNetWorth')], ['conti', t('tabAccounts')], ['valute', t('tabCurrencies')]] as const).map(([valore, etichetta]) => (
         <button key={valore} type="button" onClick={() => setScheda(valore)}
           className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${scheda === valore ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>
           {etichetta}
@@ -5691,6 +5693,13 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
 
     <BalanceSheetChart apiUrl={apiUrl} primoAnno={primoAnno} />
     </>}
+
+    {/* In che monete si rilegge il totale: era fra le preferenze dell'app, ma
+        il patrimonio e' l'unica cosa che cambia quando la si tocca, e chi si
+        chiede "e in dollari quanto vale?" sta gia' guardando questa pagina. */}
+    {scheda === 'valute' && <CardImpostazioni titolo={t('tabCurrencies')}>
+      <SettingCurrencies label={t('netWorthCurrenciesSetting')} value={impostazioni.valori.net_worth_currencies ?? 'USD,CHF,BTC'} saving={impostazioni.inCorso === 'net_worth_currencies'} onChange={(value) => void impostazioni.onCambia('net_worth_currencies', value)} />
+    </CardImpostazioni>}
 
     {scheda === 'conti' && <>
     {/* Da qui in giu' e' quella che era la pagina Conti: stessi conti, stesso
