@@ -6501,6 +6501,11 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
     Il "dichiarato" era la cifra importata dall'Excel, e da quando l'app non
     lo legge piu' nessuno lo aggiorna: confrontarcisi produceva una differenza
     che non si poteva ne' spiegare ne' correggere. */}
+{/* Il conto di un broker vale quanto dice il mercato, e i movimenti del conto
+    dicono un'altra cosa: senza questa riga la cifra in alto sembra sbagliata a
+    chi ha in mente i soldi versati. Le stesse due parole del cruscotto
+    investimenti ("capitale versato"), cosi' il numero si riconosce. */}
+{account.valuedByLedger && <p className="ml-12 mt-1.5 text-[11px] text-[#87918e]">{t('accountsMarketValue', { sum: formatEuro(account.calculatedBalance) })}</p>}
 {azioni && Math.abs(account.startingBalance) > 0.005 && <p className="ml-12 mt-1.5 text-[11px] text-[#87918e]">{t('initial')} <b className="font-medium text-[#52615d]">{formatEuro(account.group === 'liability' ? Math.abs(account.startingBalance) : account.startingBalance)}</b></p>}
 {/* Il valore di una casa e' fermo a quando l'hai stimato: senza questa riga
     l'unico modo di accorgersene era aprire le valutazioni una per una. Il
