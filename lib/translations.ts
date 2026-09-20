@@ -1090,7 +1090,7 @@ const it = {
   shiftLateIncome: 'Sposta entrate tardive',
   fromDay: 'Dal giorno',
   shiftLateIncomeHint: "Se attivo, un'entrata incassata dal giorno indicato sotto in poi conta nel budget del mese successivo (lo stipendio di fine mese finanzia il mese dopo).",
-  fromDayHintActive: 'Le entrate da questo giorno in poi slittano al mese successivo.',
+  fromDayHintActive: "Le entrate da questo giorno in poi slittano al mese successivo. L'elenco si ferma a 28: la regola deve poter scattare in ogni mese, e febbraio non ha il 29. Chi viene pagato il 29, il 30 o il 31 sceglie 28.",
   fromDayHintInactive: 'Disponibile solo con lo spostamento delle entrate tardive attivo.',
 
   // Ricorrenze
@@ -2530,7 +2530,7 @@ const en: TranslationTable = {
   shiftLateIncome: 'Shift late income',
   fromDay: 'From day',
   shiftLateIncomeHint: "When active, income received from the day set below onwards counts towards the next month's budget (a late-month salary funds the following month).",
-  fromDayHintActive: 'Income from this day onwards shifts to the next month.',
+  fromDayHintActive: 'Income from this day onwards shifts to the next month. The list stops at 28: the rule has to be able to trigger in every month, and February has no 29th. If you are paid on the 29th, 30th or 31st, choose 28.',
   fromDayHintInactive: 'Available only when the late income shift is active.',
 
   newRecurrence: 'New recurrence',
@@ -3958,7 +3958,7 @@ const de: TranslationTable = {
   shiftLateIncome: 'Späte Einnahmen verschieben',
   fromDay: 'Ab Tag',
   shiftLateIncomeHint: 'Wenn aktiv, zaehlt eine Einnahme ab dem unten gesetzten Tag zum Budget des Folgemonats (ein spaetes Gehalt finanziert den naechsten Monat).',
-  fromDayHintActive: 'Einnahmen ab diesem Tag verschieben sich in den Folgemonat.',
+  fromDayHintActive: 'Einnahmen ab diesem Tag verschieben sich in den Folgemonat. Die Liste endet bei 28: die Regel muss in jedem Monat greifen können, und der Februar hat keinen 29. Wer am 29., 30. oder 31. bezahlt wird, wählt 28.',
   fromDayHintInactive: 'Nur verfuegbar, wenn die Verschiebung spaeter Einnahmen aktiv ist.',
 
   newRecurrence: 'Neue Wiederholung',
@@ -5386,7 +5386,7 @@ const es: TranslationTable = {
   shiftLateIncome: 'Desplazar ingresos tardíos',
   fromDay: 'Desde el día',
   shiftLateIncomeHint: 'Si está activo, un ingreso recibido a partir del día indicado abajo cuenta en el presupuesto del mes siguiente (el sueldo de fin de mes financia el mes siguiente).',
-  fromDayHintActive: 'Los ingresos a partir de este día pasan al mes siguiente.',
+  fromDayHintActive: 'Los ingresos a partir de este día pasan al mes siguiente. La lista llega hasta 28: la regla tiene que poder activarse en todos los meses, y febrero no tiene 29. Si te pagan el 29, el 30 o el 31, elige 28.',
   fromDayHintInactive: 'Disponible solo con el desplazamiento de ingresos tardíos activo.',
 
   newRecurrence: 'Nueva recurrencia',
@@ -6832,7 +6832,7 @@ const fr: TranslationTable = {
   shiftLateIncome: 'Décaler les revenus tardifs',
   fromDay: 'À partir du jour',
   shiftLateIncomeHint: "Si actif, un revenu perçu à partir du jour indiqué ci-dessous compte dans le budget du mois suivant (un salaire de fin de mois finance le mois d'après).",
-  fromDayHintActive: 'Les revenus à partir de ce jour basculent sur le mois suivant.',
+  fromDayHintActive: "Les revenus à partir de ce jour basculent sur le mois suivant. La liste s'arrête à 28 : la règle doit pouvoir se déclencher chaque mois, et février n'a pas de 29. Si tu es payé le 29, le 30 ou le 31, choisis 28.",
   fromDayHintInactive: 'Disponible uniquement si le décalage des revenus tardifs est actif.',
 
   // Ricorrenze

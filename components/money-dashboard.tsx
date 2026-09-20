@@ -3767,6 +3767,11 @@ function SectionView({
             qui non cambia niente. */}
         {budgetView === 'entrateTardive' && <CardImpostazioni titolo={t('budgetTabLateIncome')} errore={settingError}>
           <SettingSelect label={t('shiftLateIncome')} value={settingsData.settings.late_income_shift} options={uniqueOptions(settingsData.settings.late_income_shift, ['Active', 'Inactive'])} saving={settingSaving === 'late_income_shift'} hint={t('shiftLateIncomeHint')} labels={{ Active: t('toggleActive'), Inactive: t('toggleInactive') }} onChange={(value) => void onSettingChange('late_income_shift', value)} />
+          {/* La soglia arriva a 28: `effective_date` sposta solo le entrate con
+              giorno >= soglia, quindi una soglia piu' alta non scatterebbe mai
+              a febbraio, e per il 31 nemmeno in aprile, giugno, settembre e
+              novembre. Il testo lo dice, cosi' chi e' pagato a fine mese sa
+              che il numero da scegliere e' 28. */}
           <SettingSelect label={t('fromDay')} value={settingsData.settings.late_income_day} options={Array.from({ length: 28 }, (_, index) => String(index + 1))} saving={settingSaving === 'late_income_day'} disabled={settingsData.settings.late_income_shift !== 'Active'} hint={settingsData.settings.late_income_shift === 'Active' ? t('fromDayHintActive') : t('fromDayHintInactive')} onChange={(value) => void onSettingChange('late_income_day', value)} />
         </CardImpostazioni>}
       </div>}
