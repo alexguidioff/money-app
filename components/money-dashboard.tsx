@@ -2360,6 +2360,12 @@ function MoneyDashboardInner() {
       if (key === 'cost_basis_method') {
         await loadData(undefined, ['investments']);
       }
+      // Le valute in cui si rilegge il patrimonio arrivano con il patrimonio:
+      // quelle gia' in pagina sono le precedenti, e togliere una valuta
+      // lasciava la sua card accesa finche' non si ricaricava a mano.
+      if (key === 'net_worth_currencies') {
+        await loadData(undefined, ['networth']);
+      }
     } catch {
       // L'app e' connessa: il salvataggio di questa singola preferenza non
       // ha funzionato. Mostriamo un errore circoscritto invece di far credere

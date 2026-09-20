@@ -2903,8 +2903,14 @@ NET_WORTH_CURRENCIES_DEFAULT = "USD,CHF,BTC"
 
 
 def display_currencies(session: Session) -> list[str]:
+    # Vuoto e assente sono due cose diverse: la riga la scrive `prepara_account`
+    # con le tre valute di partenza, quindi qui l'assenza vuol dire un account
+    # senza impostazioni, e vale il valore di sempre. Una riga svuotata invece e'
+    # una scelta - "il patrimonio lo leggo solo in euro" - e va rispettata:
+    # prima ci si ricadeva sopra con `or`, e togliere l'ultima valuta la
+    # rimetteva li' senza dire niente.
     raw = session.scalar(select(AppSetting.value).where(AppSetting.key == NET_WORTH_CURRENCIES_KEY))
-    codes = [code.strip().upper() for code in (raw or NET_WORTH_CURRENCIES_DEFAULT).split(",") if code.strip()]
+    codes = [code.strip().upper() for code in (NET_WORTH_CURRENCIES_DEFAULT if raw is None else raw).split(",") if code.strip()]
     return [code for code in dict.fromkeys(codes) if code != BASE_CURRENCY]
 
 
