@@ -267,7 +267,7 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, cat
       <table className="w-full text-left text-sm">
         <thead className="sticky top-0 bg-white"><tr>
           <th className="p-2">{t('statementSelect')}</th><th><span className="sr-only">{t('splitRow')}</span></th><th>{t('date')}</th><th>{t('description')}</th>
-          <th>{t('category')}</th><th>{t('amount')}</th><th>{t('type')}</th><th>{t('account')}</th><th>{t('fieldDestinationAccount')}</th>
+          <th>{t('category')}</th><th>{t('amount')}</th><th>{t('type')}</th><th>{t('fieldAccount')}</th><th>{t('fieldDestinationAccount')}</th>
         </tr></thead>
         <tbody>{rows.map((row, index) => {
           // Il risparmio non e' un tipo di movimento: si deriva da entrate e spese, e
@@ -328,7 +328,7 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, cat
               }}>
               {TIPI.map(([tipo, etichetta]) => <option key={tipo} value={tipo}>{t(etichetta)}</option>)}
             </select></td>
-            <td className="p-2"><select aria-label={t('account')} aria-invalid={row.selected && !row.accountName} value={row.accountName ?? ''} disabled={isSaving} className="rounded border p-2"
+            <td className="p-2"><select aria-label={t('fieldAccount')} aria-invalid={row.selected && !row.accountName} value={row.accountName ?? ''} disabled={isSaving} className="rounded border p-2"
               onChange={e => updateRow(index, { accountName: e.target.value || null })}>{accountOptions}</select></td>
             <td className="p-2">{spostamento && <select aria-label={t('fieldDestinationAccount')} value={row.destinationName ?? ''} disabled={isSaving} className="rounded border p-2"
               onChange={e => updateRow(index, { destinationName: e.target.value || null })}>{accountOptions}</select>}</td>
