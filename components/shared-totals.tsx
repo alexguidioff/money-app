@@ -195,7 +195,10 @@ export function SharedTotalsView({ apiUrl, year, month }: { apiUrl: string; year
               {([12, 24, 36] as const).map((valore) => (
                 <button key={valore} type="button" aria-pressed={months === valore} onClick={() => setMonths(valore)}
                   className={`rounded-md px-2.5 py-1 font-medium transition ${months === valore ? 'bg-white text-[#173b33] shadow-sm' : 'text-[#71807c] hover:text-[#173b33]'}`}>
-                  {valore}m
+                  {/* Le stesse parole della striscia del grafico "Bilancio nel
+                      tempo": lo stesso intervallo si scriveva "12m" qui e "12M"
+                      li'. */}
+                  {t('bsRangeMonths', { count: valore })}
                 </button>
               ))}
             </fieldset>
