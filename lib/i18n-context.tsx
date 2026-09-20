@@ -7,7 +7,10 @@ import { etichettaPeriodo } from '@/lib/period-label';
 const STORAGE_KEY = 'money-app-lang';
 const SUPPORTED_LANGS: Lang[] = ['it', 'en', 'de', 'es', 'fr'];
 
-function detectInitialLang(): Lang {
+/** La lingua scelta, o quella del browser se non ne hai ancora scelta una.
+ *  Esportata perche' serve anche fuori dal provider: il confine d'errore
+ *  (`components/error-fallback.tsx`) sta dove il provider non c'e' piu'. */
+export function detectInitialLang(): Lang {
   if (typeof window === 'undefined') return 'it';
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
