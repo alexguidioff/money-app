@@ -570,6 +570,14 @@ const LEDGER_TYPE_LABEL: Record<LedgerOperationType, TranslationKey> = {
   Buy: 'buy', Sell: 'sell', Dividend: 'ledgerDividend', Fee: 'ledgerFee', Split: 'ledgerSplit',
 };
 
+// Il tipo di un movimento per esteso, come nel modulo che lo crea. Una
+// ricorrenza si crea solo come spesa, entrata o giroconto, ma il tipo arriva
+// dal server: quello che non ha un nome tradotto si stampa com'e', invece di
+// fargli prendere il nome di un altro.
+const MOVIMENTO_TYPE_LABEL: Record<string, TranslationKey> = {
+  Expenses: 'typeExpense', Income: 'typeIncome', Transfers: 'typeTransfer',
+};
+
 // I tipi che si possono creare partendo da un movimento. Lo split non c'e':
 // non muove un centesimo e vuole importo zero, mentre un movimento un importo
 // ce l'ha sempre. Gli altri sei si collegano, perche' la regola del
@@ -7706,7 +7714,7 @@ function CategoryRulesCard({ rules, categories, categoryTree, apiUrl, onChanged 
 }
 
 function RecurringTransactionsView({ accounts, data, categoriesByType, categoryTree, onCreate, onDelete, onGenerate }: { accounts: Account[]; data: RecurringTransactionData[]; categoriesByType: Record<string, string[]>; categoryTree: CategoryNode[]; onCreate: (payload: Record<string, string | number | null>) => Promise<void>; onDelete: (id: number) => Promise<void>; onGenerate: (until: string) => Promise<number> }) {
-  const { t, locale } = useI18n();
+  const { t, formatEuro, formatDate } = useI18n();
   const [form, setForm] = useState({ description: '', amount: '', category: '', recurrence: 'FREQ=MONTHLY;BYMONTHDAY=1', startDate: new Date().toISOString().slice(0, 10), endDate: '', type: 'Expenses' });
   const [busy, setBusy] = useState(false);
   const [generateUpTo, setGenerateUpTo] = useState(new Date().toISOString().slice(0, 10));
@@ -7813,11 +7821,11 @@ function RecurringTransactionsView({ accounts, data, categoriesByType, categoryT
               <div key={rule.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{rule.description}</p>
-                  <p className="mt-0.5 text-xs text-[#87918e]">{rule.category} · {rule.recurrence_rule ?? t('withoutRule')}{rule.next_occurrence ? ` · ${t('nextOccurrence', { date: rule.next_occurrence })}` : ''}</p>
+                  <p className="mt-0.5 text-xs text-[#87918e]">{rule.category} · {rule.recurrence_rule ?? t('withoutRule')}{rule.next_occurrence ? ` · ${t('nextOccurrence', { date: formatDate(`${rule.next_occurrence}T12:00:00`, { day: 'numeric', month: 'short', year: 'numeric' }) })}` : ''}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-[#edf0ed] px-2.5 py-1 text-xs font-medium">{rule.transactionType}</span>
-                  <span className="text-sm font-semibold tabular-nums">{rule.amount.toLocaleString(locale, { style: 'currency', currency: 'EUR' })}</span>
+                  <span className="rounded-full bg-[#edf0ed] px-2.5 py-1 text-xs font-medium">{MOVIMENTO_TYPE_LABEL[rule.transactionType] ? t(MOVIMENTO_TYPE_LABEL[rule.transactionType]) : rule.transactionType}</span>
+                  <span className="text-sm font-semibold tabular-nums">{formatEuro(rule.amount)}</span>
                   <Button type="button" size="icon" variant="ghost" aria-label={t('deleteRecurrence')} onClick={() => void rimuovi(rule)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button>
                 </div>
               </div>
