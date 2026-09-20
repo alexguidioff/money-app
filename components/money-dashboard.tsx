@@ -71,6 +71,7 @@ import {
 } from '@/components/ui/dialog';
 import { ImportHistoryCard } from '@/components/import-history-card';
 import { Input } from '@/components/ui/input';
+import { TabStrip } from '@/components/ui/tab-strip';
 import { PDFImportPreview, type PDFTransaction, type ImportTemplateRow, type ModelliDiMappatura } from '@/components/ui/pdf-import-preview';
 import { RefundPicker } from '@/components/ui/refund-picker';
 import {
@@ -2548,9 +2549,13 @@ function MoneyDashboardInner() {
                 <div className="px-3 py-2"><p className="text-sm font-semibold">{displayName}</p><p className="text-xs text-[#5e6c68]">{t('personalArchive')}</p></div>
                 <div className="px-3 py-2">
                   <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-[#5e6c68]">{t('language')}</p>
-                  <div className="flex gap-1 rounded-lg bg-[#f3f5f1] p-1">
+                  {/* La lingua sceglie come tutte le altre strisce, ma sta dentro
+                      un menu e non ha lo spazio per la forma larga: resta la pillola
+                      piccola, con il nome della lingua nel tooltip. Quello che le
+                      mancava era dire cosa sceglie e quale e' accesa. */}
+                  <div role="group" aria-label={t('language')} className="flex gap-1 rounded-lg bg-[#f3f5f1] p-1">
                     {(['it', 'en', 'de', 'es', 'fr'] as Lang[]).map((code) => (
-                      <button key={code} type="button" title={LANG_LABELS[code]} onClick={() => setLang(code)} className={`flex-1 rounded-md py-1 text-xs font-semibold uppercase transition ${lang === code ? 'bg-[var(--money-primary)] text-white' : 'text-[#52615d] hover:bg-white'}`}>
+                      <button key={code} type="button" title={LANG_LABELS[code]} aria-pressed={lang === code} onClick={() => setLang(code)} className={`flex-1 rounded-md py-1 text-xs font-semibold uppercase transition ${lang === code ? 'bg-[var(--money-primary)] text-white' : 'text-[#52615d] hover:bg-white'}`}>
                         {code}
                       </button>
                     ))}
@@ -3785,12 +3790,10 @@ function SectionView({
               Categorie l'albero mostra spese ed entrate insieme, quindi non
               filtra niente. Lasciarlo acceso li' vuol dire mostrare un comando
               che non cambia quello che si sta guardando. */}
-          {VISTE_CON_TIPO.includes(budgetView) && <div role="group" aria-label={t('type')} className="flex gap-1.5 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-            {([['Expenses', t('expensesType')], ['Income', t('incomeType')], ['Savings', t('savingsType')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={budgetType === value} onClick={() => onBudgetTypeChange(value)} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${budgetType === value ? 'bg-[var(--money-primary)] text-white' : 'text-[#5e6c68] hover:bg-[#f4f5f1]'}`}>{label}</button>)}
-          </div>}
-          <div role="group" aria-label={t('budget')} className="flex flex-wrap gap-1 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-            {([['dashboard', t('budgetTabDashboard')], ['trends', t('budgetTabTrends')], ['plan', t('budgetTabPlan')], ['categories', t('budgetTabCategories')], ['entrateTardive', t('budgetTabLateIncome')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={budgetView === value} onClick={() => onBudgetViewChange(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${budgetView === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#5e6c68] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
-          </div>
+          {VISTE_CON_TIPO.includes(budgetView) && <TabStrip variant="pillole" label={t('type')} value={budgetType} onChange={onBudgetTypeChange}
+            options={[['Expenses', t('expensesType')], ['Income', t('incomeType')], ['Savings', t('savingsType')]] as const} />}
+          <TabStrip label={t('budget')} value={budgetView} onChange={onBudgetViewChange}
+            options={[['dashboard', t('budgetTabDashboard')], ['trends', t('budgetTabTrends')], ['plan', t('budgetTabPlan')], ['categories', t('budgetTabCategories')], ['entrateTardive', t('budgetTabLateIncome')]] as const} />
         </div>
         {budgetLoadFailed ? <Card className="border-[#efc4b8] bg-[#fff6f3] shadow-sm"><CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold">{t('budgetLoadFailed')}</p><p className="mt-1 text-xs text-[#52615d]">{t('budgetLoadFailedHint')}</p></div><Button variant="outline" size="sm" onClick={() => void onReload()}>{t('retry')}</Button></CardContent></Card> : <>
         {budgetView === 'dashboard' && (budgetDashboardData ? <BudgetDashboardView data={budgetDashboardData} budgetType={budgetType} onGoToView={onBudgetViewChange} /> : <BudgetTabEmpty loading={inCorso > 0} />)}
@@ -5477,9 +5480,8 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
   }
 
   return <div className="space-y-5">
-    <div className="flex flex-wrap gap-2 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-      {([['portfolio', t('investTabPortfolio')], ['ledger', t('investTabLedger')], ['instruments', t('investTabInstruments')], ['allocation', t('investTabAllocation')], ['quotes', t('investTabQuotes')], ['metodo', t('investTabMethod')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={tab === value} onClick={() => setTab(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${tab === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#5e6c68] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
-    </div>
+    <TabStrip label={t('navInvestimenti')} value={tab} onChange={setTab}
+      options={[['portfolio', t('investTabPortfolio')], ['ledger', t('investTabLedger')], ['instruments', t('investTabInstruments')], ['allocation', t('investTabAllocation')], ['quotes', t('investTabQuotes')], ['metodo', t('investTabMethod')]] as const} />
 
     {tab === 'portfolio' && <div className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><MetricCard title={t('portfolioValue')} value={dashboard.snapshot.marketValue} change={dashboard.snapshot.period ? t('excelHistory', { period: formatDate(`${dashboard.snapshot.period}T12:00:00`, { month: 'long', year: 'numeric' }) }) : t('noHistory')} icon={Landmark} tone="worth" /><MetricCard title={t('investedCapital')} value={dashboard.snapshot.investedCapital} change={t('netContributionsOverTime')} icon={CircleDollarSign} tone="saving" /><MetricCard title={t('gainLoss')} value={dashboard.snapshot.gain} change={t('percentOnCapital', { percent: formatPercentPoints(dashboard.snapshot.returnRate) })} icon={TrendingUp} tone={dashboard.snapshot.gain >= 0 ? 'income' : 'expense'} /><MetricCard title={t('connectedQuotes')} value={dashboard.ledger.quotedPositions} valueLabel={`${dashboard.ledger.quotedPositions}/${dashboard.ledger.activePositions}`} change={t('withLocalCache')} icon={RefreshCw} tone="worth" /><RendimentoCard titolo={t('twrReturn')} spiegazione={t('twrHint')} esito={dashboard.returns.twr} /><RendimentoCard titolo={t('xirrReturn')} spiegazione={t('xirrHint')} esito={dashboard.returns.xirr} /></div>
@@ -5808,14 +5810,8 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
   const dataAsOfLabel = data.dataPeriod ? formatDate(`${data.dataPeriod}T12:00:00`, { month: 'long', year: 'numeric' }) : t('noData');
 
   return <div className="space-y-5">
-    <div className="flex flex-wrap gap-2 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-      {([['patrimonio', t('tabNetWorth')], ['conti', t('tabAccounts')], ['valute', t('tabCurrencies')]] as const).map(([valore, etichetta]) => (
-        <button key={valore} type="button" onClick={() => setScheda(valore)}
-          className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${scheda === valore ? 'bg-[var(--money-deep)] text-white' : 'text-[#5e6c68] hover:bg-[#f0f2ee]'}`}>
-          {etichetta}
-        </button>
-      ))}
-    </div>
+    <TabStrip label={t('navPatrimonio')} value={scheda} onChange={setScheda}
+      options={[['patrimonio', t('tabNetWorth')], ['conti', t('tabAccounts')], ['valute', t('tabCurrencies')]] as const} />
 
     {scheda === 'patrimonio' && <>
     <div className="grid gap-4 lg:grid-cols-2">
@@ -6732,14 +6728,8 @@ function BalanceSheetChart({ apiUrl, primoAnno }: { apiUrl: string; primoAnno: n
               schermata senza una scritta sono due numeri che non tornano. */}
           <div className="flex flex-col items-end gap-1">
             <span className="text-[11px] font-medium text-[#5e6c68]">{t('sharedRangeSelector')}</span>
-            <div role="group" aria-label={t('sharedRangeSelector')} className="flex gap-1 rounded-lg border border-black/6 bg-[#f4f5f1] p-1 text-xs">
-              {BALANCE_SHEET_RANGES.map((valore) => (
-                <button key={valore} type="button" onClick={() => setMesi(valore)}
-                  className={`rounded-md px-2.5 py-1 font-medium transition ${mesi === valore ? 'bg-white text-[#173b33] shadow-sm' : 'text-[#5e6c68] hover:text-[#173b33]'}`}>
-                  {valore === 0 ? t('bsRangeAll') : t('bsRangeMonths', { count: valore })}
-                </button>
-              ))}
-            </div>
+            <TabStrip variant="pillole" label={t('sharedRangeSelector')} value={mesi} onChange={setMesi}
+              options={BALANCE_SHEET_RANGES.map((valore) => [valore, valore === 0 ? t('bsRangeAll') : t('bsRangeMonths', { count: valore })] as const)} />
           </div>
         </div>
       </CardHeader>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Flame } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { TabStrip } from '@/components/ui/tab-strip';
 import { useI18n } from '@/lib/i18n-context';
 import { FireChart, type FireChartPoint } from '@/components/fire-chart';
 import { MilestonesCard } from '@/components/fire/milestones-card';
@@ -219,11 +220,8 @@ export function FirePage({ apiUrl }: { apiUrl: string }) {
     {/* La striscia e' la stessa dei Movimenti e del Budget: un contorno, un
         fondo, un pulsante acceso. Il piano e i dati che lo producono sono due
         viste della stessa pagina, non due pagine. */}
-    <div id="fire-tabs" className="flex flex-wrap gap-2 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-      {([['piano', t('fireTabPlan')], ['profilo', t('fireTabSettings')]] as const).map(([valore, etichetta]) =>
-        <button key={valore} type="button" aria-pressed={scheda === valore} onClick={() => setScheda(valore)}
-                className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${scheda === valore ? 'bg-[var(--money-deep)] text-white' : 'text-[#5e6c68] hover:bg-[#f0f2ee]'}`}>{etichetta}</button>)}
-    </div>
+    <TabStrip id="fire-tabs" label={t('fireSection')} value={scheda} onChange={setScheda}
+      options={[['piano', t('fireTabPlan')], ['profilo', t('fireTabSettings')]] as const} />
     {/* La scheda nascosta non si tiene montata: le impostazioni si rileggono
         ogni volta che ci si entra, e i flussi salvati prima ci sono. */}
     {scheda === 'piano' ? contenutoPiano() : <FireSettingsSection apiUrl={apiUrl} />}

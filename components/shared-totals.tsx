@@ -5,6 +5,7 @@ import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
+import { TabStrip } from '@/components/ui/tab-strip';
 import { useI18n } from '@/lib/i18n-context';
 
 type PersonTotals = {
@@ -181,27 +182,11 @@ export function SharedTotalsView({ apiUrl, year, month }: { apiUrl: string; year
             <p className="mt-1 text-xs text-[#5e6c68]">{t('sharedTrendSubtitle')}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <fieldset className="flex gap-1 rounded-lg border border-black/6 bg-[#f4f5f1] p-1 text-xs">
-              <legend className="sr-only">{t('sharedMetricSelector')}</legend>
-              {metriche.map(([chiave, etichetta]) => (
-                <button key={chiave} type="button" aria-pressed={metric === chiave} onClick={() => setMetric(chiave)}
-                  className={`rounded-md px-2.5 py-1 font-medium transition ${metric === chiave ? 'bg-white text-[#173b33] shadow-sm' : 'text-[#5e6c68] hover:text-[#173b33]'}`}>
-                  {etichetta}
-                </button>
-              ))}
-            </fieldset>
-            <fieldset className="flex gap-1 rounded-lg border border-black/6 bg-[#f4f5f1] p-1 text-xs">
-              <legend className="sr-only">{t('sharedRangeSelector')}</legend>
-              {([12, 24, 36] as const).map((valore) => (
-                <button key={valore} type="button" aria-pressed={months === valore} onClick={() => setMonths(valore)}
-                  className={`rounded-md px-2.5 py-1 font-medium transition ${months === valore ? 'bg-white text-[#173b33] shadow-sm' : 'text-[#5e6c68] hover:text-[#173b33]'}`}>
-                  {/* Le stesse parole della striscia del grafico "Bilancio nel
-                      tempo": lo stesso intervallo si scriveva "12m" qui e "12M"
-                      li'. */}
-                  {t('bsRangeMonths', { count: valore })}
-                </button>
-              ))}
-            </fieldset>
+            <TabStrip variant="pillole" label={t('sharedMetricSelector')} value={metric} onChange={setMetric} options={metriche} />
+            {/* Le stesse parole della striscia del grafico "Bilancio nel tempo":
+                lo stesso intervallo si scriveva "12m" qui e "12M" li'. */}
+            <TabStrip variant="pillole" label={t('sharedRangeSelector')} value={months} onChange={setMonths}
+              options={([12, 24, 36] as const).map((valore) => [valore, t('bsRangeMonths', { count: valore })] as const)} />
           </div>
         </CardHeader>
         <CardContent>
