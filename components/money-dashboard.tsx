@@ -941,7 +941,7 @@ export function MoneyDashboard() {
 }
 
 function MoneyDashboardInner() {
-  const { t, lang, setLang, locale, formatEuro, formatCompactEuro, formatDate, monthNames, formatPercentNumber } = useI18n();
+  const { t, lang, setLang, locale, formatEuro, formatCompactEuro, formatDate, formatNumber, monthNames, formatPercentNumber } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>('Panoramica');
   const [period, setPeriod] = useState<PeriodSelection>({ year: MESE_CORRENTE.anno, month: MESE_CORRENTE.mese, scope: 'month' });
@@ -2992,9 +2992,12 @@ function MoneyDashboardInner() {
                       return (
                         <p className={`text-[11px] ${mismatch ? 'text-[#a94f3a]' : 'text-[#3b6a5b]'}`}>
                           {t('ledgerTotalPreview', {
-                            sum: total.toFixed(2),
-                            fees: fees.toFixed(2),
-                            amount: expected.toFixed(2),
+                            // I separatori delle migliaia sono quelli della lingua
+                            // scelta: scritti a mano uscivano "1234.56" accanto a
+                            // "1.234,56 €" nella stessa schermata.
+                            sum: formatNumber(total, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                            fees: formatNumber(fees, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                            amount: formatNumber(expected, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
                           })}
                         </p>
                       );
