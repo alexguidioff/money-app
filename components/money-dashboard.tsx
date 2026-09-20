@@ -4353,7 +4353,7 @@ export type InstrumentHistory = {
 // Chi ha prodotto il guadagno, e cosa e' successo al singolo strumento.
 // I prezzi sono gli stessi gia' scaricati per valorizzare il portafoglio:
 // dieci anni di chiusure mensili che finora non si vedevano da nessuna parte.
-function InstrumentAnalysisView({ apiUrl, positions }: { apiUrl: string; positions: InvestmentPosition[] }) {
+function InstrumentAnalysisView({ apiUrl, positions, onGoToLedger }: { apiUrl: string; positions: InvestmentPosition[]; onGoToLedger: () => void }) {
   const { t, formatEuro, formatCompactEuro, formatDate, formatPeriodLabel } = useI18n();
   const ranked = positions.slice().sort((a, b) => b.totalGain - a.totalGain);
   const [selected, setSelected] = useState<string | null>(ranked[0]?.name ?? null);
@@ -4372,6 +4372,17 @@ function InstrumentAnalysisView({ apiUrl, positions }: { apiUrl: string; positio
       .finally(() => { if (!annullato) setLoading(false); });
     return () => { annullato = true; };
   }, [apiUrl, selected]);
+
+  // Zero strumenti: prima restavano due card vuote, e la seconda diceva
+  // "Nessun ticker configurato" di uno strumento che non esiste — sembrava un
+  // guasto invece del punto di partenza. Qui si dice cosa manca e dove nascono
+  // gli strumenti, che e' l'unica cosa da fare da qui.
+  if (positions.length === 0) {
+    return <Card className="border-black/6 bg-white shadow-sm"><CardContent className="py-14 text-center">
+      <p className="text-sm font-medium text-[#173b33]">{t('noInstrumentsYet')}</p>
+      <Button type="button" variant="outline" className="mt-4" onClick={onGoToLedger}>{t('investTabLedger')}<ChevronRight className="size-4" /></Button>
+    </CardContent></Card>;
+  }
 
   // Prezzo mese per mese, con sopra il prezzo medio delle proprie operazioni:
   // due serie separate, cosi' i punti restano leggibili anche dove si affollano.
@@ -5628,7 +5639,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
       </div>
     )}
 
-    {tab === 'instruments' && <InstrumentAnalysisView apiUrl={apiUrl} positions={dashboard.positions} />}
+    {tab === 'instruments' && <InstrumentAnalysisView apiUrl={apiUrl} positions={dashboard.positions} onGoToLedger={() => setTab('ledger')} />}
 
     {tab === 'allocation' && <div className="space-y-5">
       <Card className={`border shadow-sm ${allocation.coverage.coveredPercent >= 99 ? 'border-[#b9ddce] bg-[#f0f8f4]' : 'border-[#efc4b8] bg-[#fff6f3]'}`}>
@@ -5653,6 +5664,9 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
               <span className="font-medium">{item.instrument}</span>
               <span className="text-[#71807c]">{formatEuro(item.value)} · {item.reason === 'no_ticker' ? t('allocationNoTicker') : sourceErrorLabel(t, item.code)}</span>
             </li>)}
+            {/* L'elenco si ferma a cinque: senza questa riga il totale degli
+                strumenti senza dati restava un numero da indovinare. */}
+            {allocation.coverage.missing.length > 5 && <li className="px-3 pt-1 text-[#71807c]">{t('allocationMissingMore', { count: allocation.coverage.missing.length - 5 })}</li>}
           </ul>}
         </CardContent>
       </Card>
