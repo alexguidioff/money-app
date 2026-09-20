@@ -236,6 +236,26 @@ class LiabilityTransferTests(unittest.TestCase):
                           result["interestPaid"], result["outstanding"], result["interestOutstanding"],
                           result["actualTotalDebt"]))
 
+    def test_gli_interessi_totali_sono_la_somma_della_colonna(self) -> None:
+        """Il totale mostrato in fondo al piano e' la somma delle sue rate.
+
+        Ogni cella della colonna e' l'interesse di una rata: il totale del piano
+        e' un'altra cosa, e va detto quale delle due si sta leggendo. Questo test
+        lega le due cifre - se il totale smettesse di essere la somma della
+        colonna, il numero in fondo alla tabella racconterebbe un altro piano.
+        """
+        today = date.today()
+        mutuo = self.session.scalars(select(Account).where(Account.name == "Mutuo")).one()
+        self.session.add(LiabilityProfile(
+            account_id=mutuo.id, original_principal=Decimal("12000"), annual_rate=Decimal("6"),
+            start_date=today, repayment_start_date=today, end_date=date(today.year + 1, today.month, today.day),
+            planned_drawdowns=None))
+        self.session.commit()
+        prestito = next(row for row in liabilities(self.session)["items"] if row["name"] == "Mutuo")
+        somma = round(sum(riga["interest"] for riga in prestito["schedule"]), 2)
+        self.assertEqual(prestito["totalInterest"], somma)
+        self.assertGreater(somma, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
