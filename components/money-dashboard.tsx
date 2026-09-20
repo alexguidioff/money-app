@@ -2539,8 +2539,13 @@ function MoneyDashboardInner() {
               </div>
             </div>
             <div className="relative flex items-center gap-2">
-              {inCorso > 0 && <span role="status" className="mr-1 hidden items-center gap-1.5 rounded-lg bg-white/70 px-2.5 py-1.5 text-xs text-[#5e6c68] sm:flex">
-                <RefreshCw className="size-3.5 animate-spin" />{t('updating')}
+              {/* Su telefono questo riquadro era `hidden`: la rotellina girava
+                  solo da `sm` in su, e sullo schermo stretto non si vedeva che
+                  l'app stava caricando. Ora la rotellina c'e' sempre; la parola
+                  resta nascosta alla vista ma non a chi legge lo schermo, che
+                  altrimenti annuncerebbe un riquadro vuoto. */}
+              {inCorso > 0 && <span role="status" className="mr-1 flex items-center gap-1.5 rounded-lg bg-white/70 px-2.5 py-1.5 text-xs text-[#5e6c68]">
+                <RefreshCw className="size-3.5 animate-spin" /><span className="sr-only sm:not-sr-only">{t('updating')}</span>
               </span>}
               <Button aria-label={t('notifications')} aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((value) => !value); setProfileOpen(false); }} variant="outline" size="icon" className="relative border-black/7 bg-white/70"><Bell className="size-[18px]" />{notifications.length > 0 && <span className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-[#a94f3a] px-1 text-[10px] font-semibold leading-4 text-white">{notifications.length}</span>}</Button>
               <button aria-label={t('profile')} aria-expanded={profileOpen} onClick={() => { setProfileOpen((value) => !value); setNotificationsOpen(false); }} className="ml-1 flex items-center gap-2 rounded-xl p-1.5 pr-2 hover:bg-black/5"><span className="grid size-8 place-items-center rounded-lg bg-[var(--money-accent)] text-xs font-bold text-[#18342e]">{initials}</span><ChevronDown className="size-4 text-black/45" /></button>
