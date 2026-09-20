@@ -289,6 +289,31 @@ test('Budget: i due pulsanti di copia dicono che copiano, non dove si va', async
   expect(errori).toEqual([]);
 });
 
+test('Budget: le schede che non leggono un comando non lo mostrano', async ({ page }) => {
+  // Spese/Entrate/Risparmio e il periodo stanno in alto su tutte le schede,
+  // ma l'albero delle categorie mostra spese ed entrate insieme e le entrate
+  // tardive sono due impostazioni: li' i due comandi restavano accesi senza
+  // cambiare quello che si stava guardando.
+  const errori = raccogliErrori(page);
+  await avvia(page);
+  await apri(page, 'Budget');
+  const tipo = page.getByRole('group', { name: 'Tipo' });
+  const periodo = page.getByRole('toolbar', { name: 'Periodo' });
+  await expect(tipo).toBeVisible();
+  await expect(periodo).toBeVisible();
+
+  await page.getByRole('button', { name: 'Categorie', exact: true }).click();
+  await expect(page.getByLabel('Nuova categoria principale').first()).toBeVisible();
+  await expect(tipo).toHaveCount(0);
+  await expect(periodo).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Entrate tardive', exact: true }).click();
+  await expect(page.getByText('Sposta entrate tardive')).toBeVisible();
+  await expect(tipo).toHaveCount(0);
+  await expect(periodo).toHaveCount(0);
+  expect(errori).toEqual([]);
+});
+
 test('Obiettivi: una tappa si aggiunge dall\'elenco, resta dopo il ricarico e si toglie', async ({ page }) => {
   // Il corpo del modulo e' l'unica cosa che nessun test di contratto vede: il
   // contratto costruisce il FormData da solo, quindi un campo `name` scritto

@@ -381,6 +381,11 @@ type BudgetGroupSplit = { group: 'Needs' | 'Wants' | 'Other'; planned: number; a
 // dimenticarne una e' il modo in cui le schede iniziano a non tornare.
 type BudgetView = 'dashboard' | 'trends' | 'plan' | 'categories' | 'entrateTardive';
 
+/** Le schede che leggono il tipo di budget (Spese/Entrate/Risparmio). */
+const VISTE_CON_TIPO: BudgetView[] = ['dashboard', 'trends', 'plan'];
+/** Le schede che leggono il periodo scelto in alto. */
+const VISTE_CON_PERIODO: BudgetView[] = ['dashboard', 'plan'];
+
 export type AnnualBudgetData = {
   year: number;
   items: Array<{
@@ -3652,7 +3657,10 @@ function SectionView({
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div><p className="mb-1 text-sm font-medium text-[#71807c]">{t(SECTION_DESC_KEYS[section])}</p><h1 className="flex items-center text-2xl font-semibold tracking-[-0.03em] sm:text-[30px]">{t(SECTION_LABEL_KEYS[section])}<PageHelp titolo="helpTitle" testo={SECTION_HELP_KEYS[section][0]} dipendenza={SECTION_HELP_KEYS[section][1]} /></h1></div>
         {section === 'Movimenti' && <div className="flex flex-wrap gap-2"><div className="flex flex-wrap gap-2"><Button disabled={pdfImporting} onClick={() => void onPdfImport()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileText className={`size-4 ${pdfImporting ? 'animate-spin' : ''}`} />{pdfImporting ? t('importingEllipsis') : t('importFromPdf')}</Button><Button disabled={pdfImporting} onClick={() => void onCsvImport()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileSpreadsheet className={`size-4 ${pdfImporting ? 'animate-spin' : ''}`} />{pdfImporting ? t('importingEllipsis') : t('importFromCsv')}</Button></div><Button variant="outline" className="h-10 rounded-xl bg-white" onClick={() => onTransfer()}><ArrowRightLeft className="size-4" />{t('transfer')}</Button><Button className="h-10 rounded-xl bg-[var(--money-primary)] px-4 text-white hover:bg-[var(--money-primary-hover)]" onClick={onNewTransaction}><Plus className="size-4" />{t('newTransaction')}</Button></div>}
-        {section === 'Budget' && (budgetView === 'trends' ? <YearComparisonSelector availableYears={trendYearsAvailable} selected={trendYears} onChange={onTrendYearsChange} /> : <PeriodSelector value={period} years={years} onChange={onPeriodChange} />)}
+        {/* Le Categorie e le Entrate tardive non leggono il periodo: il primo
+            mostra due alberi interi, il secondo due impostazioni. Il selettore
+            acceso voleva dire poter cambiare mese senza che niente si muovesse. */}
+        {section === 'Budget' && (budgetView === 'trends' ? <YearComparisonSelector availableYears={trendYearsAvailable} selected={trendYears} onChange={onTrendYearsChange} /> : VISTE_CON_PERIODO.includes(budgetView) ? <PeriodSelector value={period} years={years} onChange={onPeriodChange} /> : null)}
         {section === 'Patrimonio' && <PeriodSelector value={period} years={years} onChange={onPeriodChange} allowYear={false} />}
         {/* Insieme seguiva il periodo condiviso senza offrire il modo di
             cambiarlo: per spostarsi di mese bisognava passare da Budget o
@@ -3737,11 +3745,13 @@ function SectionView({
 
       {section === 'Budget' && <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-2">
-          {/* Spese/Entrate/Risparmio non vale per le entrate tardive: quelle due
-              impostazioni decidono in che mese conta un'entrata, non quanto se
-              ne spende. Lasciare il selettore acceso li' vorrebbe dire mostrare
-              un comando che non cambia niente di quello che si sta guardando. */}
-          {budgetView !== 'entrateTardive' && <div role="group" aria-label={t('type')} className="flex gap-1.5 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
+          {/* Spese/Entrate/Risparmio comanda tre schede su cinque: la
+              Panoramica, l'Andamento e il Piano. Nelle Entrate tardive decide
+              in che mese conta un'entrata, non quanto se ne spende; nelle
+              Categorie l'albero mostra spese ed entrate insieme, quindi non
+              filtra niente. Lasciarlo acceso li' vuol dire mostrare un comando
+              che non cambia quello che si sta guardando. */}
+          {VISTE_CON_TIPO.includes(budgetView) && <div role="group" aria-label={t('type')} className="flex gap-1.5 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
             {([['Expenses', t('expensesType')], ['Income', t('incomeType')], ['Savings', t('savingsType')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={budgetType === value} onClick={() => onBudgetTypeChange(value)} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${budgetType === value ? 'bg-[var(--money-primary)] text-white' : 'text-[#66736f] hover:bg-[#f4f5f1]'}`}>{label}</button>)}
           </div>}
           <div role="group" aria-label={t('budget')} className="flex flex-wrap gap-1 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
