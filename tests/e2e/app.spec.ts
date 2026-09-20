@@ -441,3 +441,24 @@ test('Debiti: "Nuovo debito" apre il modulo sul gruppo Passività', async ({ pag
   await page.getByRole('button', { name: 'Annulla' }).click();
   expect(errori).toEqual([]);
 });
+
+test('Appunti: la sezione si scrive, non si sceglie da una lista chiusa', async ({ page }) => {
+  // La sezione era una tendina con una voce sola - la parola italiana
+  // "Appunti" - in tutte e cinque le lingue: un appunto su un altro argomento
+  // non aveva dove stare. Ora si scrive, e quello che si scrive si rilegge
+  // sulla card.
+  const errori = raccogliErrori(page);
+  await avvia(page);
+  await apri(page, 'Appunti');
+  await page.getByRole('button', { name: 'Nuovo appunto' }).click();
+  // Tutto dentro il dialogo: "Testo" e' anche dentro l'etichetta della casella
+  // di ricerca ("Cerca in titoli e testo"), e fuori dal dialogo sono due campi.
+  const dialogo = page.getByRole('dialog');
+  await dialogo.getByLabel('Sezione', { exact: true }).fill('Casa');
+  await dialogo.getByLabel('Titolo', { exact: true }).fill('Tetto da rifare');
+  await dialogo.getByLabel('Testo', { exact: true }).fill('Chiedere due preventivi.');
+  await dialogo.getByRole('button', { name: 'Salva' }).click();
+  const card = page.locator('[data-slot="card"]', { has: page.getByText('Tetto da rifare') });
+  await expect(card).toContainText('Casa');
+  expect(errori).toEqual([]);
+});
