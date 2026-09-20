@@ -338,6 +338,9 @@ class RisparmioMensileTests(BudgetBase):
         self._entrate_e_spese()
         dati = budget_dashboard(2026, 1, "Savings", self.session)
         self.assertEqual((dati["plannedTotal"], dati["actualTotal"]), (0, 800.0))
+        # E senza piano non c'e' nemmeno una percentuale: uno zero avrebbe
+        # fatto leggere "0% utilizzato" accanto a "Budget superato".
+        self.assertIsNone(dati["usage"])
 
 
 class QuadraturaDelMeseTests(BudgetBase):

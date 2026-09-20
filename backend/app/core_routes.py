@@ -2266,7 +2266,12 @@ def budget_dashboard(year: int, month: int | None = None, budget_type: str = "Ex
     return {"period": _period_label(year, month), **_period_ref(year, month),
             "plannedTotal": planned, "actualTotal": actual,
             "remaining": round(planned - actual, 2),
-            "usage": round(actual / planned * 100, 1) if planned else 0,
+            # Senza budget pianificato non c'e' nessuna percentuale da calcolare:
+            # uno zero farebbe leggere "0% utilizzato" accanto a "Budget
+            # superato", cioe' due frasi che si contraddicono. Un `None` dice
+            # che la domanda non si puo' porre, ed e' la stessa forma che le
+            # righe per categoria usano gia' qui sopra.
+            "usage": round(actual / planned * 100, 1) if planned else None,
             "overBudgetCategories": sum(1 for item in categories if item["variance"] < 0),
             "categories": categories,
             "balance": _budget_balance(session, year, month),

@@ -400,7 +400,10 @@ export type BudgetDashboardData = {
   plannedTotal: number;
   actualTotal: number;
   remaining: number;
-  usage: number;
+  // Senza budget pianificato nel periodo non c'e' nessuna percentuale: il
+  // server manda `null` invece di uno zero, che accanto a "Budget superato"
+  // avrebbe detto una cosa falsa.
+  usage: number | null;
   periodYear: number;
   periodMonth: number | null;
   balance: BudgetBalance;
@@ -3889,10 +3892,10 @@ function BudgetDashboardView({ data, budgetType }: { data: BudgetDashboardData; 
   return <div className="space-y-5">
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <MetricCard title={plannedTitle} value={data.plannedTotal} change={formatPeriodRef(monthNames, data.periodYear, data.periodMonth)} icon={CircleDollarSign} tone="worth" />
-      <MetricCard title={actualTitle} value={data.actualTotal} change={isExpense ? t('spentPercentUsed', { percent: formatPercentNumber(data.usage) }) : t(isSavings ? 'percentOfPlanValue' : 'percentOfTarget', { percent: formatPercentNumber(data.usage) })} icon={CreditCard} tone={isExpense ? 'expense' : 'worth'} />
+      <MetricCard title={actualTitle} value={data.actualTotal} change={data.usage === null ? t('budgetNotPlanned') : isExpense ? t('spentPercentUsed', { percent: formatPercentNumber(data.usage) }) : t(isSavings ? 'percentOfPlanValue' : 'percentOfTarget', { percent: formatPercentNumber(data.usage) })} icon={CreditCard} tone={isExpense ? 'expense' : 'worth'} />
       <MetricCard title={varianceTitle} value={isExpense ? data.remaining : Math.abs(data.remaining)} change={varianceStatus} icon={PiggyBank} tone={totalGood ? 'saving' : 'expense'} />
       {isSavings
-        ? <MetricCard title={t('progressMetric')} value={data.usage} valueLabel={`${formatPercentNumber(data.usage)}%`} change={t('percentOfPlan')} icon={AlertCircle} tone="income" />
+        ? <MetricCard title={t('progressMetric')} value={data.usage ?? 0} valueLabel={data.usage === null ? '—' : `${formatPercentNumber(data.usage)}%`} change={data.usage === null ? t('budgetNotPlanned') : t('percentOfPlan')} icon={AlertCircle} tone="income" />
         : <MetricCard title={isExpense ? t('categoriesOverBudget') : t('categoriesBelowTarget')} value={concerningCategories} valueLabel={String(concerningCategories)} change={t('inSelectedPeriod')} icon={AlertCircle} tone="income" />}
     </div>
     {isExpense && <NeedsWantsCard groups={data.groups} />}
