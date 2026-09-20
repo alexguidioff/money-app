@@ -6280,6 +6280,7 @@ function SettingCurrencies({ label, value, saving, onChange }: {
   label: string; value: string; saving: boolean; onChange: (value: string) => void;
 }) {
   const { t } = useI18n();
+  const [nuova, setNuova] = useState('');
   const codes = value.split(',').map((code) => code.trim().toUpperCase()).filter(Boolean);
   const save = (next: string[]) => onChange(Array.from(new Set(next)).join(','));
   return (
@@ -6299,16 +6300,22 @@ function SettingCurrencies({ label, value, saving, onChange }: {
             {code}<X className="size-3" />
           </button>
         ))}
-        <select
-          value=""
-          onChange={(event) => { if (event.target.value) save([...codes, event.target.value]); }}
-          className="h-8 rounded-lg border border-input bg-white px-2 text-xs outline-none focus:border-ring"
-        >
-          <option value="">{t('addCurrency')}</option>
-          {COMMON_CURRENCIES.filter((code) => !codes.includes(code)).map((code) => (
-            <option key={code} value={code}>{code}</option>
-          ))}
-        </select>
+        {/* La tendina offriva dieci codici e si poteva solo scegliere fra
+            quelli, mentre qualunque codice quotato funziona. Il campo si
+            scrive: i dieci comuni restano come suggerimento, e la forma la
+            controlla la fonte delle quotazioni, che su un codice che non
+            conosce non risponde e basta. */}
+        <form className="flex items-center gap-2" onSubmit={(event) => {
+          event.preventDefault();
+          const codice = nuova.trim().toUpperCase();
+          if (codice) save([...codes, codice]);
+          setNuova('');
+        }}>
+          <Input value={nuova} onChange={(event) => setNuova(event.target.value)} list="valute-comuni"
+                 placeholder={t('addCurrency')} aria-label={t('addCurrency')} className="h-8 w-28 bg-white text-xs" />
+          <datalist id="valute-comuni">{COMMON_CURRENCIES.filter((code) => !codes.includes(code)).map((code) => <option key={code} value={code} />)}</datalist>
+          <Button type="submit" size="sm" variant="outline" className="h-8 px-2 text-xs" disabled={!nuova.trim()}>{t('add')}</Button>
+        </form>
       </div>
     </div>
   );

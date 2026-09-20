@@ -136,6 +136,25 @@ test('Movimenti: una spesa si salva; un trasferimento al broker mostra il colleg
   expect(errori).toEqual([]);
 });
 
+test('Patrimonio: una valuta si scrive, non si sceglie da una lista chiusa', async ({ page }) => {
+  // La tendina offriva dieci codici e si poteva solo scegliere fra quelli,
+  // mentre qualunque codice quotato funziona: "PLN" non e' in elenco apposta.
+  const errori = raccogliErrori(page);
+  await avvia(page);
+  await apri(page, 'Patrimonio');
+  await page.getByRole('button', { name: 'Valute', exact: true }).click();
+  // La card intera, non il modulo: le valute scelte sono pastiglie sopra il
+  // campo, non dentro il modulo che le aggiunge.
+  const card = page.locator('[data-slot="card"]').filter({ has: page.getByLabel('Aggiungi') });
+  await card.getByLabel('Aggiungi').fill('PLN');
+  await card.getByRole('button', { name: 'Aggiungi' }).click();
+  await expect(card.getByRole('button', { name: 'PLN' })).toBeVisible();
+  // Niente residui: la valuta si toglie e lo stack di prova resta com'era.
+  await card.getByRole('button', { name: 'PLN' }).click();
+  await expect(card.getByRole('button', { name: 'PLN' })).toHaveCount(0);
+  expect(errori).toEqual([]);
+});
+
 test('Debiti: una linea di credito si configura e si salva', async ({ page }) => {
   // Il modulo di una linea non ha i campi del piano: arrivavano come la stringa
   // "null" e il salvataggio veniva rifiutato.
