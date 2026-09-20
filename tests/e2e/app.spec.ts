@@ -383,3 +383,18 @@ test('Analisi: il periodo si dichiara, e cambiandolo i totali cambiano', async (
   await ultimoMese().toBe(etichetta(fine));
   expect(errori).toEqual([]);
 });
+
+test('Debiti: "Nuovo debito" apre il modulo sul gruppo Passività', async ({ page }) => {
+  // Il pulsante promette un debito. Se il modulo si apre su "Banca" (il gruppo
+  // predefinito della tendina), chi salva senza guardare crea un conto bancario
+  // e la pagina Debiti resta com'e': il debito non compare e nessuno lo dice.
+  const errori = raccogliErrori(page);
+  await avvia(page);
+  await apri(page, 'Debiti');
+  await page.getByRole('button', { name: 'Nuovo debito' }).first().click();
+  await expect(page.locator('#account-group')).toHaveValue('liability');
+  // E il modulo lo sa: la riga sotto il saldo parla di una passività.
+  await expect(page.getByText('scrivi l\'importo col segno meno')).toBeVisible();
+  await page.getByRole('button', { name: 'Annulla' }).click();
+  expect(errori).toEqual([]);
+});

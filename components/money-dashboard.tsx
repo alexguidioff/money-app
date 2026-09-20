@@ -3169,7 +3169,7 @@ function MoneyDashboardInner() {
                   senza, i defaultValue resterebbero quelli del conto di prima. */}
               <form key={conto?.id ?? 'new'} className="space-y-4" onSubmit={handleAccountSave}>
                 <label htmlFor="account-name" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldName')}<Input id="account-name" required name="name" defaultValue={conto?.name ?? ''} className="h-10 bg-white" /></label>
-                <label htmlFor="account-group" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldGroup')}<select id="account-group" required name="source_group" defaultValue={conto?.group ?? 'bank'} onChange={(event) => setAccountGroup(event.target.value as Account['group'])} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm">
+                <label htmlFor="account-group" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldGroup')}<select id="account-group" required name="source_group" value={accountGroup} onChange={(event) => setAccountGroup(event.target.value as Account['group'])} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm">
                   <option value="bank">{t('groupBank')}</option>
                   <option value="asset">{t('groupAsset')}</option>
                   <option value="liability">{t('groupLiability')}</option>
@@ -4764,11 +4764,11 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
   const prestiti = data.items.filter((item): item is TermLoanItem => item.kind === 'term_loan');
 
   return <div className="space-y-5">
-    <div className="flex flex-wrap items-center justify-between gap-3"><p role="status" className="text-sm text-[#71807c]">{t('debtAsOf', { date: formatDate(`${data.asOf}T12:00:00`) })}</p><Button onClick={onNewAccount} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('newLiability')}</Button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><p role="status" className="text-sm text-[#71807c]">{t('debtAsOf', { date: formatDate(`${data.asOf}T12:00:00`) })}</p><Button onClick={() => onNewAccount()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('newLiability')}</Button></div>
     {error && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-3 text-sm text-[#bd5e46]">{error}</p>}
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{metriche.map(([label, value], index) => <Card key={label} className={index === 0 ? 'border-0 bg-[var(--money-deep)] text-white' : 'border-black/6 bg-white'}><CardContent className="p-5"><p className={`text-xs ${index === 0 ? 'text-white/60' : 'text-[#71807c]'}`}>{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p></CardContent></Card>)}</div>
     {data.summary.unclassifiedCount > 0 && <div role="status" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-3 text-sm text-[#a05f4e]">{t('debtUnclassifiedSummary', { count: data.summary.unclassifiedCount, amount: formatEuro(data.summary.unclassifiedAmount) })}</div>}
-    {!data.items.length && <Card><CardContent className="p-10 text-center"><CreditCard className="mx-auto mb-3 size-8 text-[#87918e]" /><p className="text-sm text-[#71807c]">{t('debtNoAccounts')}</p><Button className="mt-4" onClick={onNewAccount}>{t('newLiability')}</Button></CardContent></Card>}
+    {!data.items.length && <Card><CardContent className="p-10 text-center"><CreditCard className="mx-auto mb-3 size-8 text-[#87918e]" /><p className="text-sm text-[#71807c]">{t('debtNoAccounts')}</p><Button className="mt-4" onClick={() => onNewAccount()}>{t('newLiability')}</Button></CardContent></Card>}
     {linee.length > 0 && <>
       <p className="text-xs font-semibold uppercase tracking-wide text-[#87918e]">{t('debtCreditLines')}</p>
       <div className="grid gap-4 xl:grid-cols-2">{linee.map((linea) => <CreditLineCard key={linea.accountId} item={linea} onEdit={() => edit(linea)} onDelete={() => requestDelete(linea.accountId, linea.name, linea.name)} />)}</div>
@@ -5769,7 +5769,7 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
         <label className="sr-only" htmlFor="account-order-direction">{t('accountOrderDirection')}</label>
         <select id="account-order-direction" value={accountOrderDirection} onChange={(event) => setAccountOrderDirection(event.target.value as 'asc' | 'desc')} className="h-8 rounded-lg border border-black/7 bg-white px-2 text-xs"><option value="asc">{t('ascending')}</option><option value="desc">{t('descending')}</option></select>
       </label>
-      {alPresente && <Button onClick={onNewAccount} size="sm" className="ml-auto h-8 rounded-lg bg-[var(--money-primary)] px-3 text-xs text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-3.5" />{t('newAccount')}</Button>}
+      {alPresente && <Button onClick={() => onNewAccount()} size="sm" className="ml-auto h-8 rounded-lg bg-[var(--money-primary)] px-3 text-xs text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-3.5" />{t('newAccount')}</Button>}
     </div>
     {!alPresente && <p className="rounded-xl border border-black/7 bg-[#fafaf8] px-4 py-2.5 text-xs text-[#71807c]">{t('pastPeriodReadOnly')}</p>}
 
