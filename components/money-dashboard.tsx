@@ -3174,7 +3174,7 @@ function MoneyDashboardInner() {
                   <option value="asset">{t('groupAsset')}</option>
                   <option value="liability">{t('groupLiability')}</option>
                 </select></label>
-                <label htmlFor="account-balance" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldInitialBalance')}<Input id="account-balance" name="starting_balance" type="number" step="0.01" defaultValue={conto ? String(conto.startingBalance) : '0'} className="h-10 bg-white" /></label>
+                <label htmlFor="account-balance" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldInitialBalance')}<Input id="account-balance" name="starting_balance" type="number" step="0.01" defaultValue={conto ? String(conto.startingBalance) : '0'} className="h-10 bg-white" />{accountGroup === 'liability' && <span className="block pt-1 font-normal leading-5 text-[#7b8784]">{t('initialBalanceSignHint')}</span>}</label>
                 <label htmlFor="account-notes" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('note')}<textarea id="account-notes" name="notes" defaultValue={conto?.notes ?? ''} className="min-h-20 w-full rounded-lg border border-input bg-white p-2.5 text-sm" /></label>
                 <label className="flex items-center gap-2.5 text-xs font-medium text-[#52615d]"><input type="checkbox" name="counts_in_net_worth" defaultChecked={conto ? conto.countsInNetWorth !== false : true} className="size-4 accent-[var(--money-primary)]" />{t('fieldCountsInNetWorth')}</label>
                 {accountGroup === 'asset' && <label title={t('liquidityExplanation')} className="flex items-center gap-2.5 text-xs font-medium text-[#52615d]"><input type="checkbox" name="is_liquid" defaultChecked={conto?.isLiquid === true} className="size-4 accent-[var(--money-primary)]" />{t('fieldLiquid')}</label>}
@@ -6424,7 +6424,7 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
     Il "dichiarato" era la cifra importata dall'Excel, e da quando l'app non
     lo legge piu' nessuno lo aggiorna: confrontarcisi produceva una differenza
     che non si poteva ne' spiegare ne' correggere. */}
-{azioni && Math.abs(account.startingBalance) > 0.005 && <p className="ml-12 mt-1.5 text-[11px] text-[#87918e]">{t('initial')} <b className="font-medium text-[#52615d]">{formatEuro(account.startingBalance)}</b></p>}
+{azioni && Math.abs(account.startingBalance) > 0.005 && <p className="ml-12 mt-1.5 text-[11px] text-[#87918e]">{t('initial')} <b className="font-medium text-[#52615d]">{formatEuro(account.group === 'liability' ? Math.abs(account.startingBalance) : account.startingBalance)}</b></p>}
 {/* Il valore di una casa e' fermo a quando l'hai stimato: senza questa riga
     l'unico modo di accorgersene era aprire le valutazioni una per una. Il
     numero c'e' solo quando c'e' una stima da datare - l'eta' la calcola il
