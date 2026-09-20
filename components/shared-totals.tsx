@@ -43,7 +43,7 @@ const FAMIGLIA = '__famiglia__';
  * Non e' la pagina a nasconderli, e' il server che non li manda.
  */
 export function SharedTotalsView({ apiUrl, year, month }: { apiUrl: string; year: number; month: number | null }) {
-  const { t, formatEuro, formatCompactEuro, formatNumber, formatPeriodLabel } = useI18n();
+  const { t, formatEuro, formatCompactEuro, formatNumber, formatPercentNumber, formatPeriodLabel } = useI18n();
   const [totals, setTotals] = useState<SharedTotals | null>(null);
   const [trend, setTrend] = useState<SharedTrend | null>(null);
   const [totalsLoading, setTotalsLoading] = useState(true);
@@ -257,7 +257,7 @@ export function SharedTotalsView({ apiUrl, year, month }: { apiUrl: string; year
                   {riga(t('income'), formatEuro(totali.income))}
                   {riga(t('expenses'), formatEuro(totali.expenses))}
                   {riga(t('saved'), formatEuro(totali.savings), totali.savings >= 0 ? 'positivo' : 'negativo')}
-                  {totali.savingsRate !== null && riga(t('periodSavingsRate'), `${formatNumber(totali.savingsRate * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`)}
+                  {totali.savingsRate !== null && riga(t('periodSavingsRate'), `${formatPercentNumber(totali.savingsRate * 100)}%`)}
                 </div>
                 <div className="py-2">{riga(t('netWorthNet'), formatEuro(totali.netWorth))}</div>
                 <div className="py-2">

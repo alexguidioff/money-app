@@ -30,6 +30,23 @@ type I18nContextValue = {
   formatEuro: (value: number) => string;
   formatCompactEuro: (value: number) => string;
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
+  /**
+   * Le percentuali si scrivono in un modo solo: un decimale al massimo, col
+   * separatore decimale della lingua scelta.
+   *
+   * Due nomi e non uno perche' il codice ha in mano due unita' diverse - 0,425
+   * e 42,5 - e chiamarle tutte e due "percentuale" e' esattamente come sono
+   * nate tre precisioni diverse nella stessa schermata e un "12.5%" col punto
+   * in italiano. Chi scrive la chiamata vede l'unita' nel nome.
+   *
+   * Dove il `%` lo mette gia' il testo della traduzione (`{{percent}}%`) si usa
+   * `formatPercentNumber`: la formattazione e' la stessa, il segno lo aggiunge
+   * la frase.
+   */
+  formatPercentRatio: (value: number, options?: Intl.NumberFormatOptions) => string;
+  formatPercentPoints: (value: number, options?: Intl.NumberFormatOptions) => string;
+  /** Il numero della percentuale, senza il segno: il `%` lo mette la frase. */
+  formatPercentNumber: (value: number) => string;
   formatDate: (value: Date | string, options?: Intl.DateTimeFormatOptions) => string;
   monthNames: string[];
   monthNamesShort: string[];
@@ -103,6 +120,24 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     [locale],
   );
 
+  const formatPercentRatio = useCallback(
+    (value: number, options?: Intl.NumberFormatOptions) =>
+      new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 1, ...options }).format(value),
+    [locale],
+  );
+
+  const formatPercentPoints = useCallback(
+    (value: number, options?: Intl.NumberFormatOptions) => formatPercentRatio(value / 100, options),
+    [formatPercentRatio],
+  );
+
+  // Stessa precisione delle altre due, scritta per forza due volte: questa non
+  // usa lo stile `percent` (niente segno), quindi non puo' passare da quelle.
+  const formatPercentNumber = useCallback(
+    (value: number) => new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value),
+    [locale],
+  );
+
   const formatDate = useCallback(
     (value: Date | string, options?: Intl.DateTimeFormatOptions) => {
       const date = typeof value === 'string' ? new Date(value) : value;
@@ -131,8 +166,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     [monthNamesShort, lang]);
 
   const value = useMemo(
-    () => ({ lang, setLang, t, locale, formatEuro, formatCompactEuro, formatNumber, formatDate, monthNames, monthNamesShort, formatPeriodLabel }),
-    [lang, setLang, t, locale, formatEuro, formatCompactEuro, formatNumber, formatDate, monthNames, monthNamesShort, formatPeriodLabel],
+    () => ({ lang, setLang, t, locale, formatEuro, formatCompactEuro, formatNumber, formatPercentRatio, formatPercentPoints, formatPercentNumber, formatDate, monthNames, monthNamesShort, formatPeriodLabel }),
+    [lang, setLang, t, locale, formatEuro, formatCompactEuro, formatNumber, formatPercentRatio, formatPercentPoints, formatPercentNumber, formatDate, monthNames, monthNamesShort, formatPeriodLabel],
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

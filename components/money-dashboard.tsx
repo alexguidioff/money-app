@@ -925,7 +925,7 @@ export function MoneyDashboard() {
 }
 
 function MoneyDashboardInner() {
-  const { t, lang, setLang, locale, formatEuro, formatCompactEuro, formatDate, monthNames } = useI18n();
+  const { t, lang, setLang, locale, formatEuro, formatCompactEuro, formatDate, monthNames, formatPercentNumber } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>('Panoramica');
   const [period, setPeriod] = useState<PeriodSelection>({ year: MESE_CORRENTE.anno, month: MESE_CORRENTE.mese, scope: 'month' });
@@ -2618,14 +2618,14 @@ function MoneyDashboardInner() {
               <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
                 <CardContent className="p-5">
                   <div className="flex items-center justify-between"><span className="text-sm font-medium text-[#71807c]">{t('periodCompletion')}</span><span className="text-xs text-[#87918e]">{t('daysOf', { passed: summary.daysPassed, total: summary.daysInPeriod })}</span></div>
-                  <p className="mt-2 text-2xl font-semibold tracking-tight">{Math.round(summary.periodCompletion * 100)}%</p>
+                  <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{formatPercentNumber(summary.periodCompletion * 100)}%</p>
                   <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#eef0ec]"><div className="h-full rounded-full bg-[#6d8ff4]" style={{ width: `${summary.periodCompletion * 100}%` }} /></div>
                 </CardContent>
               </Card>
               <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
                 <CardContent className="p-5">
                   <div className="flex items-center justify-between"><span className="text-sm font-medium text-[#71807c]">{t('periodSavingsRate')}</span></div>
-                  <p className="mt-2 text-2xl font-semibold tracking-tight">{summary.savingsRate !== null ? `${(summary.savingsRate * 100).toLocaleString(locale, { maximumFractionDigits: 1 })}%` : '—'}</p>
+                  <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{summary.savingsRate !== null ? `${formatPercentNumber(summary.savingsRate * 100)}%` : '—'}</p>
                   <p className="mt-3 text-xs text-[#87918e]">{summary.savingsRate !== null ? t('onPeriodIncome') : t('noIncomeInPeriod')}</p>
                 </CardContent>
               </Card>
@@ -2639,7 +2639,7 @@ function MoneyDashboardInner() {
                     <p className="mt-3 text-xs text-[#87918e]">{t('estimateClosedMonth')}</p>
                     <p className="mt-1 text-[11px] leading-4 text-[#a0a8a5]">{t('estimateClosedTotal', { spent: formatCompactEuro(summary.projection.spentSoFar) })}</p>
                   </> : <>
-                    <p className="mt-2 text-2xl font-semibold tracking-tight">{formatEuro(summary.projection.estimate ?? 0)}</p>
+                    <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{formatEuro(summary.projection.estimate ?? 0)}</p>
                     <p className="mt-3 text-xs text-[#87918e]">{summary.projection.planned > 0
                       ? t('estimateVsPlanned', { spent: formatCompactEuro(summary.projection.spentSoFar), planned: formatCompactEuro(summary.projection.planned) })
                       : t('estimateSoFar', { spent: formatCompactEuro(summary.projection.spentSoFar) })}</p>
@@ -2650,7 +2650,7 @@ function MoneyDashboardInner() {
               {summary.goalCoverage.monthlyNeeded > 0 && <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
                 <CardContent className="p-5">
                   <span className="text-sm font-medium text-[#71807c]">{t('goalCoverage')}</span>
-                  <p className="mt-2 text-2xl font-semibold tracking-tight">{(summary.goalCoverage.coverage ?? 0).toLocaleString(locale)}%</p>
+                  <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{formatPercentNumber(summary.goalCoverage.coverage ?? 0)}%</p>
                   <p className="mt-3 text-xs text-[#87918e]">{t('goalCoverageDetail', { saved: formatCompactEuro(summary.goalCoverage.savedThisPeriod), needed: formatCompactEuro(summary.goalCoverage.monthlyNeeded) })}</p>
                 </CardContent>
               </Card>}
@@ -2662,9 +2662,9 @@ function MoneyDashboardInner() {
               <Card className="flex flex-col border-black/6 bg-[var(--money-deep)] text-white shadow-sm shadow-black/[0.04]">
                 <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-[17px]">{t('budgetOfPeriod')}</CardTitle><CircleDollarSign className="size-5 text-[var(--money-accent)]" /></div><p className="text-xs text-white/50">{t('howMuchLeftToSpend')}</p></CardHeader>
                 <CardContent className="flex min-h-0 flex-1 flex-col">
-                  <p className="mt-1 text-3xl font-semibold tracking-tight">{formatEuro(remainingBudget)}</p>
+                  <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">{formatEuro(remainingBudget)}</p>
                   <div className="mt-6 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[var(--money-accent)]" style={{ width: `${Math.min(summary.budgetUsed, 100)}%` }} /></div>
-                  <div className="mt-2 flex justify-between text-xs text-white/48"><span>{t('usedPercent', { percent: summary.budgetUsed })}</span><span>{t('availablePercent', { percent: Math.max(0, 100 - summary.budgetUsed) })}</span></div>
+                  <div className="mt-2 flex justify-between text-xs text-white/48"><span>{t('usedPercent', { percent: formatPercentNumber(summary.budgetUsed) })}</span><span>{t('availablePercent', { percent: Math.max(0, 100 - summary.budgetUsed) })}</span></div>
                   {budgetAlerts && budgetAlerts.alert_count > 0 && <p className="mt-3 text-xs font-medium text-[#efb09e]">{t('categoriesOverBudgetCount', { count: budgetAlerts.alert_count })}</p>}
                   {(() => {
                     const categorie = (summaryBreakdown?.sections.expenses.categories ?? [])
@@ -3866,7 +3866,7 @@ function NeedsWantsCard({ groups }: { groups: BudgetGroupSplit[] }) {
 }
 
 function BudgetDashboardView({ data, budgetType }: { data: BudgetDashboardData; budgetType: 'Expenses' | 'Income' | 'Savings' }) {
-  const { t, locale, formatEuro, formatCompactEuro, monthNames, formatPeriodLabel } = useI18n();
+  const { t, locale, formatEuro, formatCompactEuro, monthNames, formatPeriodLabel, formatPercentNumber } = useI18n();
  const isExpense = budgetType === 'Expenses';
   const isSavings = budgetType === 'Savings';
   const actualTitle = budgetType === 'Expenses' ? t('spentMetric') : budgetType === 'Income' ? t('receivedMetric') : t('savedMetric');
@@ -3889,10 +3889,10 @@ function BudgetDashboardView({ data, budgetType }: { data: BudgetDashboardData; 
   return <div className="space-y-5">
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <MetricCard title={plannedTitle} value={data.plannedTotal} change={formatPeriodRef(monthNames, data.periodYear, data.periodMonth)} icon={CircleDollarSign} tone="worth" />
-      <MetricCard title={actualTitle} value={data.actualTotal} change={isExpense ? t('spentPercentUsed', { percent: data.usage.toLocaleString(locale) }) : t(isSavings ? 'percentOfPlanValue' : 'percentOfTarget', { percent: data.usage.toLocaleString(locale) })} icon={CreditCard} tone={isExpense ? 'expense' : 'worth'} />
+      <MetricCard title={actualTitle} value={data.actualTotal} change={isExpense ? t('spentPercentUsed', { percent: formatPercentNumber(data.usage) }) : t(isSavings ? 'percentOfPlanValue' : 'percentOfTarget', { percent: formatPercentNumber(data.usage) })} icon={CreditCard} tone={isExpense ? 'expense' : 'worth'} />
       <MetricCard title={varianceTitle} value={isExpense ? data.remaining : Math.abs(data.remaining)} change={varianceStatus} icon={PiggyBank} tone={totalGood ? 'saving' : 'expense'} />
       {isSavings
-        ? <MetricCard title={t('progressMetric')} value={data.usage} valueLabel={`${data.usage.toLocaleString(locale)}%`} change={t('percentOfPlan')} icon={AlertCircle} tone="income" />
+        ? <MetricCard title={t('progressMetric')} value={data.usage} valueLabel={`${formatPercentNumber(data.usage)}%`} change={t('percentOfPlan')} icon={AlertCircle} tone="income" />
         : <MetricCard title={isExpense ? t('categoriesOverBudget') : t('categoriesBelowTarget')} value={concerningCategories} valueLabel={String(concerningCategories)} change={t('inSelectedPeriod')} icon={AlertCircle} tone="income" />}
     </div>
     {isExpense && <NeedsWantsCard groups={data.groups} />}
@@ -3910,7 +3910,7 @@ function BudgetPlanMonthTotals({ data, budgetType, calculations, year, month }: 
   year: number;
   month: number;
 }) {
-  const { t, locale, formatEuro, monthNames } = useI18n();
+  const { t, locale, formatEuro, monthNames, formatPercentNumber } = useI18n();
   const planned = data.plannedTotal;
   const actual = data.actualTotal;
   const variance = planned - actual;
@@ -3927,10 +3927,10 @@ function BudgetPlanMonthTotals({ data, budgetType, calculations, year, month }: 
         : t(variance < 0 ? 'abovePlan' : 'belowPlan');
   const periodRef = formatPeriodRef(monthNames, year, month);
   return <div className="grid gap-5 md:grid-cols-3">
-    <Card className="border-0 bg-[var(--money-deep)] text-white shadow-sm"><CardContent className="p-6"><p className="text-sm text-white/55">{varianceLabel}</p><p className="mt-2 text-3xl font-semibold">{formatEuro(budgetType === 'Expenses' ? variance : Math.abs(variance))}</p><p className="mt-2 text-xs text-white/65">{varianceStatus}</p><div className="mt-7 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[var(--money-accent)]" style={{ width: `${planned ? Math.min(actual / planned * 100, 100) : 0}%` }} /></div></CardContent></Card>
+    <Card className="border-0 bg-[var(--money-deep)] text-white shadow-sm"><CardContent className="p-6"><p className="text-sm text-white/55">{varianceLabel}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{formatEuro(budgetType === 'Expenses' ? variance : Math.abs(variance))}</p><p className="mt-2 text-xs text-white/65">{varianceStatus}</p><div className="mt-7 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[var(--money-accent)]" style={{ width: `${planned ? Math.min(actual / planned * 100, 100) : 0}%` }} /></div></CardContent></Card>
     <MetricCard title={actualLabel} value={actual} change={periodRef} icon={CreditCard} tone={budgetType === 'Expenses' ? 'expense' : 'worth'} />
     {budgetType === 'Savings'
-      ? <MetricCard title={t('savingsRateLabel')} value={calculations?.savingsRate ?? 0} valueLabel={calculations?.savingsRate == null ? '—' : `${(calculations.savingsRate * 100).toLocaleString(locale, { maximumFractionDigits: 1 })}%`} change={calculations ? t('daysOfDays', { passed: calculations.daysPassed, total: calculations.daysInPeriod }) : t('calculationInProgress')} icon={PiggyBank} tone="saving" />
+      ? <MetricCard title={t('savingsRateLabel')} value={calculations?.savingsRate ?? 0} valueLabel={calculations?.savingsRate == null ? '—' : `${formatPercentNumber(calculations.savingsRate * 100)}%`} change={calculations ? t('daysOfDays', { passed: calculations.daysPassed, total: calculations.daysInPeriod }) : t('calculationInProgress')} icon={PiggyBank} tone="saving" />
       : <MetricCard title={plannedLabel} value={planned} change={periodRef} icon={CircleDollarSign} tone="worth" />}
   </div>;
 }
@@ -4180,8 +4180,8 @@ function GoalsView({ data, accounts, onSave, onDelete, onMilestoneAdd, onMilesto
 
   return <div className="space-y-5">
     <div className="grid gap-4 sm:grid-cols-2">
-      <Card className="border-0 bg-[var(--money-deep)] text-white"><CardContent className="p-6"><p className="text-sm text-white/55">{t('allocatedTotal')}</p><p className="mt-2 text-3xl font-semibold">{formatEuro(data.currentTotal)}</p><p className="mt-3 text-xs text-white/48">{t('ofAllGoals', { amount: formatEuro(data.targetTotal) })}</p></CardContent></Card>
-      <Card className="border-black/6 bg-white"><CardContent className="p-6"><p className="text-sm text-[#71807c]">{t('activeGoals')}</p><p className="mt-2 text-3xl font-semibold">{data.active}</p><p className="mt-3 text-xs text-[#87918e]">{t('goalsAchievedOfTotal', { completed: data.completed, total: data.items.length })}</p></CardContent></Card>
+      <Card className="border-0 bg-[var(--money-deep)] text-white"><CardContent className="p-6"><p className="text-sm text-white/55">{t('allocatedTotal')}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{formatEuro(data.currentTotal)}</p><p className="mt-3 text-xs text-white/48">{t('ofAllGoals', { amount: formatEuro(data.targetTotal) })}</p></CardContent></Card>
+      <Card className="border-black/6 bg-white"><CardContent className="p-6"><p className="text-sm text-[#71807c]">{t('activeGoals')}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{data.active}</p><p className="mt-3 text-xs text-[#87918e]">{t('goalsAchievedOfTotal', { completed: data.completed, total: data.items.length })}</p></CardContent></Card>
     </div>
     <GoalsBalanceRow data={data} />
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -4565,7 +4565,7 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
 }
 
 function CreditLineCard({ item, onEdit, onDelete }: { item: CreditLineItem; onEdit: () => void; onDelete: () => void }) {
-  const { t, locale, formatEuro, formatCompactEuro, formatDate, formatPeriodLabel } = useI18n();
+  const { t, locale, formatEuro, formatCompactEuro, formatDate, formatPeriodLabel, formatPercentNumber } = useI18n();
   const [aperto, setAperto] = useState(false);
   // Quattro voci, piu' limite e utilizzo se un limite esiste. Di uno scoperto
   // non interessa il piano - non ce l'ha - ma quanto devi adesso, quanto hai
@@ -4574,11 +4574,11 @@ function CreditLineCard({ item, onEdit, onDelete }: { item: CreditLineItem; onEd
     [t('debtExposure'), formatEuro(item.exposure)],
     [t('debtPeakExposure'), formatEuro(item.peakExposure)],
     [t('debtInterestThisYear'), formatEuro(item.interestThisYear)],
-    [t('debtRate'), `${item.rate.toLocaleString(locale)}%`],
+    [t('debtRate'), `${formatPercentNumber(item.rate)}%`],
   ];
   if (item.creditLimit !== null) {
     voci.splice(1, 0, [t('debtCreditLimit'), formatEuro(item.creditLimit)]);
-    if (item.utilisation !== null) voci.splice(2, 0, [t('debtUtilisation'), `${item.utilisation.toLocaleString(locale)}%`]);
+    if (item.utilisation !== null) voci.splice(2, 0, [t('debtUtilisation'), `${formatPercentNumber(item.utilisation)}%`]);
   }
   const esposizioneConfig = { exposure: { label: t('debtExposure'), color: '#bd5e46' } } satisfies ChartConfig;
   // Un movimento puo' avere una riga di dettaglio: serve a marcare in tabella
@@ -4651,7 +4651,7 @@ function CreditLineCard({ item, onEdit, onDelete }: { item: CreditLineItem; onEd
 }
 
 function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, onEditAccount, onEditTransaction, onPayment }: { apiUrl: string; accounts: Account[]; version: number; onDeleted: () => Promise<void>; onNewAccount: () => void; onEditAccount: (account: Account) => void; onEditTransaction: (transaction: Transaction) => void; onPayment: (destination?: string, suggestion?: { principal: number; interest: number }) => void }) {
-  const { t, locale, formatEuro, formatCompactEuro, formatDate, formatPeriodLabel } = useI18n();
+  const { t, locale, formatEuro, formatCompactEuro, formatDate, formatPeriodLabel, formatPercentNumber } = useI18n();
   const [data, setData] = useState<LiabilityData | null>(null);
   const [editing, setEditing] = useState<LiabilityData['items'][number] | null>(null);
   const [drawdowns, setDrawdowns] = useState<LiabilityDrawdown[]>([]);
@@ -4738,7 +4738,7 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
   if (!data) return <Card><CardContent className="p-10 text-center text-sm text-[#71807c]">{error || t('updating')}</CardContent></Card>;
   const metriche = [
     [t('debtTotal'), formatEuro(data.summary.totalDebt)],
-    [t('debtAverageRate'), data.summary.weightedRate == null ? '—' : `${data.summary.weightedRate.toLocaleString(locale)}%`],
+    [t('debtAverageRate'), data.summary.weightedRate == null ? '—' : `${formatPercentNumber(data.summary.weightedRate)}%`],
     [t('debtMonthlyService'), formatEuro(data.summary.monthlyService)],
     [t('configureDebt'), t('debtConfigured', { configured: data.summary.configured, total: data.summary.total })],
   ];
@@ -4883,7 +4883,7 @@ function TargetWeightsEditor({ posizioni, onInstrumentSave }: {
   posizioni: InvestmentPosition[];
   onInstrumentSave: (instrumentId: number, payload: Record<string, string | number | null>) => Promise<void>;
 }) {
-  const { t, formatNumber } = useI18n();
+  const { t, formatNumber, formatPercentRatio } = useI18n();
   const modificabili = posizioni.filter((p) => p.instrumentId !== null && p.isOpen);
   const pesoIniziale = (p: InvestmentPosition) => p.targetWeight === null ? '' : String(Math.round(p.targetWeight * 1000) / 10);
   const [bozza, setBozza] = useState<Record<number, string>>({});
@@ -4935,7 +4935,7 @@ function TargetWeightsEditor({ posizioni, onInstrumentSave }: {
       <tfoot><tr className="border-t border-black/10">
         <td className="px-5 py-3 text-xs font-medium text-[#52615d]">{t('allocWeightsTotal')}</td>
         <td className={`px-3 py-3 text-right font-semibold tabular-nums ${inLinea ? 'text-[#2d7b65]' : 'text-[#bd5e46]'}`}>
-          {formatNumber(totale / 100, { style: 'percent', maximumFractionDigits: 1 })}
+          {formatPercentRatio(totale / 100)}
         </td>
       </tr></tfoot>
     </table></div>
@@ -4953,9 +4953,9 @@ function RebalanceCard({ riordino, posizioni, onInstrumentSave }: {
   posizioni: InvestmentPosition[];
   onInstrumentSave: (instrumentId: number, payload: Record<string, string | number | null>) => Promise<void>;
 }) {
-  const { t, formatEuro, formatNumber } = useI18n();
-  const percentuale = (valore: number) => formatNumber(valore, { style: 'percent', maximumFractionDigits: 1 });
-  const deriva = (valore: number) => formatNumber(valore, { style: 'percent', maximumFractionDigits: 1, signDisplay: 'always' });
+  const { t, formatEuro, formatNumber, formatPercentRatio } = useI18n();
+  const percentuale = (valore: number) => formatPercentRatio(valore);
+  const deriva = (valore: number) => formatPercentRatio(valore, { signDisplay: 'always' });
   return <Card className="border-black/6 bg-white shadow-sm">
     <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('allocRebalance')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('allocRebalanceSubtitle')}</p></CardHeader>
     <CardContent className="p-0">
@@ -5004,7 +5004,7 @@ function RendimentoCard({ titolo, spiegazione, esito }: {
   spiegazione: string;
   esito: InvestmentReturns['twr'];
 }) {
-  const { t, formatNumber } = useI18n();
+  const { t, formatNumber, formatPercentRatio } = useI18n();
   return <Card className="border-black/6 bg-white shadow-sm">
     <CardContent className="p-5">
       <p className="mb-4 text-sm font-medium text-[#71807c]">{titolo}</p>
@@ -5013,14 +5013,14 @@ function RendimentoCard({ titolo, spiegazione, esito }: {
           "non si puo' sapere". */}
       {esito.value === null
         ? <p className="text-base font-medium text-[#71807c]">{t(MOTIVI_RENDIMENTO[esito.reason ?? ''] ?? 'returnReasonUnknown')}</p>
-        : <p className={`text-[25px] font-semibold tracking-[-0.03em] tabular-nums ${esito.value >= 0 ? 'text-[#2d7b65]' : 'text-[#bd5e46]'}`}>{formatNumber(esito.value, { style: 'percent', maximumFractionDigits: 2, signDisplay: 'always' })}</p>}
+        : <p className={`text-[25px] font-semibold tracking-[-0.03em] tabular-nums ${esito.value >= 0 ? 'text-[#2d7b65]' : 'text-[#bd5e46]'}`}>{formatPercentRatio(esito.value, { signDisplay: 'always' })}</p>}
       <p className="mt-2 text-xs text-[#618078]">{spiegazione}</p>
     </CardContent>
   </Card>;
 }
 
 function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChanged, onSave, onDelete, onInstrumentSave, onRefresh, accounts, impostazioni }: { apiUrl: string; onQuotesChanged: () => Promise<void>; dashboard: InvestmentDashboardData; ledger: InvestmentTransaction[]; allocation: InvestmentAllocationData; onSave: (transactionId: number | null, payload: Record<string, string | number | boolean>) => Promise<void>; onDelete: (transaction: InvestmentTransaction) => Promise<void>; onInstrumentSave: (instrumentId: number, payload: Record<string, string | number | null>) => Promise<void>; onRefresh: () => Promise<{ updated: number; errors: Array<{ code?: string; error?: string }> }>; accounts: Account[]; impostazioni: ImpostazioniDellaPagina }) {
-  const { t, lang, locale, formatEuro, formatCompactEuro, formatDate, monthNames, formatPeriodLabel } = useI18n();
+  const { t, lang, locale, formatEuro, formatCompactEuro, formatDate, monthNames, formatPeriodLabel, formatPercentPoints, formatPercentNumber } = useI18n();
   const [tab, setTab] = useState<'portfolio' | 'ledger' | 'instruments' | 'allocation' | 'quotes' | 'metodo'>('portfolio');
   const [showClosedPositions, setShowClosedPositions] = useState(false);
   // "Chiusa" vuol dire zero quote. Ma gli interessi del broker, una
@@ -5338,7 +5338,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
     </div>
 
     {tab === 'portfolio' && <div className="space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><MetricCard title={t('portfolioValue')} value={dashboard.snapshot.marketValue} change={dashboard.snapshot.period ? t('excelHistory', { period: formatDate(`${dashboard.snapshot.period}T12:00:00`, { month: 'long', year: 'numeric' }) }) : t('noHistory')} icon={Landmark} tone="worth" /><MetricCard title={t('investedCapital')} value={dashboard.snapshot.investedCapital} change={t('netContributionsOverTime')} icon={CircleDollarSign} tone="saving" /><MetricCard title={t('gainLoss')} value={dashboard.snapshot.gain} change={t('percentOnCapital', { percent: dashboard.snapshot.returnRate.toLocaleString(locale) })} icon={TrendingUp} tone={dashboard.snapshot.gain >= 0 ? 'income' : 'expense'} /><MetricCard title={t('connectedQuotes')} value={dashboard.ledger.quotedPositions} valueLabel={`${dashboard.ledger.quotedPositions}/${dashboard.ledger.activePositions}`} change={t('withLocalCache')} icon={RefreshCw} tone="worth" /><RendimentoCard titolo={t('twrReturn')} spiegazione={t('twrHint')} esito={dashboard.returns.twr} /><RendimentoCard titolo={t('xirrReturn')} spiegazione={t('xirrHint')} esito={dashboard.returns.xirr} /></div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><MetricCard title={t('portfolioValue')} value={dashboard.snapshot.marketValue} change={dashboard.snapshot.period ? t('excelHistory', { period: formatDate(`${dashboard.snapshot.period}T12:00:00`, { month: 'long', year: 'numeric' }) }) : t('noHistory')} icon={Landmark} tone="worth" /><MetricCard title={t('investedCapital')} value={dashboard.snapshot.investedCapital} change={t('netContributionsOverTime')} icon={CircleDollarSign} tone="saving" /><MetricCard title={t('gainLoss')} value={dashboard.snapshot.gain} change={t('percentOnCapital', { percent: formatPercentPoints(dashboard.snapshot.returnRate) })} icon={TrendingUp} tone={dashboard.snapshot.gain >= 0 ? 'income' : 'expense'} /><MetricCard title={t('connectedQuotes')} value={dashboard.ledger.quotedPositions} valueLabel={`${dashboard.ledger.quotedPositions}/${dashboard.ledger.activePositions}`} change={t('withLocalCache')} icon={RefreshCw} tone="worth" /><RendimentoCard titolo={t('twrReturn')} spiegazione={t('twrHint')} esito={dashboard.returns.twr} /><RendimentoCard titolo={t('xirrReturn')} spiegazione={t('xirrHint')} esito={dashboard.returns.xirr} /></div>
       {/* Il metodo si dichiara: chi legge un rendimento ha diritto di sapere su
           cosa e' calcolato, e da quando. */}
       {dashboard.returns.since && <p className="text-xs text-[#7b8784]">{t('returnsMethod', { from: formatDate(`${dashboard.returns.since}T12:00:00`, { month: 'long', year: 'numeric' }), to: formatDate(`${dashboard.returns.asOf}T12:00:00`, { month: 'long', year: 'numeric' }) })}</p>}
@@ -5497,7 +5497,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
             <div className="flex items-start gap-3">
               {allocation.coverage.coveredPercent >= 99 ? <CheckCircle2 className="mt-0.5 size-5 text-[#2d7b65]" /> : <AlertCircle className="mt-0.5 size-5 text-[#bd5e46]" />}
               <div>
-                <p className="text-sm font-semibold">{t('allocationCoverage', { percent: allocation.coverage.coveredPercent.toLocaleString(locale) })}</p>
+                <p className="text-sm font-semibold">{t('allocationCoverage', { percent: formatPercentNumber(allocation.coverage.coveredPercent) })}</p>
                 <p className="mt-1 text-xs leading-5 text-[#52615d]">{allocation.coverage.lastFetch ? t('allocationLastFetch', { date: new Date(allocation.coverage.lastFetch).toLocaleString(locale) }) : t('allocationNeverFetched')}</p>
               </div>
             </div>
@@ -5523,7 +5523,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
           {allocation.allocations[allocationDimension].length === 0
             ? <p className="py-6 text-center text-sm text-[#87918e]">{t('allocationNoData')}</p>
             : allocation.allocations[allocationDimension].map((item) => <div key={item.label}>
-                <div className="mb-2 flex justify-between gap-4 text-sm"><span className="font-medium">{item.label === '__unavailable__' ? t('allocationUnavailable') : item.label}</span><span className="tabular-nums">{item.weight.toLocaleString(locale)}%</span></div>
+                <div className="mb-2 flex justify-between gap-4 text-sm"><span className="font-medium">{item.label === '__unavailable__' ? t('allocationUnavailable') : item.label}</span><span className="tabular-nums">{formatPercentNumber(item.weight)}%</span></div>
                 <div className="h-2 overflow-hidden rounded-full bg-[#edf0ed]"><div className={`h-full rounded-full ${item.label === '__unavailable__' ? 'bg-[#c9a99b]' : 'bg-[#6d8ff4]'}`} style={{ width: `${Math.min(item.weight, 100)}%` }} /></div>
                 <div className="mt-1.5 text-xs text-[#7b8784]">{formatEuro(item.value)}</div>
               </div>)}
@@ -6381,7 +6381,7 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
   onValuations: (account: Account) => void;
   onDelete: (account: Account) => void;
 }) {
-  const { t, formatEuro } = useI18n();
+  const { t, formatEuro, formatPercentNumber } = useI18n();
   const hiddenCount = totalCount - items.length;
   return (
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
@@ -6398,7 +6398,7 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
       {expanded && (items.length === 0 ? (
         <p className="border-t border-black/5 px-5 pt-3 text-xs text-[#87918e]">{t('accountsAllHiddenZero')}</p>
       ) : (
-        <CardContent className="divide-y divide-black/5 border-t border-black/5 pt-2">{items.map((account) => { const valore = account.value; const share = account.countsInNetWorth === false || !netWorth ? null : Math.abs(valore) / Math.abs(netWorth) * 100; return <div key={account.id} className="py-3.5"><div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-[#edf0ed] text-[#4e6c64]"><Landmark className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{account.name}</p>{account.notes && <p className="mt-0.5 line-clamp-2 text-xs text-[#71807c]">{account.notes}</p>}</div><div className="text-right"><p className="text-sm font-semibold tabular-nums">{formatEuro(valore)}</p><p title={t('netWorthShareExplanation')} className="text-[11px] text-[#87918e]">{share !== null ? t('netWorthShare', { percent: share.toFixed(1) })
+        <CardContent className="divide-y divide-black/5 border-t border-black/5 pt-2">{items.map((account) => { const valore = account.value; const share = account.countsInNetWorth === false || !netWorth ? null : Math.abs(valore) / Math.abs(netWorth) * 100; return <div key={account.id} className="py-3.5"><div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-[#edf0ed] text-[#4e6c64]"><Landmark className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{account.name}</p>{account.notes && <p className="mt-0.5 line-clamp-2 text-xs text-[#71807c]">{account.notes}</p>}</div><div className="text-right"><p className="text-sm font-semibold tabular-nums">{formatEuro(valore)}</p><p title={t('netWorthShareExplanation')} className="text-[11px] text-[#87918e]">{share !== null ? t('netWorthShare', { percent: formatPercentNumber(share) })
                     : account.countsInNetWorth === false ? t('accountOutsideNetWorth') : '—'}</p></div>{azioni && <>{account.needsManualValuation && <Button size="icon" variant="ghost" aria-label={`${t('valuationsTitle')} ${account.name}`} onClick={() => onValuations(account)} className="text-[#52615d] hover:text-[#173b33]"><Gauge className="size-4" /></Button>}<Button size="icon" variant="ghost" aria-label={`${t('edit')} ${account.name}`} onClick={() => onEdit(account)} className="text-[#52615d] hover:text-[#173b33]"><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${account.name}`} onClick={() => onDelete(account)} className="text-[#bd5e46] hover:text-[#a04f3a]"><Trash2 className="size-4" /></Button></>}</div>{/* Costo e rivalutazione non compaiono qui: sono le prime due voci della card
     del capitale proprio, dove hanno anche la spiegazione. La riconciliazione
     invece riguarda solo questo conto e vale per tutti, broker compresi: il
@@ -6587,11 +6587,11 @@ function MetricCard({ title, titleHint, value, valueLabel, change, delta, icon: 
         ? (delta <= 0 ? 'text-[#2d7b65]' : 'text-[#bd6c58]')
         : (delta >= 0 ? 'text-[#2d7b65]' : 'text-[#bd6c58]'))
     : (tone === 'expense' ? 'text-[#bd6c58]' : 'text-[#618078]');
-  return <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]"><CardContent className={featured ? 'p-6' : 'p-5'}><div className="mb-4 flex items-center justify-between"><span title={titleHint} className={`${featured ? 'text-base' : 'text-sm'} font-medium text-[#71807c]`}>{title}</span><span className={`grid ${featured ? 'size-10' : 'size-8'} place-items-center rounded-lg ${styles[tone]}`}><Icon className={featured ? 'size-5' : 'size-4'} /></span></div><p className={`${featured ? 'text-[32px] sm:text-[36px]' : 'text-[25px]'} font-semibold tracking-[-0.03em]`}>{valueLabel ?? formatEuro(value)}</p><p className={`mt-2 text-xs ${changeColor}`}>{change}</p></CardContent></Card>;
+  return <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]"><CardContent className={featured ? 'p-6' : 'p-5'}><div className="mb-4 flex items-center justify-between"><span title={titleHint} className={`${featured ? 'text-base' : 'text-sm'} font-medium text-[#71807c]`}>{title}</span><span className={`grid ${featured ? 'size-10' : 'size-8'} place-items-center rounded-lg ${styles[tone]}`}><Icon className={featured ? 'size-5' : 'size-4'} /></span></div><p className={`${featured ? 'text-[32px] sm:text-[36px]' : 'text-[25px]'} font-semibold tracking-[-0.03em] tabular-nums`}>{valueLabel ?? formatEuro(value)}</p><p className={`mt-2 text-xs ${changeColor}`}>{change}</p></CardContent></Card>;
 }
 
 function NetWorthCard({ detail, comparison }: { detail: Summary['netWorthDetail']; comparison: Summary['netWorthComparison'] }) {
-  const { t, formatEuro, locale, monthNames } = useI18n();
+  const { t, formatEuro, locale, monthNames, formatPercentNumber } = useI18n();
   const gainPositive = detail.gain >= 0;
   return (
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
@@ -6600,7 +6600,7 @@ function NetWorthCard({ detail, comparison }: { detail: Summary['netWorthDetail'
           <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-[#f2efdb] text-[#7d7135]"><Landmark className="size-5" /></span>
           <div>
             <p className="text-sm font-medium text-[#71807c]">{t('netWorth')}</p>
-            <p className="mt-1 text-[25px] font-semibold tracking-[-0.03em]">{formatEuro(detail.total)}</p>
+            <p className="mt-1 text-[25px] font-semibold tracking-[-0.03em] tabular-nums">{formatEuro(detail.total)}</p>
             <p className="mt-1 text-xs text-[#618078]">{formatComparisonChange(t, formatEuro, monthNames, comparison?.totalDelta, comparison)}</p>
           </div>
         </div>
@@ -6620,7 +6620,7 @@ function NetWorthCard({ detail, comparison }: { detail: Summary['netWorthDetail'
               <p className={`flex items-center gap-1 text-sm font-semibold ${gainPositive ? 'text-[#2d7b65]' : 'text-[#bd6c58]'}`}>
                 {gainPositive ? <TrendingUp className="size-3.5" /> : <TrendingDown className="size-3.5" />}
                 {gainPositive ? '+' : '−'}{formatEuro(Math.abs(detail.gain))}
-                {detail.gainPercent !== null && <span className="text-xs font-normal text-[#87918e]">{t('percentOnCapital', { percent: detail.gainPercent.toLocaleString(locale) })}</span>}
+                {detail.gainPercent !== null && <span className="text-xs font-normal text-[#87918e]">{t('percentOnCapital', { percent: formatPercentNumber(detail.gainPercent) })}</span>}
               </p>
             </div>
           </div>
@@ -6657,7 +6657,7 @@ function SkeletonNetWorthCard() {
    viene, e lo dice. Si carica da sola: la Panoramica non aspetta i piani di
    ammortamento per mostrare entrate e spese. */
 function DebitCard({ apiUrl, version, onOpen }: { apiUrl: string; version: number; onOpen: () => void }) {
-  const { t, formatEuro, formatDate, locale } = useI18n();
+  const { t, formatEuro, formatDate, locale, formatPercentNumber } = useI18n();
   const [data, setData] = useState<LiabilityData | null>(null);
   const [errore, setErrore] = useState(false);
   useEffect(() => {
@@ -6691,7 +6691,7 @@ function DebitCard({ apiUrl, version, onOpen }: { apiUrl: string; version: numbe
               <p className="mt-1 text-2xl font-semibold tabular-nums">{formatEuro(summary.totalDebt)}</p>
               <p className="mt-1 text-xs text-[#87918e]">
                 {t('debtMonthlyService')}: {formatEuro(summary.monthlyService)}
-                {summary.weightedRate != null && ` · ${t('debtAverageRate')}: ${summary.weightedRate.toLocaleString(locale)}%`}
+                {summary.weightedRate != null && ` · ${t('debtAverageRate')}: ${formatPercentNumber(summary.weightedRate)}%`}
               </p>
               {prossima && <p className="mt-2 text-xs text-[#52615d]">
                 {t('theoreticalNextPayment')}: <b className="font-semibold tabular-nums">{formatEuro(prossima.payment)}</b> · {formatDate(`${prossima.dueOn}T12:00:00`)} · {prossima.name}
@@ -6731,7 +6731,7 @@ function SkeletonMetricCard() {
 
 
 function PeriodBreakdownCard({ breakdown, isWholeYear }: { breakdown: SummaryBreakdown | null; isWholeYear: boolean }) {
-  const { t, formatEuro, formatCompactEuro, formatPeriodLabel } = useI18n();
+  const { t, formatEuro, formatCompactEuro, formatPeriodLabel, formatPercentNumber } = useI18n();
   const [tab, setTab] = useState<'expenses' | 'income' | 'savings'>('expenses');
   const BREAKDOWN_TABS = [['expenses', t('expensesType')], ['income', t('incomeType')], ['savings', t('savingsType')]] as const;
   const pieConfig = { value: { label: t('amount') } } satisfies ChartConfig;
@@ -6757,7 +6757,7 @@ function PeriodBreakdownCard({ breakdown, isWholeYear }: { breakdown: SummaryBre
               </PieChart>
             </ChartContainer>
             <div className="space-y-2.5 self-center">
-              {pie.items.map((item) => <div key={item.name} className="flex items-center justify-between gap-3 text-sm"><span className="flex min-w-0 items-center gap-2 text-[#52615d]"><i className="size-2.5 shrink-0 rounded-full" style={{ background: item.color }} /><span className="truncate">{item.name}</span></span><span className="flex shrink-0 items-baseline gap-2 tabular-nums"><span className="font-medium">{formatCompactEuro(item.value)}</span><span className="font-normal text-[#87918e]">{pie.total ? Math.round((item.value / pie.total) * 100) : 0}%</span></span></div>)}
+              {pie.items.map((item) => <div key={item.name} className="flex items-center justify-between gap-3 text-sm"><span className="flex min-w-0 items-center gap-2 text-[#52615d]"><i className="size-2.5 shrink-0 rounded-full" style={{ background: item.color }} /><span className="truncate">{item.name}</span></span><span className="flex shrink-0 items-baseline gap-2 tabular-nums"><span className="font-medium">{formatCompactEuro(item.value)}</span><span className="font-normal text-[#87918e]">{formatPercentNumber(pie.total ? (item.value / pie.total) * 100 : 0)}%</span></span></div>)}
               <div className="flex items-center justify-between border-t border-black/8 pt-2.5 text-sm font-semibold"><span>{t('total')}</span><span className="tabular-nums">{formatCompactEuro(pie.total)}</span></div>
             </div>
           </div>
@@ -6769,7 +6769,7 @@ function PeriodBreakdownCard({ breakdown, isWholeYear }: { breakdown: SummaryBre
 }
 
 function PeriodBreakdownTable({ breakdown }: { breakdown: SummaryBreakdown | null }) {
-  const { t, formatCompactEuro } = useI18n();
+  const { t, formatCompactEuro, formatPercentNumber } = useI18n();
   // Le radici aperte. Si tiene l'elenco delle *chiuse* e non di quelle aperte:
   // di partenza l'albero si vede tutto, e una categoria appena spostata sotto
   // un padre non sparisce dietro un clic che nessuno sa di dover fare.
@@ -6864,7 +6864,7 @@ function PeriodBreakdownTable({ breakdown }: { breakdown: SummaryBreakdown | nul
                             {completion !== null ? (
                               <div className="flex items-center gap-2">
                                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#eef0ec]"><div className="h-full rounded-full" style={{ width: `${percentage}%`, background: coloreBarra }} /></div>
-                                <span className="w-9 shrink-0 text-right text-xs tabular-nums text-[#71807c]">{Math.round(completion * 100)}%</span>
+                                <span className="w-9 shrink-0 text-right text-xs tabular-nums text-[#71807c]">{formatPercentNumber(completion * 100)}%</span>
                               </div>
                             ) : <span className="text-xs text-[#87918e]">—</span>}
                           </td>
@@ -7385,7 +7385,7 @@ function EventsCard({ events, apiUrl }: { events: EventData[]; apiUrl: string })
 function CategoryRulesCard({ rules, categories, categoryTree, apiUrl, onChanged }: {
   rules: CategorizationRuleData[]; categories: string[]; categoryTree: CategoryNode[]; apiUrl: string; onChanged: () => void;
 }) {
-  const { t, formatEuro } = useI18n();
+  const { t, formatEuro, formatPercentNumber } = useI18n();
   const vuoto = { pattern: '', category: '', type: '' as '' | 'Expenses' | 'Income', isRegex: false, minAmount: '', maxAmount: '' };
   const [form, setForm] = useState(vuoto);
   const [editId, setEditId] = useState<number | null>(null);
@@ -7467,7 +7467,7 @@ function CategoryRulesCard({ rules, categories, categoryTree, apiUrl, onChanged 
   // decisa la scelta, e cosa dice la minoranza.
   const dettaglio = (proposta: RuleProposalData) => [
     t('ruleOccurrences', { count: proposta.occorrenze }),
-    `${Math.round(proposta.quota * 100)}% ${proposta.category}`,
+    `${formatPercentNumber(proposta.quota * 100)}% ${proposta.category}`,
     ...proposta.altre.map((altra) => `${t('ruleOccurrences', { count: altra.count })} ${altra.category}`),
   ].join(', ');
 
