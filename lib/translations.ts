@@ -1044,7 +1044,7 @@ const it = {
 
   // Report
   exportReport: 'Esporta report',
-  exportReportSubtitle: 'Il report parte dai dati del database dell\'app e include riepilogo, andamento e ultimi movimenti.',
+  exportReportSubtitle: "Il report parte dai dati del database dell'app: riepilogo e movimenti ci sono sempre, il grafico dell'andamento solo nel PDF.",
   exportReportForPeriod: 'Report di {{period}}',
   dataExchangeTitle: 'File di scambio',
   confirmReplaceData: 'Sostituire tutti i dati con quelli del file? Quelli attuali vengono cancellati: esporta prima, se vuoi poterli rimettere.',
@@ -2487,7 +2487,7 @@ const en: TranslationTable = {
   savingEllipsis: 'Saving…',
 
   exportReport: 'Export report',
-  exportReportSubtitle: 'The report is generated from the app\'s database and includes a summary, trends and latest transactions.',
+  exportReportSubtitle: "The report is generated from the app's database: summary and transactions are always there, the trend chart only in the PDF.",
   exportReportForPeriod: 'Report for {{period}}',
   dataExchangeTitle: 'Interchange file',
   confirmReplaceData: 'Replace all data with the contents of this file? Your current data is deleted: export first if you want to be able to put it back.',
@@ -3917,7 +3917,7 @@ const de: TranslationTable = {
   savingEllipsis: 'Wird gespeichert…',
 
   exportReport: 'Bericht exportieren',
-  exportReportSubtitle: 'Der Bericht basiert auf den Daten der App-Datenbank und enthält Übersicht, Verlauf und letzte Buchungen.',
+  exportReportSubtitle: 'Der Bericht basiert auf den Daten der App-Datenbank: Übersicht und Buchungen sind immer dabei, das Verlaufsdiagramm nur im PDF.',
   exportReportForPeriod: 'Bericht für {{period}}',
   dataExchangeTitle: 'Austauschdatei',
   confirmReplaceData: 'Alle Daten durch den Inhalt dieser Datei ersetzen? Die aktuellen werden gelöscht: vorher exportieren, falls du sie zurück willst.',
@@ -5347,7 +5347,7 @@ const es: TranslationTable = {
   savingEllipsis: 'Guardando…',
 
   exportReport: 'Exportar informe',
-  exportReportSubtitle: 'El informe se genera a partir de los datos de la base de datos de la app e incluye resumen, tendencia y últimos movimientos.',
+  exportReportSubtitle: 'El informe se genera a partir de los datos de la base de datos de la app: resumen y movimientos siempre, el gráfico de tendencia solo en el PDF.',
   exportReportForPeriod: 'Informe de {{period}}',
   dataExchangeTitle: 'Archivo de intercambio',
   confirmReplaceData: '¿Sustituir todos los datos por los del archivo? Los actuales se borran: exporta antes si quieres poder recuperarlos.',
@@ -6794,7 +6794,7 @@ const fr: TranslationTable = {
 
   // Report
   exportReport: 'Exporter le rapport',
-  exportReportSubtitle: 'Le rapport part des données de la base de l\'application et inclut le résumé, l\'évolution et les derniers mouvements.',
+  exportReportSubtitle: "Le rapport part des données de la base de l'application : le résumé et les mouvements sont toujours là, le graphique de l'évolution seulement dans le PDF.",
   exportReportForPeriod: 'Rapport de {{period}}',
   dataExchangeTitle: 'Fichier d\'échange',
   confirmReplaceData: "Remplacer toutes les données par celles du fichier ? Les données actuelles sont supprimées : exporte d'abord si tu veux pouvoir les remettre.",
