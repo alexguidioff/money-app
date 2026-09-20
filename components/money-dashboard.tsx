@@ -4846,6 +4846,10 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
     <Dialog open={Boolean(editing)} onOpenChange={(open) => { if (!open) setEditing(null); }}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader><DialogTitle>{t('configureDebt')} · {editing?.name}</DialogTitle><DialogDescription>{t('helpDebitiDep')}</DialogDescription></DialogHeader>
+        {/* Le condizioni salvate qui riscrivono anche il confronto dei mesi
+            passati: il piano non e' una fotografia, e il numero sulla card si
+            muove. Meglio dirlo prima di cambiare il tasso, non dopo. */}
+        <p className="rounded-lg bg-[#f7f8f5] px-3 py-2 text-[11px] leading-4 text-[#71807c]">{t('debtPlanRecalculated')}</p>
         {editing && <form key={editing.accountId} onSubmit={save} className="space-y-4">
           <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('debtKind')}
             <select name="kind" value={tipoProfilo} onChange={(event) => { setTipoProfilo(event.target.value as 'term_loan' | 'credit_line'); if (event.target.value === 'term_loan' && !drawdowns.length) setDrawdowns([{ occurredOn: today, amount: editing.kind === 'credit_line' ? Math.max(editing.exposure, 1) : Math.max(editing.outstanding, 1) }]); }} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring">
