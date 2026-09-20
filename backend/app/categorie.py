@@ -235,7 +235,7 @@ def _dal_payload(session: Session, category_id: int | None, nome: str | None) ->
         return _categoria(session, category_id)
     pulito = (nome or "").strip()
     if not pulito:
-        raise HTTPException(status_code=422, detail="category obbligatoria")
+        raise HTTPException(status_code=422, detail="categoryRequired")
     # A qualunque livello, con la radice che vince: una categoria dell'albero
     # nuovo puo' essere un figlio, e classificare "Vestiti" sotto Acquisti deve
     # funzionare come classificare una radice.

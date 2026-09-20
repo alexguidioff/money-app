@@ -1,9 +1,10 @@
 'use client';
 
-import { campiMancanti, downloadFile, responseError } from '@/lib/download';
+import { downloadFile, MessaggioUtente, messaggioDaErrore, responseError } from '@/lib/download';
 import { previewEffectiveDate } from '@/lib/effective-date';
 import { LEDGER_SENZA_QUOTE, nettoOperazioni } from '@/lib/ledger-preview';
 import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, eventAttachPayload, goalMilestonePayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
+import { messaggioErrore } from '@/lib/fire-errors';
 import { messaggioErroreRegola } from '@/lib/rule-errors';
 import { Fragment, SyntheticEvent, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Flame,
@@ -793,10 +794,6 @@ class SkipGroup extends Error {}
 /* Il salvataggio e' fallito e il motivo e' gia' a video: chi cattura non deve
    sostituirlo col messaggio generico. Sta in un tipo invece che in un flag
    perche' il flag andava letto dallo stato, che qui e' ancora quello vecchio. */
-class SaveFailed extends Error {
-  constructor(readonly spiegato: boolean) { super('save'); }
-}
-
 function ControlRow({ control, onOpenBudget }: { control: Summary['control']; onOpenBudget: () => void }) {
   const { t } = useI18n();
   // Nessun budget nel periodo: non c'e' niente da tenere sotto controllo.
@@ -1270,7 +1267,9 @@ function MoneyDashboardInner() {
         // un errore di rete: segnalarlo mostrerebbe un falso "app offline".
         if (error instanceof DOMException && error.name === 'AbortError') return;
         setConnected(false);
-        setConnectionError(error instanceof Error ? error.message : tRef.current('networkErrorGeneric'));
+        // Il testo dell'eccezione di `fetch` e' inglese e parla di `fetch`:
+        // dentro una frase italiana si legge come un guasto del browser.
+        setConnectionError(tRef.current('networkErrorGeneric'));
       });
     }, 0);
     return () => {
@@ -1489,24 +1488,11 @@ function MoneyDashboardInner() {
         body: JSON.stringify(payload),
       });
       if (!response.ok) {
-        // L'API restituisce {detail: ...} per i 422, e detail ha tre forme:
-        // una stringa, l'elenco di errori di validazione di FastAPI, o un
-        // oggetto con un codice nostro. Erano gestite solo le prime due, e con
-        // la terza il motivo vero spariva.
-        let detail = '';
-        try {
-          const errBody = await response.json() as { detail?: string | { msg?: string }[] | { code?: string; fields?: string[] } };
-          detail = typeof errBody.detail === 'string' ? errBody.detail
-            : Array.isArray(errBody.detail) ? errBody.detail.map((item) => item.msg).join('; ')
-            : errBody.detail?.code === 'movementIncomplete' ? campiMancanti(errBody.detail.fields, t)
-            : errBody.detail?.code && Object.hasOwn(translations.it, errBody.detail.code) ? t(errBody.detail.code as TranslationKey)
-            : errBody.detail?.code ?? '';
-        } catch { /* ignore */ }
-        if (detail) setSaveError(detail);
-        // `saveError` qui e' il valore del render precedente: leggerlo per
-        // decidere se sovrascrivere faceva sparire il messaggio appena
-        // impostato, e al suo posto compariva sempre quello generico.
-        throw new SaveFailed(Boolean(detail));
+        // La frase la compone `responseError`: da un codice che ha il suo testo
+        // esce il motivo preciso, da tutto il resto il generico. Prima si
+        // stampava `detail` cosi' com'era, e un rimborso da stornare arrivava
+        // a schermo come la parola `refundUnlinkFirst`.
+        throw new MessaggioUtente(await responseError(response, t, 'cannotSaveOperation'));
       }
       // L'evento si aggancia dopo: la rotta vuole un movimento che esista, e
       // per agganciarlo bisogna prima sapere che id ha preso. Prima di
@@ -1533,10 +1519,10 @@ function MoneyDashboardInner() {
       setMovimentiVersione((versione) => versione + 1);
       return true;
     } catch (error) {
-      // Solo se non abbiamo gia' un motivo preciso da mostrare.
-      if (!(error instanceof SaveFailed && error.spiegato)) {
-        setSaveError(t('cannotSaveGeneric'));
-      }
+      // Un `MessaggioUtente` porta un motivo tradotto; qualunque altra cosa e'
+      // la richiesta che non e' partita, e li' il testo e' quello inglese di
+      // `fetch`.
+      setSaveError(messaggioDaErrore(error, 'cannotSaveGeneric', t));
       return false;
     } finally {
       setSaving(false);
@@ -1664,12 +1650,7 @@ function MoneyDashboardInner() {
         body: JSON.stringify({ ledger_id: ledgerId }),
       });
       if (!response.ok) {
-        let detail = '';
-        try {
-          const errBody = await response.json() as { detail?: string };
-          detail = errBody.detail ?? '';
-        } catch { /* ignore */ }
-        setSaveError(detail || t('cannotLinkGeneric'));
+        setSaveError(await responseError(response, t, 'cannotLinkGeneric'));
         throw new Error('link');
       }
       setLinkedLedgerItems(await loadLinkedLedgerItems(id));
@@ -1677,9 +1658,9 @@ function MoneyDashboardInner() {
       await loadData(undefined, ['ledger', 'overview', 'budget', 'goals']);
       setMovimentiVersione((versione) => versione + 1);
     } catch (error) {
-      if (error instanceof Error && error.message === 'link' && !saveError) {
-        setSaveError(t('cannotLinkGeneric'));
-      }
+      // Il motivo l'ha gia' scritto il ramo qui sopra: qui resta solo il caso
+      // in cui la richiesta non e' partita affatto, e li' il generico e' giusto.
+      if (!(error instanceof Error && error.message === 'link')) setSaveError(t('cannotLinkGeneric'));
     } finally {
       setLinkEditingBusy(false);
     }
@@ -1778,7 +1759,7 @@ function MoneyDashboardInner() {
         budget_type: budgetType,
       }),
     });
-    if (!response.ok) throw new Error('budget-copy');
+    if (!response.ok) throw new MessaggioUtente(await responseError(response, t, 'cannotSaveBudgetRow'));
     await loadData(undefined, ['budget', 'settings']);
   }
 
@@ -1841,15 +1822,15 @@ function MoneyDashboardInner() {
     if (!response.ok) {
       const result = await response.json().catch(() => null) as { detail?: string | { code?: string; duplicate?: { occurredOn?: string } } } | null;
       if (response.status === 409 && typeof result?.detail === 'object' && result.detail.code === 'ledgerDuplicate') {
-        throw new Error(t('ledgerDuplicateFound', { date: result.detail.duplicate?.occurredOn ?? '—' }));
+        throw new MessaggioUtente(t('ledgerDuplicateFound', { date: result.detail.duplicate?.occurredOn ?? '—' }));
       }
       // Un codice del server che ha il suo testo si mostra com'e': un rapporto
       // di split fuori scala deve dire cosa non andava, non "salvataggio non
       // riuscito".
       if (typeof result?.detail === 'object' && result.detail?.code && Object.hasOwn(translations.it, result.detail.code)) {
-        throw new Error(t(result.detail.code as TranslationKey));
+        throw new MessaggioUtente(t(result.detail.code as TranslationKey));
       }
-      throw new Error('investment-save');
+      throw new MessaggioUtente(t('cannotSaveOperation'));
     }
     // Il ricaricamento puo' essere annullato da un altro fetch in corso: il
     // salvataggio e' comunque riuscito, non va segnalato come errore.
@@ -1926,11 +1907,11 @@ function MoneyDashboardInner() {
           notes: String(data.get('notes') || '') || null,
         }),
       });
-      if (!response.ok) throw new Error('valuation-save');
+      if (!response.ok) throw new MessaggioUtente(await messaggioErrore(response, MESSAGGI_CONTO, t, 'cannotSaveValuation'));
       form.reset();
       await loadData(undefined, ['ledger', 'overview', 'settings']);
     } catch (error) {
-      setAccountError(error instanceof Error ? error.message : 'valuation-save');
+      setAccountError(messaggioDaErrore(error, 'cannotSaveValuation', t));
     } finally { setAccountSaving(false); }
   }
 
@@ -1962,15 +1943,14 @@ function MoneyDashboardInner() {
           body: JSON.stringify(payload),
         });
       if (!response.ok) {
-        const detail = await response.json().catch(() => null) as { detail?: string } | null;
-        throw new Error(detail?.detail || 'account-save');
+        throw new MessaggioUtente(await messaggioErrore(response, MESSAGGI_CONTO, t, 'cannotSaveAccount'));
       }
       form.reset();
       setAccountDialog(null);
       await loadData(undefined, ['ledger', 'overview', 'settings']);
       setMovimentiVersione((versione) => versione + 1);
     } catch (error) {
-      setAccountError(error instanceof Error ? error.message : 'account-save');
+      setAccountError(messaggioDaErrore(error, 'cannotSaveAccount', t));
     } finally {
       setAccountSaving(false);
     }
@@ -2085,7 +2065,7 @@ function MoneyDashboardInner() {
       const filename = kind === 'data' ? 'money-dati.xlsx' : `Money-report-${selectedYear}-${String(selectedMonth).padStart(2, '0')}.${kind === 'excel' ? 'xlsx' : 'pdf'}`;
       await downloadFile(url, filename, t);
     } catch (error) {
-      setDownloadError(error instanceof Error ? error.message : t('importExportFailed'));
+      setDownloadError(messaggioDaErrore(error, 'importExportFailed', t));
     } finally { setDownloadBusy(false); }
   }
   const downloadReport = (kind: 'excel' | 'pdf') => { void download(kind); };
@@ -2143,7 +2123,7 @@ function MoneyDashboardInner() {
       const body = new FormData();
       body.append('file', file);
       const response = await fetch(`${apiUrl}/api/import/data`, { method: 'POST', body });
-      if (!response.ok) throw new Error(await responseError(response, t));
+      if (!response.ok) throw new MessaggioUtente(await responseError(response, t));
       const payload = await response.json() as { rows?: Record<string, number> };
       await loadData();
       setMovimentiVersione((versione) => versione + 1);
@@ -2158,7 +2138,7 @@ function MoneyDashboardInner() {
     const body = new FormData();
     body.append('file', file);
     const response = await fetch(`${apiUrl}/api/import/pdf`, { method: 'POST', body });
-    if (!response.ok) throw new Error(await responseError(response, t));
+    if (!response.ok) throw new MessaggioUtente(await responseError(response, t));
     return await response.json() as { transactions: PDFTransaction[]; rulesDiscarded?: string[] };
   }
 
@@ -2167,7 +2147,7 @@ function MoneyDashboardInner() {
     const body = new FormData();
     body.append('file', file);
     const response = await fetch(`${apiUrl}/api/import/csv/columns`, { method: 'POST', body });
-    if (!response.ok) throw new Error(await responseError(response, t));
+    if (!response.ok) throw new MessaggioUtente(await responseError(response, t));
     return await response.json() as StatementColumns;
   }
 
@@ -2178,7 +2158,7 @@ function MoneyDashboardInner() {
     body.append('mapping', JSON.stringify(mappatura));
     body.append('delimiter', delimitatore);
     const response = await fetch(`${apiUrl}/api/import/csv`, { method: 'POST', body });
-    if (!response.ok) throw new Error(await responseError(response, t));
+    if (!response.ok) throw new MessaggioUtente(await responseError(response, t));
     return await response.json() as { transactions: PDFTransaction[]; rulesDiscarded?: string[] };
   }
 
@@ -2197,7 +2177,7 @@ function MoneyDashboardInner() {
       setCsvColonne({ ...csvColonne, mapping: mappatura, delimiter: taglio });
       setPdfPreviewTransactions(result.transactions);
     } catch (error) {
-      setImportFeedback({ ok: false, message: error instanceof Error ? error.message : t('statementParseFailed') });
+      setImportFeedback({ ok: false, message: messaggioDaErrore(error, 'statementParseFailed', t) });
     } finally { setPdfImporting(false); }
   }
 
@@ -2221,11 +2201,11 @@ function MoneyDashboardInner() {
         body: JSON.stringify({ name: nome, mapping: JSON.stringify(csvColonne?.mapping ?? {}),
                                delimiter: csvColonne?.delimiter ?? '' }),
       });
-      if (!response.ok) throw new Error(await responseError(response, t));
+      if (!response.ok) throw new MessaggioUtente(await responseError(response, t));
       setImportFeedback({ ok: true, message: t('csvTemplateSaved', { name: nome }) });
       await caricaModelli();
     } catch (error) {
-      setImportFeedback({ ok: false, message: error instanceof Error ? error.message : t('importExportFailed') });
+      setImportFeedback({ ok: false, message: messaggioDaErrore(error, 'importExportFailed', t) });
     }
   }
 
@@ -2269,7 +2249,7 @@ function MoneyDashboardInner() {
           : null);
         setShowPdfPreview(true);
       } catch (error) {
-        setImportFeedback({ ok: false, message: error instanceof Error ? error.message : t('statementParseFailed') });
+        setImportFeedback({ ok: false, message: messaggioDaErrore(error, 'statementParseFailed', t) });
       } finally { setPdfImporting(false); input.remove(); }
     };
     input.click();
@@ -2288,7 +2268,7 @@ function MoneyDashboardInner() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(approvedTransactions)
       });
-      if (!response.ok) throw new Error(await responseError(response, t));
+      if (!response.ok) throw new MessaggioUtente(await responseError(response, t));
       const result = await response.json() as { saved: number; errors: { index: number; code: string; duplicateOf?: PDFTransaction['duplicateOf'] }[] };
       setImportFeedback({ ok: !result.errors.length, message: t('statementSaved', { saved: result.saved, errors: result.errors.length }) });
       if (result.errors.length) {
@@ -2310,7 +2290,7 @@ function MoneyDashboardInner() {
       await loadData(undefined, ['ledger', 'overview', 'budget', 'goals']);
       setMovimentiVersione(versione => versione + 1);
     } catch (error) {
-      setImportFeedback({ ok: false, message: error instanceof Error ? error.message : t('importExportFailed') });
+      setImportFeedback({ ok: false, message: messaggioDaErrore(error, 'importExportFailed', t) });
     } finally { setPdfImporting(false); }
   }
 
@@ -2318,7 +2298,7 @@ function MoneyDashboardInner() {
     const response = await fetch(`${apiUrl}/api/recurring-transactions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
     });
-    if (!response.ok) throw new Error('Impossibile salvare la ricorrenza');
+    if (!response.ok) throw new Error('recurring-save');
     const created = await response.json() as RecurringTransactionData;
     setRecurringTransactions((current) => [...current, created]);
   }
@@ -2334,7 +2314,7 @@ function MoneyDashboardInner() {
 
   async function handleDeleteRecurring(id: number) {
     const response = await fetch(`${apiUrl}/api/recurring-transactions/${id}`, { method: 'DELETE' });
-    if (!response.ok) throw new Error('Impossibile eliminare la ricorrenza');
+    if (!response.ok) throw new Error('recurring-delete');
     setRecurringTransactions((current) => current.filter((rule) => rule.id !== id));
   }
 
@@ -3674,7 +3654,12 @@ function SectionView({
       </div>
 
       {section === 'Movimenti' && <div className="space-y-4"><p className="text-xs text-[#7b8784]">{t('statementAllDates')}</p>
-        {importFeedback && <p role="status" className="rounded-xl border border-black/6 bg-white px-4 py-2 text-sm text-[#3a4a46] shadow-sm shadow-black/[0.02]">{importFeedback.message}</p>}
+        {/* Un import che non riesce non e' una notizia come le altre: `ok`
+            c'era gia' e non si guardava, e la riga d'errore aveva l'aspetto di
+            quella di riuscita. */}
+        {importFeedback && (importFeedback.ok
+          ? <p role="status" className="rounded-xl border border-black/6 bg-white px-4 py-2 text-sm text-[#3a4a46] shadow-sm shadow-black/[0.02]">{importFeedback.message}</p>
+          : <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#bd5e46]">{importFeedback.message}</p>)}
         {refundError && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#bd5e46]">{refundError}</p>}
         <div className="flex flex-wrap gap-2 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
           {([['list', t('movementsTabList')], ['recurring', t('movementsTabRecurring')], ['rules', t('movementsTabRules')]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setMovementsView(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${movementsView === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
@@ -4062,6 +4047,13 @@ function GoalStatusBadge({ status }: { status: GoalData['status'] }) {
 // Il codice del rifiuto diventa una frase: la regola la conosce il backend,
 // la lingua la sceglie chi legge. Un codice che non si conosce non si mostra
 // grezzo - si dice che non si e' potuto aggiungere.
+// I codici con cui il server rifiuta un conto o una stima. Sono due rotte vicine
+// e li legge lo stesso dialogo: la mappa sta qui perche' il giorno in cui se ne
+// aggiunge uno non c'e' un secondo posto da aggiornare.
+const MESSAGGI_CONTO: Record<string, TranslationKey> = {
+  accountDuplicate: 'accountDuplicate',
+};
+
 function milestoneErrorLabel(
   t: (key: TranslationKey, params?: Record<string, string | number>) => string,
   codice: string,
@@ -4446,6 +4438,10 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
       }
       setNewName(''); setNewSymbol('');
       await reload(); await onSaved();
+    } catch {
+      // Se la richiesta non parte (rete assente) il pulsante tornava attivo e
+      // basta: lo strumento non c'era e nessuno diceva perche'.
+      setCreateError(t('instrumentCreateFailed'));
     } finally { setCreating(false); }
   }
 
@@ -4473,7 +4469,12 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
         // la valuta non si invia: la ricava il backend dalla quotazione del ticker
         body: JSON.stringify({ provider_symbol: symbol || null, asset_class: row.assetClass, area: row.area, sector: row.sector }),
       });
+      // Un ticker che non si salva lo deve dire: la casella restava con il
+      // valore scritto e sembrava salvato.
       if (response.ok) { await reload(); await onSaved(); }
+      else setChecks((c) => ({ ...c, [row.id]: { ok: false, text: t('cannotSaveInstrumentConfig') } }));
+    } catch {
+      setChecks((c) => ({ ...c, [row.id]: { ok: false, text: t('cannotSaveInstrumentConfig') } }));
     } finally { setBusy(null); }
   }
 
@@ -5205,21 +5206,25 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
           }),
         });
         if (!response.ok) {
+          // `ledgerDuplicate` porta la data dentro il payload, quindi non passa
+          // da `responseError` come tutti gli altri codici.
           let detail = '';
           try {
             const errBody = await response.json() as { detail?: string | { code?: string; duplicate?: { occurredOn?: string } } | { msg?: string }[] };
-            detail = typeof errBody.detail === 'string'
-              ? errBody.detail
-              : Array.isArray(errBody.detail)
-                ? errBody.detail.map((item) => item.msg).join('; ')
-                : errBody.detail?.code === 'ledgerDuplicate'
-                  ? t('ledgerDuplicateFound', { date: errBody.detail.duplicate?.occurredOn ?? '—' })
-                  : errBody.detail?.code && Object.hasOwn(translations.it, errBody.detail.code)
-                    ? t(errBody.detail.code as TranslationKey)
+            const grezzo = errBody.detail;
+            detail = typeof grezzo === 'string'
+              // Una frase scritta dal server non si mostra: solo un codice che ha
+              // il suo testo, come in `responseError`.
+              ? (Object.hasOwn(translations.it, grezzo) ? t(grezzo as TranslationKey) : '')
+              : Array.isArray(grezzo)
+                ? ''
+                : grezzo?.code === 'ledgerDuplicate'
+                  ? t('ledgerDuplicateFound', { date: grezzo.duplicate?.occurredOn ?? '—' })
+                  : grezzo?.code && Object.hasOwn(translations.it, grezzo.code)
+                    ? t(grezzo.code as TranslationKey)
                     : '';
           } catch { /* ignore */ }
-          if (detail) setError(detail);
-          throw new Error('save');
+          throw new MessaggioUtente(detail || t('cannotSaveOperation'));
         }
       } else {
         await onSave(editing?.id ?? null, { ...ledgerPayload, force_duplicate: forceDuplicate });
@@ -5227,9 +5232,10 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
       setEditing(undefined);
       setLinkTransactionOpen(false);
     } catch (caught) {
-      if (!(caught instanceof Error && caught.message === 'save')) {
-        setError(caught instanceof Error && caught.message !== 'investment-save' ? caught.message : t('cannotSaveOperation'));
-      }
+      // Qui arrivano sia questo ramo sia `onSave`: tutti e due portano un
+      // motivo tradotto. Una richiesta che non parte e' un TypeError di `fetch`,
+      // in inglese, e prende il generico.
+      setError(messaggioDaErrore(caught, 'cannotSaveOperation', t));
     } finally { setBusy(false); }
   }
 
@@ -5270,7 +5276,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
       await onQuotesChanged();
       setLedgerSelection(new Set()); setLedgerBulkValue(''); setLedgerLinkQuery('');
     } catch (caught) {
-      setLedgerBulkError(caught instanceof Error ? caught.message : t('bulkFailed'));
+      setLedgerBulkError(messaggioDaErrore(caught, 'bulkFailed', t));
     } finally { setLedgerBulkBusy(false); }
   }
 
@@ -5856,8 +5862,10 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
     setError('');
     try {
       await onCopy(mode);
-    } catch {
-      setError(t('cannotSaveBudgetRow'));
+    } catch (error) {
+      // Il motivo lo porta l'eccezione: quando il periodo di partenza non ha un
+      // budget, "non riesco a salvare, riprova" manda a riprovare per sempre.
+      setError(messaggioDaErrore(error, 'cannotSaveBudgetRow', t));
     } finally {
       setBusy('');
     }
@@ -5870,7 +5878,8 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
     try {
       await onDelete(item.id);
     } catch {
-      setError(t('cannotSaveBudgetRow'));
+      // Una riga che non si cancella non e' una riga che non si salva.
+      setError(t('deleteFailed'));
     } finally {
       setBusy('');
     }
@@ -6003,7 +6012,7 @@ function BackupsCard({ apiUrl, onRestored }: { apiUrl: string; onRestored: () =>
       await load();
       return true;
     } catch (error) {
-      setOutcome({ ok: false, message: error instanceof Error ? error.message : t('backupFailed') });
+      setOutcome({ ok: false, message: messaggioDaErrore(error, 'backupFailed', t) });
       return false;
     } finally {
       setBusy(false);
@@ -6122,7 +6131,7 @@ function ImportDataCard({ onImportData, importing }: { onImportData: (file: File
                 setFile(null);
                 if (inputRef.current) inputRef.current.value = '';
               } catch (error) {
-                setOutcome({ ok: false, message: error instanceof Error ? error.message : t('importDataFailed') });
+                setOutcome({ ok: false, message: messaggioDaErrore(error, 'importDataFailed', t) });
               }
             }}
             className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"
@@ -7246,10 +7255,10 @@ function SplitTransactionDialog({ transaction, accounts, apiUrl, categoriesByTyp
       const response = await fetch(`${apiUrl}/api/transactions/${transaction.id}/split`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(splitPayload(parte)),
       });
-      if (!response.ok) throw new Error(await responseError(response, t));
+      if (!response.ok) throw new MessaggioUtente(await responseError(response, t));
       await onDone();
     } catch (error) {
-      setErrore(error instanceof Error ? error.message : t('cannotSaveGeneric'));
+      setErrore(messaggioDaErrore(error, 'cannotSaveGeneric', t));
     } finally {
       setSalvando(false);
     }
@@ -7580,12 +7589,19 @@ function RecurringTransactionsView({ accounts, data, categoriesByType, categoryT
   const [generateUpTo, setGenerateUpTo] = useState(new Date().toISOString().slice(0, 10));
   const [generating, setGenerating] = useState(false);
   const [generatedInfo, setGeneratedInfo] = useState<number | null>(null);
+  // Generare e salvare fallivano in silenzio: la promessa veniva rifiutata, il
+  // pulsante tornava attivo e non compariva niente. Chi lo premeva non sapeva se
+  // le occorrenze erano state create o no.
+  const [errore, setErrore] = useState('');
 
   async function generate() {
     setGenerating(true);
     setGeneratedInfo(null);
+    setErrore('');
     try {
       setGeneratedInfo(await onGenerate(generateUpTo));
+    } catch {
+      setErrore(t('cannotGenerateOccurrences'));
     } finally {
       setGenerating(false);
     }
@@ -7596,12 +7612,24 @@ function RecurringTransactionsView({ accounts, data, categoriesByType, categoryT
     if (!form.amount || (form.type !== 'Transfers' && !form.category)) return;
     const values = new FormData(event.currentTarget);
     setBusy(true);
+    setErrore('');
     try {
       await onCreate(recurringPayload(form, values));
       setForm((current) => ({ ...current, description: '', amount: '' }));
+    } catch {
+      setErrore(t('cannotSaveRecurrence'));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function rimuovi(rule: RecurringTransactionData) {
+    // Come tutte le altre cancellazioni dell'app: si chiede, e se non riesce
+    // lo si dice. Il cestino e' piccolo e accanto ha l'importo della regola.
+    if (!window.confirm(t('confirmDeleteRecurrence', { name: rule.description }))) return;
+    setErrore('');
+    try { await onDelete(rule.id); }
+    catch { setErrore(t('cannotDeleteRecurrence')); }
   }
 
   return (
@@ -7655,6 +7683,7 @@ function RecurringTransactionsView({ accounts, data, categoriesByType, categoryT
           </div>}
         </CardHeader>
         {generatedInfo !== null && <p className="px-(--card-spacing) text-xs text-[#397867]">{t('occurrencesGenerated', { count: generatedInfo })}</p>}
+        {errore && <p role="alert" className="mx-(--card-spacing) mt-2 rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{errore}</p>}
         <CardContent className="divide-y divide-black/5">
           {data.length === 0 ? <p className="py-6 text-center text-sm text-[#71807c]">{t('noRecurrences')}</p> :
             data.map((rule) => (
@@ -7666,7 +7695,7 @@ function RecurringTransactionsView({ accounts, data, categoriesByType, categoryT
                 <div className="flex items-center gap-2">
                   <span className="rounded-full bg-[#edf0ed] px-2.5 py-1 text-xs font-medium">{rule.transactionType}</span>
                   <span className="text-sm font-semibold tabular-nums">{rule.amount.toLocaleString(locale, { style: 'currency', currency: 'EUR' })}</span>
-                  <Button type="button" size="icon" variant="ghost" aria-label={t('deleteRecurrence')} onClick={() => void onDelete(rule.id)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button>
+                  <Button type="button" size="icon" variant="ghost" aria-label={t('deleteRecurrence')} onClick={() => void rimuovi(rule)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button>
                 </div>
               </div>
             ))}

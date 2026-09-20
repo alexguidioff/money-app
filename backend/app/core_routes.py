@@ -1641,7 +1641,7 @@ def accounts(at: str | None = Query(None, description="Saldi a questa data (YYYY
     try:
         quando = date.fromisoformat(at) if at else date.today()
     except ValueError:
-        raise HTTPException(status_code=422, detail="Data non valida: usare YYYY-MM-DD")
+        raise HTTPException(status_code=422, detail="dateFormatInvalid")
     saldi = account_balances_at(rows, all_transactions, quando,
                                 valutazioni_per_conto(session), rivalutazioni_per_conto(session))
     valore = {riga["account_id"]: riga["balance"] for riga in saldi["accounts"]}
@@ -3963,13 +3963,13 @@ def balance_sheet_series(
         inizio = date(int(da[:4]), int(da[5:7]), 1)
         fine = date(int(a[:4]), int(a[5:7]), 1)
     except (ValueError, IndexError):
-        raise HTTPException(status_code=422, detail="Periodo non valido: usare YYYY-MM")
+        raise HTTPException(status_code=422, detail="periodFormatInvalid")
     if fine < inizio:
-        raise HTTPException(status_code=422, detail="Il periodo finisce prima di cominciare")
+        raise HTTPException(status_code=422, detail="periodInverted")
     if level in {"side", "component"} and side not in {"assets", "liabilities"}:
-        raise HTTPException(status_code=422, detail="Serve side=assets o side=liabilities")
+        raise HTTPException(status_code=422, detail="sideInvalid")
     if level == "component" and not component:
-        raise HTTPException(status_code=422, detail="Serve component")
+        raise HTTPException(status_code=422, detail="componentRequired")
 
     punti = _tagli_periodo(inizio, fine, grain)
     linea = portfolio_timeline(session)
@@ -4017,7 +4017,7 @@ def balance_sheet_series(
     selezione = [c for c in conti if c.source_group != "liability"
                  and _componente_di(c, con_mercato) == component]
     if not selezione:
-        raise HTTPException(status_code=404, detail=f"Nessun conto nella voce '{component}'")
+        raise HTTPException(status_code=404, detail="componentNotFound")
     chiavi = [{"key": f"account_{c.id}", "label": c.name, "drillTo": None} for c in selezione]
     return _aggrega(punti, saldi, selezione, lambda conto: f"account_{conto.id}", chiavi,
                     side, componente=component)

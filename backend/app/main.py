@@ -262,7 +262,7 @@ def create_backup_endpoint(label: str = Query("manual", min_length=1, max_length
     try:
         return create_backup(label)
     except Exception as exc:  # noqa: BLE001 - rimappiamo a HTTP 500 con messaggio
-        raise HTTPException(status_code=500, detail=f"Backup fallito: {exc}") from exc
+        raise HTTPException(status_code=500, detail="backupFailed") from exc
 
 
 @app.get("/api/backups", dependencies=[Depends(require_backup_admin)])
@@ -285,7 +285,7 @@ def delete_backup_endpoint(filename: str) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Cancellazione fallita: {exc}") from exc
+        raise HTTPException(status_code=500, detail="backupDeleteFailed") from exc
 
 
 @app.post("/api/backups/{filename}/restore", dependencies=[Depends(require_backup_admin)])
@@ -298,7 +298,7 @@ def restore_backup_endpoint(filename: str) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Restore fallito: {exc}") from exc
+        raise HTTPException(status_code=500, detail="restoreFailed") from exc
 
 
 # Quanti giorni possono separare lo stesso movimento fra l'estratto conto e l'app:
@@ -630,13 +630,13 @@ def import_batches(limit: int = 20, session: Session = Depends(get_session)):
 
 def _parse_iso_date(value: str | date | None, field: str) -> date:
     if value is None or value == "":
-        raise HTTPException(status_code=422, detail=f"Campo '{field}' obbligatorio")
+        raise HTTPException(status_code=422, detail="fieldRequired")
     if isinstance(value, date):
         return value
     try:
         return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=f"Data '{field}' non valida: {value}") from exc
+        raise HTTPException(status_code=422, detail="dateInvalid") from exc
 
 
 LATE_INCOME_DEFAULT_DAY = 20
@@ -679,15 +679,15 @@ def recompute_effective_dates(session: Session) -> int:
 
 def _to_decimal(value: Any, field: str, *, allow_negative: bool = True) -> Decimal:
     if value is None or value == "":
-        raise HTTPException(status_code=422, detail=f"Campo '{field}' obbligatorio")
+        raise HTTPException(status_code=422, detail="fieldRequired")
     try:
         amount = Decimal(str(value))
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=422, detail=f"Importo '{field}' non valido") from exc
+        raise HTTPException(status_code=422, detail="amountInvalid") from exc
     if not amount.is_finite() or abs(amount) >= Decimal("100000000000000"):
         raise HTTPException(422, detail="statementInvalidAmount")
     if not allow_negative and amount < 0:
-        raise HTTPException(status_code=422, detail=f"Importo '{field}' non può essere negativo")
+        raise HTTPException(status_code=422, detail="amountNegative")
     return amount.quantize(Decimal("0.01"))
 
 
@@ -804,7 +804,7 @@ def _apply_transaction_payload(tx: Transaction, payload: TransactionPayload, ses
     previous = (tx.account_name, tx.destination_name) if tx.id else ()
     occurred = _parse_iso_date(payload.occurred_on, "occurred_on")
     if payload.transaction_type not in VALID_TRANSACTION_TYPES:
-        raise HTTPException(status_code=422, detail=f"transaction_type non valido: {payload.transaction_type}")
+        raise HTTPException(status_code=422, detail="transactionTypeInvalid")
     # Spostare denaro fra due conti non ha una categoria: vale per i giroconti
     # e per i versamenti su un broker allo stesso modo. Il segnaposto "_" e'
     # quello che il workbook usava nella stessa colonna; l'API lo rimuove in
@@ -816,7 +816,7 @@ def _apply_transaction_payload(tx: Transaction, payload: TransactionPayload, ses
     # categoria non deve perderla perche' il modulo non l'ha mandata.
     if (tx.id is not None and payload.transaction_type not in SPOSTAMENTI
             and payload.categoryId is None and not (payload.category or "").strip()):
-        raise HTTPException(status_code=422, detail="category obbligatoria")
+        raise HTTPException(status_code=422, detail="categoryRequired")
 
     tx.occurred_on = occurred
     tx.transaction_type = payload.transaction_type
@@ -932,13 +932,13 @@ def create_transaction(payload: TransactionPayload, session: Session = Depends(g
         session.refresh(tx)
     except IntegrityError as exc:
         session.rollback()
-        raise HTTPException(status_code=409, detail=f"Conflitto sui dati del movimento: {exc.orig}") from exc
+        raise HTTPException(status_code=409, detail="movementConflict") from exc
     except HTTPException:
         session.rollback()
         raise
     except Exception as exc:  # noqa: BLE001
         session.rollback()
-        raise HTTPException(status_code=500, detail=f"Errore salvataggio movimento: {exc}") from exc
+        raise HTTPException(status_code=500, detail="movementSaveFailed") from exc
     return _transaction_to_dict(tx, session)
 
 
@@ -1084,7 +1084,7 @@ def update_transaction(tx_id: int, payload: TransactionPayload, session: Session
     """Aggiorna un movimento esistente."""
     tx = session.get(Transaction, tx_id)
     if tx is None:
-        raise HTTPException(status_code=404, detail=f"Movimento {tx_id} non trovato")
+        raise HTTPException(status_code=404, detail="movementNotFound")
     _apply_transaction_payload(tx, payload, session)
     try:
         # Cambiare l'importo di un movimento gia' collegato rompe il gruppo
@@ -1096,7 +1096,7 @@ def update_transaction(tx_id: int, payload: TransactionPayload, session: Session
         session.refresh(tx)
     except IntegrityError as exc:
         session.rollback()
-        raise HTTPException(status_code=409, detail=f"Conflitto sui dati del movimento: {exc.orig}") from exc
+        raise HTTPException(status_code=409, detail="movementConflict") from exc
     except HTTPException:
         # Il motivo lo ha gia' detto chi l'ha sollevata: incartarlo in un 500
         # generico lo farebbe sparire proprio dove serve leggerlo.
@@ -1104,7 +1104,7 @@ def update_transaction(tx_id: int, payload: TransactionPayload, session: Session
         raise
     except Exception as exc:  # noqa: BLE001
         session.rollback()
-        raise HTTPException(status_code=500, detail=f"Errore aggiornamento movimento: {exc}") from exc
+        raise HTTPException(status_code=500, detail="movementSaveFailed") from exc
     return _transaction_to_dict(tx, session)
 
 
@@ -1136,7 +1136,7 @@ def split_transaction(tx_id: int, payload: SplitPayload, session: Session = Depe
     """
     tx = session.get(Transaction, tx_id)
     if tx is None or tx.is_recurring_template:
-        raise HTTPException(status_code=404, detail=f"Movimento {tx_id} non trovato")
+        raise HTTPException(status_code=404, detail="movementNotFound")
     legato = (tx.transaction_type not in DIVISIBILI or tx.refund_of_id is not None
               or session.scalar(select(Transaction.id).where(Transaction.refund_of_id == tx.id).limit(1)) is not None
               or session.scalar(select(TransactionLedgerLink.id).where(TransactionLedgerLink.transaction_id == tx.id).limit(1)) is not None
@@ -1163,7 +1163,7 @@ def split_transaction(tx_id: int, payload: SplitPayload, session: Session = Depe
         session.commit()
     except IntegrityError as exc:
         session.rollback()
-        raise HTTPException(status_code=409, detail=f"Conflitto sui dati del movimento: {exc.orig}") from exc
+        raise HTTPException(status_code=409, detail="movementConflict") from exc
     session.refresh(tx)
     session.refresh(nuovo)
     return {"original": _transaction_to_dict(tx, session), "created": _transaction_to_dict(nuovo, session)}
@@ -1174,7 +1174,7 @@ def delete_transaction(tx_id: int, session: Session = Depends(get_session)):
     """Elimina un movimento."""
     tx = session.get(Transaction, tx_id)
     if tx is None:
-        raise HTTPException(status_code=404, detail=f"Movimento {tx_id} non trovato")
+        raise HTTPException(status_code=404, detail="movementNotFound")
     detail = session.scalar(select(LiabilityTransactionDetail).where(
         LiabilityTransactionDetail.transaction_id == tx_id))
     transactions = [tx]
@@ -1193,7 +1193,7 @@ def delete_transaction(tx_id: int, session: Session = Depends(get_session)):
         session.commit()
     except Exception as exc:  # noqa: BLE001
         session.rollback()
-        raise HTTPException(status_code=500, detail=f"Errore eliminazione movimento: {exc}") from exc
+        raise HTTPException(status_code=500, detail="movementDeleteFailed") from exc
     return {"success": True, "deleted_ids": [row.id for row in transactions]}
 
 
@@ -1269,10 +1269,10 @@ class GoalPayload(BaseModel):
 
 def _apply_goal_payload(goal: Goal, payload: GoalPayload) -> None:
     if not payload.name or not payload.name.strip():
-        raise HTTPException(status_code=422, detail="Nome obiettivo obbligatorio")
+        raise HTTPException(status_code=422, detail="goalNameRequired")
     goal.name = payload.name.strip()
     if payload.kind not in GOAL_KINDS:
-        raise HTTPException(status_code=422, detail=f"Tipo obiettivo non valido: {payload.kind}")
+        raise HTTPException(status_code=422, detail="goalKindInvalid")
     goal.kind = payload.kind
     goal.target_account = (payload.target_account or "").strip() or None
     goal.starting_amount = _to_decimal(payload.starting_amount, "starting_amount", allow_negative=False)
@@ -1295,7 +1295,7 @@ def _apply_goal_payload(goal: Goal, payload: GoalPayload) -> None:
 def create_goal(payload: GoalPayload, session: Session = Depends(get_session)):
     existing = session.scalar(select(Goal).where(Goal.name == payload.name.strip()))
     if existing is not None:
-        raise HTTPException(status_code=409, detail=f"Obiettivo '{payload.name}' già esistente")
+        raise HTTPException(status_code=409, detail="goalDuplicate")
     goal = Goal()
     _apply_goal_payload(goal, payload)
     session.add(goal)
@@ -1305,10 +1305,10 @@ def create_goal(payload: GoalPayload, session: Session = Depends(get_session)):
         session.refresh(goal)
     except IntegrityError as exc:
         session.rollback()
-        raise HTTPException(status_code=409, detail=f"Conflitto: {exc.orig}") from exc
+        raise HTTPException(status_code=409, detail="saveConflict") from exc
     except Exception as exc:  # noqa: BLE001
         session.rollback()
-        raise HTTPException(status_code=500, detail=f"Errore creazione obiettivo: {exc}") from exc
+        raise HTTPException(status_code=500, detail="goalSaveFailed") from exc
     return _goal_to_dict(goal)
 
 
@@ -1316,18 +1316,18 @@ def create_goal(payload: GoalPayload, session: Session = Depends(get_session)):
 def update_goal(goal_id: int, payload: GoalPayload, session: Session = Depends(get_session)):
     goal = session.get(Goal, goal_id)
     if goal is None:
-        raise HTTPException(status_code=404, detail=f"Obiettivo {goal_id} non trovato")
+        raise HTTPException(status_code=404, detail="goalNotFound")
     if payload.name.strip() != goal.name:
         existing = session.scalar(select(Goal).where(Goal.name == payload.name.strip(), Goal.id != goal_id))
         if existing is not None:
-            raise HTTPException(status_code=409, detail=f"Obiettivo '{payload.name}' già esistente")
+            raise HTTPException(status_code=409, detail="goalDuplicate")
     _apply_goal_payload(goal, payload)
     try:
         session.commit()
         session.refresh(goal)
     except Exception as exc:  # noqa: BLE001
         session.rollback()
-        raise HTTPException(status_code=500, detail=f"Errore aggiornamento obiettivo: {exc}") from exc
+        raise HTTPException(status_code=500, detail="goalSaveFailed") from exc
     return _goal_to_dict(goal)
 
 
@@ -1335,14 +1335,14 @@ def update_goal(goal_id: int, payload: GoalPayload, session: Session = Depends(g
 def delete_goal(goal_id: int, session: Session = Depends(get_session)):
     goal = session.get(Goal, goal_id)
     if goal is None:
-        raise HTTPException(status_code=404, detail=f"Obiettivo {goal_id} non trovato")
+        raise HTTPException(status_code=404, detail="goalNotFound")
     # Se ci sono transazioni collegate a questo goal, il vincolo è solo logico.
     session.delete(goal)
     try:
         session.commit()
     except Exception as exc:  # noqa: BLE001
         session.rollback()
-        raise HTTPException(status_code=500, detail=f"Errore eliminazione obiettivo: {exc}") from exc
+        raise HTTPException(status_code=500, detail="goalDeleteFailed") from exc
     return {"success": True, "deleted_id": goal_id}
 
 
@@ -1493,14 +1493,14 @@ def _account_to_dict(account: Account) -> dict[str, Any]:
 def create_account(payload: AccountPayload, session: Session = Depends(get_session)):
     name = (payload.name or "").strip()
     if not name:
-        raise HTTPException(status_code=422, detail="Nome conto obbligatorio")
+        raise HTTPException(status_code=422, detail="accountNameRequired")
     if payload.source_group not in {"bank", "asset", "liability"}:
-        raise HTTPException(status_code=422, detail="Gruppo conto non valido")
+        raise HTTPException(status_code=422, detail="accountGroupInvalid")
     existing = session.scalar(
         select(Account).where(Account.source_group == payload.source_group, Account.name == name)
     )
     if existing is not None:
-        raise HTTPException(status_code=409, detail=f"Conto '{name}' già presente nel gruppo {payload.source_group}")
+        raise HTTPException(status_code=409, detail="accountDuplicate")
     starting = _to_decimal(payload.starting_balance, "starting_balance")
     account = Account(
         source_group=payload.source_group,
@@ -1521,7 +1521,7 @@ def create_account(payload: AccountPayload, session: Session = Depends(get_sessi
         session.refresh(account)
     except IntegrityError as exc:
         session.rollback()
-        raise HTTPException(status_code=409, detail=f"Conflitto: {exc.orig}") from exc
+        raise HTTPException(status_code=409, detail="saveConflict") from exc
     except Exception as exc:  # noqa: BLE001
         session.rollback()
         raise HTTPException(status_code=500, detail=f"Errore creazione conto: {exc}") from exc
@@ -1535,9 +1535,9 @@ def update_account(account_id: int, payload: AccountPayload, session: Session = 
         raise HTTPException(status_code=404, detail=f"Conto {account_id} non trovato")
     name = (payload.name or "").strip()
     if not name:
-        raise HTTPException(status_code=422, detail="Nome conto obbligatorio")
+        raise HTTPException(status_code=422, detail="accountNameRequired")
     if payload.source_group not in {"bank", "asset", "liability"}:
-        raise HTTPException(status_code=422, detail="Gruppo conto non valido")
+        raise HTTPException(status_code=422, detail="accountGroupInvalid")
     duplicate = session.scalar(
         select(Account).where(
             Account.source_group == payload.source_group,
@@ -1546,7 +1546,7 @@ def update_account(account_id: int, payload: AccountPayload, session: Session = 
         )
     )
     if duplicate is not None:
-        raise HTTPException(status_code=409, detail=f"Conto '{name}' già presente nel gruppo {payload.source_group}")
+        raise HTTPException(status_code=409, detail="accountDuplicate")
     account.source_group = payload.source_group
     account.name = name
     account.counts_in_net_worth = payload.counts_in_net_worth
@@ -2178,7 +2178,7 @@ class SettingValueUpdate(BaseModel):
 def update_setting(key: str, payload: SettingValueUpdate, session: Session = Depends(get_session)):
     """Aggiorna una singola AppSetting (pannello Preferenze)."""
     if not key or not key.strip():
-        raise HTTPException(status_code=422, detail="Chiave impostazione obbligatoria")
+        raise HTTPException(status_code=422, detail="settingKeyRequired")
     setting = session.scalar(select(AppSetting).where(AppSetting.key == key))
     if setting is None:
         setting = AppSetting(key=key, label=payload.label or key, value=payload.value)
@@ -2288,7 +2288,7 @@ def _apply_investment_tx(tx: InvestmentTransaction, payload: InvestmentTxPayload
     if not payload.name or not payload.name.strip():
         raise HTTPException(status_code=422, detail="name obbligatorio")
     if payload.transaction_type not in VALID_INVESTMENT_TX_TYPES:
-        raise HTTPException(status_code=422, detail=f"transaction_type non valido: {payload.transaction_type}")
+        raise HTTPException(status_code=422, detail="transactionTypeInvalid")
     if not payload.occurred_on:
         raise HTTPException(status_code=422, detail="occurred_on obbligatorio")
     # Prima di toccare la riga: se lo split non e' valido la transazione non
@@ -2568,7 +2568,7 @@ def link_existing_ledger_to_transaction(tx_id: int, payload: dict, session: Sess
     """Collega una riga ledger esistente a una Transazione esistente (utile per agganciare transazioni passate)."""
     tx = session.get(Transaction, tx_id)
     if tx is None:
-        raise HTTPException(status_code=404, detail=f"Movimento {tx_id} non trovato")
+        raise HTTPException(status_code=404, detail="movementNotFound")
     ledger_id = payload.get("ledger_id")
     if not isinstance(ledger_id, int):
         raise HTTPException(status_code=422, detail="ledger_id obbligatorio (intero)")
@@ -2616,7 +2616,7 @@ def list_ledger_links_for_transaction(tx_id: int, session: Session = Depends(get
     """Lista le righe del ledger collegate a una Transazione."""
     tx = session.get(Transaction, tx_id)
     if tx is None:
-        raise HTTPException(status_code=404, detail=f"Movimento {tx_id} non trovato")
+        raise HTTPException(status_code=404, detail="movementNotFound")
     rows = session.execute(
         select(TransactionLedgerLink, InvestmentTransaction, InvestmentTransactionDetail)
         .join(InvestmentTransaction, TransactionLedgerLink.ledger_id == InvestmentTransaction.id)
@@ -2653,7 +2653,7 @@ def link_existing_transaction_to_ledger(ledger_id: int, payload: dict, session: 
         raise HTTPException(status_code=422, detail="transaction_id obbligatorio (intero)")
     tx = session.get(Transaction, tx_id)
     if tx is None:
-        raise HTTPException(status_code=404, detail=f"Movimento {tx_id} non trovato")
+        raise HTTPException(status_code=404, detail="movementNotFound")
     solo_investimenti_si_collegano(tx)
     existing = session.scalar(
         select(TransactionLedgerLink).where(
@@ -3022,7 +3022,7 @@ def _categoria_di_budget(session: Session, category_id: int | None, nome: str | 
         return category_id
     categoria = categoria_da_nome(session, (nome or "").strip())
     if categoria is None:
-        raise HTTPException(status_code=422, detail="category obbligatoria")
+        raise HTTPException(status_code=422, detail="categoryRequired")
     return categoria
 
 
@@ -3113,11 +3113,11 @@ def copy_budget(payload: BudgetCopyPayload, session: Session = Depends(get_sessi
     source = _budget_period(payload.source_year, payload.source_month)
     target = _budget_period(payload.target_year, payload.target_month)
     if source == target:
-        raise HTTPException(status_code=422, detail="Periodo di origine e destinazione coincidono")
+        raise HTTPException(status_code=422, detail="budgetPeriodsEqual")
     rows = session.scalars(select(BudgetPlan).where(
         BudgetPlan.period == source, BudgetPlan.budget_type == budget_type)).all()
     if not rows:
-        raise HTTPException(status_code=404, detail="Nessun budget da copiare nel periodo di origine")
+        raise HTTPException(status_code=404, detail="budgetNothingToCopy")
     for existing in session.scalars(select(BudgetPlan).where(
             BudgetPlan.period == target, BudgetPlan.budget_type == budget_type)).all():
         session.delete(existing)
