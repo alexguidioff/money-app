@@ -460,7 +460,7 @@ const it = {
   sectionInvestimentiDesc: 'Portafoglio, operazioni, allocazione e analisi CAPE',
   sectionAppuntiDesc: 'Promemoria e note importati dal foglio Appunti',
   sectionReportDesc: 'Esporta i dati dell\'app in Excel o PDF',
-  sectionImpostazioniDesc: 'Preferenze dell\'app, account e profilo previdenziale',
+  sectionImpostazioniDesc: "Account e preferenze dell'app",
 
   // Movimenti
   transfer: 'Trasferimento',
@@ -1147,8 +1147,8 @@ const it = {
   helpAppunti: 'Note libere, per ricordarti perché hai deciso una cosa o cosa resta da fare. «Nuovo appunto» chiede sezione, titolo, testo e uno stato a tua scelta (per esempio Da fare, Fatto); la ricerca guarda titoli e testo. Restano tue e non entrano in nessun calcolo.',
   helpReport: 'Qui i dati escono ed entrano.\n• «Esporta report»: il riepilogo del periodo scelto in alto, in Excel o PDF.\n• «Esporta dati»: un file con tutti i tuoi dati, un foglio per tipo, per farne una copia o spostarli.\n• «Importa dati»: rimette nell\'app un file esportato da qui, sostituendo i dati attuali.\n• «Copie di sicurezza»: crea una copia, ripristinala o cancellala.',
   helpReportDep: 'Una copia si crea da sola ogni giorno, prima di ogni import e prima di cancellare un debito. Le copie contengono tutti gli utenti: le gestisce solo chi amministra l\'installazione.',
-  helpImpostazioni: '• Account: password, condivisione dei totali con gli altri utenti e cancellazione dell\'account, che prima scarica i tuoi dati.\n• Preferenze: colore dell\'app, valute in cui rileggere il patrimonio e spostamento delle entrate tardive (dal giorno scelto un\'entrata conta nel mese successivo).\n• Il profilo previdenziale, le spese in pensione e i flussi attesi non sono qui: stanno nella scheda Profilo e flussi della pagina Pensionamento e FIRE, accanto al piano che producono.\n• La lingua si cambia dal menu del profilo, in alto a destra.',
-  helpImpostazioniDep: 'Il piano FIRE si costruisce sul profilo e sui flussi, che si compilano nella sua scheda Impostazioni: senza profilo la pagina mostra come compilarlo. Cambiare lo spostamento delle entrate ricalcola il mese di competenza di tutto lo storico. Backup ed export stanno in Report.',
+  helpImpostazioni: "• Account: password, condivisione dei totali con gli altri utenti e cancellazione dell'account, che prima scarica i tuoi dati.\n• Preferenze: il colore dell'app.\n• Le valute in cui si rilegge il patrimonio stanno nella scheda Valute di Patrimonio; lo spostamento delle entrate tardive e l'albero delle categorie nelle schede Entrate tardive e Categorie di Budget.\n• Il profilo previdenziale, le spese in pensione e i flussi attesi non sono qui: stanno nella scheda Profilo e flussi della pagina Pensionamento e FIRE, accanto al piano che producono.\n• La lingua si cambia dal menu del profilo, in alto a destra.",
+  helpImpostazioniDep: "Il colore scelto qui cambia solo l'aspetto dell'app. La condivisione dei totali decide cosa vedono gli altri utenti nella pagina Insieme: il dettaglio resta privato comunque. Cancellare l'account scarica prima i tuoi dati. Backup ed export stanno in Report.",
 
   // La cancellazione di un account: l'unica azione che distrugge dati.
   deleteAccount: 'Cancella questo account',
@@ -1921,7 +1921,7 @@ const en: TranslationTable = {
   sectionInvestimentiDesc: 'Portfolio, transactions, allocation and CAPE analysis',
   sectionAppuntiDesc: 'Reminders and notes imported from the Appunti sheet',
   sectionReportDesc: 'Export app data to Excel or PDF',
-  sectionImpostazioniDesc: 'App preferences, account and pension profile',
+  sectionImpostazioniDesc: 'Account and app preferences',
 
   transfer: 'Transfer',
   allMovements: 'All transactions',
@@ -2585,8 +2585,8 @@ const en: TranslationTable = {
   helpAppunti: 'Free notes, to remember why you decided something or what is left to do. «New note» asks for a section, title, text and a status of your choice (for example To do, Done); search looks at titles and text. They stay yours and never enter any calculation.',
   helpReport: 'This is where data goes out and comes in.\n• «Export report»: the summary of the period chosen at the top, in Excel or PDF.\n• «Export data»: a file with all your data, one sheet per type, to keep a copy or move it.\n• «Import data»: brings back a file exported from here, replacing the current data.\n• «Backups»: create a copy, restore it or delete it.',
   helpReportDep: 'A copy is made automatically every day, before every import and before deleting a debt. Copies contain every user, so only the person administering the installation manages them.',
-  helpImpostazioni: '• Account: password, sharing your totals with other users and deleting the account, which downloads your data first.\n• Preferences: app colour, currencies to read net worth in and late income shifting (from the chosen day an income counts in the next month).\n• The pension profile, retirement expenses and expected income streams are not here: they are in the Profile and streams tab of the Retirement and FIRE page, next to the plan they produce.\n• The language is changed from the profile menu, top right.',
-  helpImpostazioniDep: 'The FIRE plan is built on the profile and the streams, which are filled in on its Settings tab: without a profile the page shows how to fill it in. Changing late income shifting recalculates the accrual month of the whole history. Backups and export are in Report.',
+  helpImpostazioni: '• Account: password, sharing your totals with other users and deleting the account, which downloads your data first.\n• Preferences: the app colour.\n• The currencies to read net worth in are in the Currencies tab of Net worth; late income shifting and the category tree are in the Late income and Categories tabs of Budget.\n• The pension profile, retirement expenses and expected income streams are not here: they are in the Profile and streams tab of the Retirement and FIRE page, next to the plan they produce.\n• The language is changed from the profile menu, top right.',
+  helpImpostazioniDep: 'The colour chosen here changes only how the app looks. Sharing your totals decides what other users see on the Together page: the detail stays private either way. Deleting the account downloads your data first. Backups and export are in Report.',
 
   // La cancellazione di un account: l'unica azione che distrugge dati.
   deleteAccount: 'Delete this account',
@@ -3349,7 +3349,7 @@ const de: TranslationTable = {
   sectionInvestimentiDesc: 'Portfolio, Buchungen, Allokation und CAPE-Analyse',
   sectionAppuntiDesc: 'Erinnerungen und Notizen aus dem Appunti-Blatt',
   sectionReportDesc: 'App-Daten als Excel oder PDF exportieren',
-  sectionImpostazioniDesc: 'Einstellungen, Konto und Vorsorgeprofil',
+  sectionImpostazioniDesc: 'Konto und App-Einstellungen',
 
   transfer: 'Überweisung',
   allMovements: 'Alle Buchungen',
@@ -4013,8 +4013,8 @@ const de: TranslationTable = {
   helpAppunti: 'Freie Notizen, um festzuhalten, warum du etwas entschieden hast oder was noch zu tun ist. «Neue Notiz» fragt Bereich, Titel, Text und einen frei gewählten Status (etwa Offen, Erledigt); die Suche durchsucht Titel und Text. Sie bleiben deine und fließen in keine Berechnung ein.',
   helpReport: 'Hier gehen Daten hinaus und herein.\n• «Bericht exportieren»: die Zusammenfassung des oben gewählten Zeitraums, als Excel oder PDF.\n• «Daten exportieren»: eine Datei mit all deinen Daten, ein Blatt pro Art, als Kopie oder zum Umziehen.\n• «Daten importieren»: holt eine hier exportierte Datei zurück und ersetzt die aktuellen Daten.\n• «Sicherungskopien»: eine Kopie erstellen, wiederherstellen oder löschen.',
   helpReportDep: 'Eine Kopie entsteht automatisch jeden Tag, vor jedem Import und vor dem Löschen einer Schuld. Die Kopien enthalten alle Nutzer: verwalten kann sie nur, wer die Installation betreut.',
-  helpImpostazioni: '• Konto: Passwort, Teilen der Summen mit anderen Nutzern und Löschen des Kontos, das vorher deine Daten herunterlädt.\n• Einstellungen: Farbe der App, Währungen für das Vermögen und Verschiebung später Einnahmen (ab dem gewählten Tag zählt eine Einnahme im Folgemonat).\n• Vorsorgeprofil, Ruhestandsausgaben und erwartete Einkommensströme stehen nicht hier: sie sind im Tab Profil und Einkommensströme der Seite Ruhestand und FIRE, neben dem Plan, den sie ergeben.\n• Die Sprache änderst du im Profilmenü oben rechts.',
-  helpImpostazioniDep: 'Der FIRE-Plan baut auf dem Profil und den Einkommensströmen auf, die man in seinem Tab Einstellungen ausfüllt: ohne Profil zeigt die Seite, wie man es ausfüllt. Eine Änderung der Einnahmenverschiebung berechnet den Zuordnungsmonat der gesamten Historie neu. Backups und Export sind unter Berichte.',
+  helpImpostazioni: '• Konto: Passwort, Teilen der Summen mit anderen Nutzern und Löschen des Kontos, das vorher deine Daten herunterlädt.\n• Einstellungen: die Farbe der App.\n• Die Währungen für das Vermögen stehen im Tab Währungen des Vermögens; Verschiebung später Einnahmen und der Kategorienbaum in den Tabs Späte Einnahmen und Kategorien des Budgets.\n• Vorsorgeprofil, Ruhestandsausgaben und erwartete Einkommensströme stehen nicht hier: sie sind im Tab Profil und Einkommensströme der Seite Ruhestand und FIRE, neben dem Plan, den sie ergeben.\n• Die Sprache änderst du im Profilmenü oben rechts.',
+  helpImpostazioniDep: 'Die hier gewählte Farbe ändert nur das Aussehen der App. Das Teilen der Summen entscheidet, was andere Nutzer auf der Seite Gemeinsam sehen: die Details bleiben trotzdem privat. Beim Löschen des Kontos werden deine Daten vorher heruntergeladen. Backups und Export sind unter Berichte.',
 
   // La cancellazione di un account: l'unica azione che distrugge dati.
   deleteAccount: 'Dieses Konto löschen',
@@ -4777,7 +4777,7 @@ const es: TranslationTable = {
   sectionInvestimentiDesc: 'Cartera, operaciones, asignación y análisis CAPE',
   sectionAppuntiDesc: 'Recordatorios y notas importados de la hoja Appunti',
   sectionReportDesc: 'Exporta los datos de la app a Excel o PDF',
-  sectionImpostazioniDesc: 'Preferencias de la app, cuenta y perfil previsional',
+  sectionImpostazioniDesc: 'Cuenta y preferencias de la app',
 
   transfer: 'Transferencia',
   allMovements: 'Todos los movimientos',
@@ -5441,8 +5441,8 @@ const es: TranslationTable = {
   helpAppunti: 'Notas libres, para recordar por qué decidiste algo o qué queda por hacer. «Nueva nota» pide sección, título, texto y un estado a tu elección (por ejemplo Pendiente, Hecho); la búsqueda mira títulos y texto. Son tuyas y no entran en ningún cálculo.',
   helpReport: 'Aquí los datos salen y entran.\n• «Exportar informe»: el resumen del periodo elegido arriba, en Excel o PDF.\n• «Exportar datos»: un archivo con todos tus datos, una hoja por tipo, para guardar una copia o trasladarlos.\n• «Importar datos»: vuelve a cargar un archivo exportado desde aquí, sustituyendo los datos actuales.\n• «Copias de seguridad»: crea una copia, restáurala o bórrala.',
   helpReportDep: 'Se crea una copia automática cada día, antes de cada importación y antes de eliminar una deuda. Las copias incluyen a todos los usuarios: solo las gestiona quien administra la instalación.',
-  helpImpostazioni: '• Cuenta: contraseña, compartir tus totales con otros usuarios y eliminar la cuenta, que antes descarga tus datos.\n• Preferencias: color de la app, divisas en las que ver el patrimonio y desplazamiento de ingresos tardíos (desde el día elegido un ingreso cuenta en el mes siguiente).\n• El perfil previsional, los gastos en la jubilación y los flujos esperados no están aquí: están en la pestaña Perfil y flujos de la página Jubilación y FIRE, junto al plan que producen.\n• El idioma se cambia desde el menú del perfil, arriba a la derecha.',
-  helpImpostazioniDep: 'El plan FIRE se construye con el perfil y los flujos, que se rellenan en su pestaña Ajustes: sin perfil la página muestra cómo rellenarlo. Cambiar el desplazamiento de ingresos recalcula el mes de imputación de todo el histórico. Copias y exportación están en Informes.',
+  helpImpostazioni: '• Cuenta: contraseña, compartir tus totales con otros usuarios y eliminar la cuenta, que antes descarga tus datos.\n• Preferencias: el color de la app.\n• Las divisas en las que ver el patrimonio están en la pestaña Divisas de Patrimonio; el desplazamiento de ingresos tardíos y el árbol de categorías en las pestañas Ingresos tardíos y Categorías de Presupuesto.\n• El perfil previsional, los gastos en la jubilación y los flujos esperados no están aquí: están en la pestaña Perfil y flujos de la página Jubilación y FIRE, junto al plan que producen.\n• El idioma se cambia desde el menú del perfil, arriba a la derecha.',
+  helpImpostazioniDep: 'El color elegido aquí cambia solo el aspecto de la app. Compartir tus totales decide qué ven los otros usuarios en la página Juntos: el detalle sigue siendo privado igualmente. Eliminar la cuenta descarga antes tus datos. Copias y exportación están en Informes.',
 
   // La cancellazione di un account: l'unica azione che distrugge dati.
   deleteAccount: 'Eliminar esta cuenta',
@@ -6209,7 +6209,7 @@ const fr: TranslationTable = {
   sectionInvestimentiDesc: 'Portefeuille, opérations, allocation et analyse CAPE',
   sectionAppuntiDesc: 'Notes et rappels importés depuis la feuille Appunti',
   sectionReportDesc: 'Exporte les données de l’application en Excel ou PDF',
-  sectionImpostazioniDesc: 'Préférences de l\'application, compte et profil de retraite',
+  sectionImpostazioniDesc: "Compte et préférences de l'application",
 
   // Movimenti
   transfer: 'Virement',
@@ -6889,8 +6889,8 @@ const fr: TranslationTable = {
   helpAppunti: 'Des notes libres, pour te rappeler pourquoi tu as décidé quelque chose ou ce qui reste à faire. «Nouvelle note» demande section, titre, texte et un statut au choix (par exemple À faire, Fait) ; la recherche porte sur les titres et le texte. Elles restent à toi et n\'entrent dans aucun calcul.',
   helpReport: 'Ici les données sortent et entrent.\n• «Exporter le rapport» : le résumé de la période choisie en haut, en Excel ou PDF.\n• «Exporter les données» : un fichier avec toutes tes données, une feuille par type, pour en garder une copie ou les déplacer.\n• «Importer les données» : remet dans l\'app un fichier exporté d\'ici, en remplaçant les données actuelles.\n• «Sauvegardes» : crée une copie, restaure-la ou supprime-la.',
   helpReportDep: 'Une copie se crée toute seule chaque jour, avant chaque import et avant la suppression d\'une dette. Les copies contiennent tous les utilisateurs : seule la personne qui administre l\'installation les gère.',
-  helpImpostazioni: '• Compte : mot de passe, partage de tes totaux avec les autres utilisateurs et suppression du compte, qui télécharge d\'abord tes données.\n• Préférences : couleur de l\'app, devises pour relire le patrimoine et décalage des revenus tardifs (à partir du jour choisi un revenu compte le mois suivant).\n• Le profil de prévoyance, les dépenses de retraite et les flux attendus ne sont pas ici : ils sont dans l\'onglet Profil et flux de la page Retraite et FIRE, à côté du plan qu\'ils produisent.\n• La langue se change depuis le menu du profil, en haut à droite.',
-  helpImpostazioniDep: 'Le plan FIRE se construit sur le profil et les flux, qui se remplissent dans son onglet Paramètres : sans profil, la page montre comment le remplir. Changer le décalage des revenus recalcule le mois d\'imputation de tout l\'historique. Sauvegardes et export sont dans Rapport.',
+  helpImpostazioni: "• Compte : mot de passe, partage de tes totaux avec les autres utilisateurs et suppression du compte, qui télécharge d'abord tes données.\n• Préférences : la couleur de l'app.\n• Les devises pour relire le patrimoine sont dans l'onglet Devises de Patrimoine ; le décalage des revenus tardifs et l'arbre des catégories dans les onglets Revenus tardifs et Catégories de Budget.\n• Le profil de prévoyance, les dépenses de retraite et les flux attendus ne sont pas ici : ils sont dans l'onglet Profil et flux de la page Retraite et FIRE, à côté du plan qu'ils produisent.\n• La langue se change depuis le menu du profil, en haut à droite.",
+  helpImpostazioniDep: "La couleur choisie ici ne change que l'apparence de l'application. Le partage de tes totaux décide ce que voient les autres utilisateurs sur la page Ensemble : le détail reste privé malgré tout. Supprimer le compte télécharge d'abord tes données. Sauvegardes et export sont dans Rapport.",
 
   // La cancellazione di un account: l'unica azione che distrugge dati.
   deleteAccount: 'Supprimer ce compte',
