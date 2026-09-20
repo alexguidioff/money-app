@@ -3919,7 +3919,11 @@ function BudgetPlanMonthTotals({ data, budgetType, calculations, year, month }: 
   const variance = planned - actual;
   const actualLabel = budgetType === 'Expenses' ? t('spentMetric') : budgetType === 'Income' ? t('receivedMetric') : t('savedMetric');
   const plannedLabel = budgetType === 'Expenses' ? t('budgetMetric') : budgetType === 'Income' ? t('incomeTargetMetric') : t('plannedSavingsMetric');
-  const varianceLabel = budgetType === 'Expenses' ? t('budgetAvailable') : budgetType === 'Income' ? t('vsTargetMetric') : t('vsPlanMetric');
+  // Stessa cifra, stesso nome: qui e nella card della Panoramica (`varianceTitle`
+  // sopra) il numero e' "Budget disponibile", non un terzo nome da imparare.
+  const varianceLabel = budgetType === 'Expenses' ? t('availableMetric') : budgetType === 'Income' ? t('vsTargetMetric') : t('vsPlanMetric');
+  // `stillAvailable` non ripete il nome della cifra: e' il giudizio opposto a
+  // "Budget superato", cioe' quello che serve sapere sotto il numero.
   const varianceStatus = planned === 0 && actual === 0 ? t('budgetNotPlanned')
     : variance === 0
     ? t(budgetType === 'Expenses' ? 'budgetFullyUsed' : budgetType === 'Savings' ? 'onPlan' : 'onTarget')
