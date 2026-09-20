@@ -134,12 +134,18 @@ export function AccountSettings({ apiUrl, account, onChanged }: {
           <p className="text-sm font-medium text-[#173b33]">
             {account.hasPassword ? t('changePassword') : t('setPassword')}
           </p>
+          {/* Due campi password uno sotto l'altro, senza etichetta visibile: il
+              `placeholder` e' l'unica cosa che li distingue, e sparisce appena
+              si scrive. Chi usa un lettore di schermo sentiva due volte "campo
+              password" e non sapeva quale stava compilando. */}
           {account.hasPassword && (
             <Input type="password" value={current} onChange={(event) => setCurrent(event.target.value)}
-                   placeholder={t('currentPassword')} className="h-10 bg-white" autoComplete="current-password" />
+                   placeholder={t('currentPassword')} aria-label={t('currentPassword')}
+                   className="h-10 bg-white" autoComplete="current-password" />
           )}
           <Input type="password" value={next} onChange={(event) => setNext(event.target.value)}
-                 placeholder={t('newPassword')} className="h-10 bg-white" autoComplete="new-password" />
+                 placeholder={t('newPassword')} aria-label={t('newPassword')}
+                 className="h-10 bg-white" autoComplete="new-password" />
           {/* La regola sta scritta sotto il campo: il pulsante e' spento finche'
               la password non arriva a sei caratteri, e senza questa riga non si
               sa perche'. E' la stessa frase dell'errore, cosi' le due non

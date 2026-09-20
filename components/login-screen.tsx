@@ -100,10 +100,16 @@ export function LoginScreen({ users, onLogin, onCreate }: {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder={t('loginPassword')}
+              // Il `placeholder` sparisce appena si scrive la prima lettera: chi
+              // usa un lettore di schermo restava senza sapere cosa stava
+              // digitando. L'etichetta c'e' sempre, anche quando il campo e' pieno.
+              aria-label={t('loginPassword')}
               className="h-10 bg-white"
             />
           )}
-          {error && <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}
+          {/* `role="alert"`: l'errore nasce dopo l'invio, quando il fuoco e' sul
+              pulsante, e senza questo non veniva mai letto ad alta voce. */}
+          {error && <p role="alert" className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}
           {users.length > 0 && (
             <Button
               type="submit"
@@ -120,7 +126,7 @@ export function LoginScreen({ users, onLogin, onCreate }: {
             <p className="text-sm font-medium text-[#173b33]">{t('addPerson')}</p>
             <p className="text-xs leading-5 text-[#5e6c68]">{t('addPersonHint')}</p>
             <Input value={nome} onChange={(event) => setNome(event.target.value)}
-                   placeholder={t('personName')} className="h-10 bg-white" autoFocus={users.length === 0} />
+                   placeholder={t('personName')} aria-label={t('personName')} className="h-10 bg-white" autoFocus={users.length === 0} />
             <div className="flex gap-2">
               <Button type="submit" disabled={busy || !nome.trim()}
                       className="h-10 flex-1 bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">
