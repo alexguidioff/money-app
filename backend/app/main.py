@@ -226,7 +226,11 @@ async def import_data_route(file: UploadFile = File(...), session: Session = Dep
     try:
         meta, data = await asyncio.to_thread(read_and_validate, BytesIO(payload))
     except InterchangeError as error:
-        raise HTTPException(400, detail={"code": "importInvalid", "reason": str(error)}) from error
+        # Il motivo e' una frase diagnostica, con dentro nomi di fogli e di
+        # colonne: a schermo l'utente legge una frase tradotta che dice che i
+        # dati non sono cambiati, e il perche' resta qui, dove si puo' leggere.
+        logger.warning("import rifiutato in lettura: %s", error)
+        raise HTTPException(400, detail={"code": "importInvalid"}) from error
     before = summarize_state(session)
 
     # Il backup segue la validazione e precede qualsiasi scrittura.
@@ -243,7 +247,8 @@ async def import_data_route(file: UploadFile = File(...), session: Session = Dep
         session.commit()
     except InterchangeError as error:
         session.rollback()
-        raise HTTPException(400, detail={"code": "importInvalid", "reason": str(error)}) from error
+        logger.warning("import rifiutato in scrittura: %s", error)
+        raise HTTPException(400, detail={"code": "importInvalid"}) from error
     except IntegrityError as error:
         session.rollback()
         raise HTTPException(409, detail="importConflict") from error
@@ -957,7 +962,7 @@ def bulk_transactions(payload: BulkTransactionsPayload, session: Session = Depen
     # Il tetto vale anche qui: l'interfaccia non ci arriva, ma l'endpoint e'
     # raggiungibile lo stesso e una lista senza limiti bloccherebbe la tabella.
     if len(payload.ids) > MAX_SELEZIONE_MASSA:
-        raise HTTPException(422, detail="bulkTooMany")
+        raise HTTPException(422, detail={"code": "bulkTooMany", "max": MAX_SELEZIONE_MASSA})
     for key, value in payload.changes.items():
         if key == "categoryId":
             if not isinstance(value, int) or isinstance(value, bool):

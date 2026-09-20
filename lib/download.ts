@@ -30,8 +30,11 @@ export async function responseError(response: Response, t: Traduci,
   const payload = await response.json().catch(() => null) as { detail?: unknown } | null;
   const detail = payload?.detail;
   const oggetto = detail && typeof detail === 'object' && !Array.isArray(detail)
-    ? detail as { code?: string; fields?: string[] } : null;
+    ? detail as { code?: string; fields?: string[]; account?: string; max?: number } : null;
+  // I due codici che non bastano da soli: dicono anche *quale* campo o *quanto*.
   if (oggetto?.code === 'movementIncomplete') return campiMancanti(oggetto.fields, t);
+  if (oggetto?.code === 'accountInactive') return t('accountInactive', { account: oggetto.account ?? '' });
+  if (oggetto?.code === 'bulkTooMany') return t('bulkTooMany', { max: String(oggetto.max ?? '') });
   const code = typeof detail === 'string' ? detail : oggetto?.code;
   return t(code && Object.hasOwn(translations.it, code) ? code as TranslationKey : predefinito);
 }
