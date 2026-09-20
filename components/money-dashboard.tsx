@@ -4445,7 +4445,7 @@ function TickerResults({ items, onPick }: { items: TickerResult[]; onPick: (symb
 }
 
 function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { apiUrl: string; rows: InstrumentRow[]; reload: () => Promise<void>; onSaved: () => Promise<void>; onRefresh: () => Promise<{ updated: number; errors: Array<{ code?: string; error?: string }> }> }) {
-  const { t } = useI18n();
+  const { t, formatNumber, formatDate } = useI18n();
   const [newName, setNewName] = useState('');
   const [newSymbol, setNewSymbol] = useState('');
   const [creating, setCreating] = useState(false);
@@ -4504,7 +4504,9 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
         return;
       }
       const quote = await response.json() as { price: number; currency: string; observedOn: string };
-      setChecks((c) => ({ ...c, [row.id]: { ok: true, text: `${quote.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${quote.currency} · ${quote.observedOn}` } }));
+      // Il prezzo con la lingua scelta, non con quella del browser: accanto al
+      // resto dell'app si leggeva "1,234.56 USD" in mezzo a "1.234,56 €".
+      setChecks((c) => ({ ...c, [row.id]: { ok: true, text: `${formatNumber(quote.price, { maximumFractionDigits: 2 })} ${quote.currency} · ${formatDate(`${quote.observedOn}T12:00:00`)}` } }));
     } finally { setBusy(null); }
   }
 
