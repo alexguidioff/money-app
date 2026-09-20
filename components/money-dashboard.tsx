@@ -5899,11 +5899,16 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
         <input type="checkbox" checked={hideZeroBalances} onChange={(event) => setHideZeroBalances(event.target.checked)} className="size-4 accent-[var(--money-primary)]" />
         {t('hideZeroBalanceAccounts')}
       </label>
-      <label className="flex items-center gap-2 text-xs font-medium text-[#52615d]">{t('accountOrder')}
-        <select value={accountOrder} onChange={(event) => setAccountOrder(event.target.value as 'balance' | 'name' | 'added')} className="h-8 rounded-lg border border-black/7 bg-white px-2 text-xs"><option value="balance">{t('accountOrderBalance')}</option><option value="name">{t('accountOrderName')}</option><option value="added">{t('accountOrderAdded')}</option></select>
+      {/* Un `label` non puo' contenerne un altro, e il browser non sa a quale
+          dei due `select` appartiene la scritta: il clic finiva sul primo anche
+          quando serviva il secondo. Fuori c'e' un `span`, e ogni `select` ha la
+          sua etichetta legata per `id`. */}
+      <span className="flex items-center gap-2 text-xs font-medium text-[#52615d]">
+        <label htmlFor="account-order">{t('accountOrder')}</label>
+        <select id="account-order" value={accountOrder} onChange={(event) => setAccountOrder(event.target.value as 'balance' | 'name' | 'added')} className="h-8 rounded-lg border border-black/7 bg-white px-2 text-xs"><option value="balance">{t('accountOrderBalance')}</option><option value="name">{t('accountOrderName')}</option><option value="added">{t('accountOrderAdded')}</option></select>
         <label className="sr-only" htmlFor="account-order-direction">{t('accountOrderDirection')}</label>
         <select id="account-order-direction" value={accountOrderDirection} onChange={(event) => setAccountOrderDirection(event.target.value as 'asc' | 'desc')} className="h-8 rounded-lg border border-black/7 bg-white px-2 text-xs"><option value="asc">{t('ascending')}</option><option value="desc">{t('descending')}</option></select>
-      </label>
+      </span>
       {alPresente && <Button onClick={() => onNewAccount()} size="sm" className="ml-auto h-8 rounded-lg bg-[var(--money-primary)] px-3 text-xs text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-3.5" />{t('newAccount')}</Button>}
     </div>
     {!alPresente && <p className="rounded-xl border border-black/7 bg-[#fafaf8] px-4 py-2.5 text-xs text-[#5e6c68]">{t('pastPeriodReadOnly')}</p>}
