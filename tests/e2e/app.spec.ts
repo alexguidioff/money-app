@@ -109,7 +109,7 @@ test('Movimenti: una spesa si salva; un trasferimento al broker mostra il colleg
   await page.getByRole('button', { name: 'Nuovo movimento' }).first().click();
   await dialogo.locator('#movement-type').selectOption('Investment');
   await dialogo.locator('#movement-account').selectOption('Banca');
-  await dialogo.getByLabel('Registra anche nel ledger').check();
+  await dialogo.getByLabel('Registra anche nel registro').check();
   const strumento = dialogo.locator('input[list="strumenti-esistenti"]');
   await expect(strumento).toBeVisible();
   await expect(dialogo.locator('#strumenti-esistenti option[value="ETF e2e"]')).toHaveCount(1);
@@ -211,7 +211,7 @@ test('Regole di categorizzazione: la regola scritta in Movimenti decide la categ
   expect(errori).toEqual([]);
 });
 
-test('Ledger: uno split 2:1 raddoppia le quote e non tocca il costo', async ({ page }) => {
+test('Registro: uno split 2:1 raddoppia le quote e non tocca il costo', async ({ page }) => {
   // Uno split non aggiunge righe al portafoglio: cambia i numeri della
   // posizione, ed e' li' che si guarda. Percio' il giro e' acquisto, split dal
   // modulo, e di nuovo la tabella delle posizioni.
@@ -230,7 +230,7 @@ test('Ledger: uno split 2:1 raddoppia le quote e non tocca il costo', async ({ p
   await expect(riga.getByRole('cell').nth(1)).toHaveText('10');
   await expect(riga.getByRole('cell').nth(2)).toHaveText(/^1000,00\s*€$/);
 
-  await page.getByRole('button', { name: 'Ledger', exact: true }).click();
+  await page.getByRole('button', { name: 'Registro', exact: true }).click();
   await page.getByRole('button', { name: 'Nuova operazione' }).click();
   const dialogo = page.getByRole('dialog');
   await dialogo.locator('select[name="transaction_type"]').selectOption('Split');
