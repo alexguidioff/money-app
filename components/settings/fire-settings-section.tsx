@@ -7,8 +7,8 @@ import { FireTaxNotes } from './fire-tax-notes';
 import { ExpensesByCategory } from '@/components/fire/expenses-by-category';
 import { useI18n } from '@/lib/i18n-context';
 
-// Sezione pensionamento dentro Impostazioni: profilo, spese in pensione per
-// categoria, flussi attesi e note fiscali, ognuno con la sua card. Le note
+// Seconda scheda della pagina Pensionamento e FIRE: profilo, spese in pensione
+// per categoria, flussi attesi e note fiscali, ognuno con la sua card. Le note
 // fiscali mostrano il paese del profilo come default; senza profilo, IT.
 
 export function FireSettingsSection({ apiUrl }: { apiUrl: string }) {
@@ -34,8 +34,11 @@ export function FireSettingsSection({ apiUrl }: { apiUrl: string }) {
 
   return (
     <div className="space-y-5">
+      {/* Il titolo e' il nome della scheda, non quello della pagina: chi sta
+          dentro "Profilo e flussi" e legge "Pensionamento e FIRE" crede di
+          essere tornato all'inizio della pagina. */}
       <div>
-        <h2 className="flex items-center text-lg font-semibold tracking-[-0.02em]">{t('fireSection')}</h2>
+        <h2 className="flex items-center text-lg font-semibold tracking-[-0.02em]">{t('fireTabSettings')}</h2>
         <p className="mt-1 text-xs text-[#7b8784]">{t('fireSectionDesc')}</p>
       </div>
       <div className="grid items-start gap-5 xl:grid-cols-2">
