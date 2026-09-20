@@ -1282,7 +1282,7 @@ const it = {
 
   // Profilo previdenziale (3.1)
   fireProfileTitle: 'Profilo previdenziale',
-  fireProfileSubtitle: "I numeri che governano il calcolo del piano. Ogni importo o tasso è in termini reali: lo dichiari una volta, l'inflazione non lo cambia.",
+  fireProfileSubtitle: "I numeri che governano il calcolo del piano. Rendimento e tasso di prelievo sono in termini reali: l'inflazione non li cambia, e ha un campo suo.",
   fireProfileBirthYear: 'Anno di nascita',
   fireProfileCountry: 'Paese di riferimento',
   fireProfileRetirementAge: 'Età di ritiro desiderata',
@@ -2720,7 +2720,7 @@ const en: TranslationTable = {
   fireSectionHelpDep: 'It is set up in the Profile and streams tab of this page: profile (age, country, return, withdrawal, tax, inflation, expenses), retirement expenses by category and future income streams such as a state or occupational pension. Returns are real, net of inflation. It is a scenario, not a forecast.',
 
   fireProfileTitle: 'Retirement profile',
-  fireProfileSubtitle: 'The numbers that drive the plan. Every amount or rate is in real terms: you set it once, inflation does not change it.',
+  fireProfileSubtitle: 'The numbers that drive the plan. Return and withdrawal rate are in real terms: inflation does not change them, and it has a field of its own.',
   fireProfileBirthYear: 'Birth year',
   fireProfileCountry: 'Country of reference',
   fireProfileRetirementAge: 'Target retirement age',
@@ -4150,7 +4150,7 @@ const de: TranslationTable = {
   fireSectionHelpDep: 'Eingerichtet wird es im Tab Profil und Einkommensströme dieser Seite: Profil (Alter, Land, Rendite, Entnahme, Steuer, Inflation, Ausgaben), Ruhestandsausgaben nach Kategorie und künftige Einkommensströme wie AHV, BVG oder gesetzliche Rente. Renditen sind real, nach Inflation. Es ist ein Szenario, keine Prognose.',
 
   fireProfileTitle: 'Vorsorgeprofil',
-  fireProfileSubtitle: 'Die Zahlen, die den Plan steuern. Jeder Betrag oder Satz ist real: einmal festgelegt, ändert die Inflation ihn nicht.',
+  fireProfileSubtitle: 'Die Zahlen, die den Plan steuern. Rendite und Entnahmerate sind real: die Inflation ändert sie nicht, und hat ein eigenes Feld.',
   fireProfileBirthYear: 'Geburtsjahr',
   fireProfileCountry: 'Referenzland',
   fireProfileRetirementAge: 'Gewünschtes Renteneintrittsalter',
@@ -5580,7 +5580,7 @@ const es: TranslationTable = {
   fireSectionHelpDep: 'Se configura en la pestaña Perfil y flujos de esta página: perfil (edad, país, rentabilidad, retirada, impuestos, inflación, gastos), gastos en la jubilación por categoría y flujos de ingresos futuros como la pensión pública o un plan de empresa. Las rentabilidades son reales, descontada la inflación. Es un escenario, no una previsión.',
 
   fireProfileTitle: 'Perfil previsional',
-  fireProfileSubtitle: 'Los números que rigen el plan. Cada importe o tasa es en términos reales: lo declaras una vez, la inflación no lo cambia.',
+  fireProfileSubtitle: 'Los números que gobiernan el cálculo del plan. La rentabilidad y la tasa de retirada están en términos reales: la inflación no las cambia, y tiene su propio campo.',
   fireProfileBirthYear: 'Año de nacimiento',
   fireProfileCountry: 'País de referencia',
   fireProfileRetirementAge: 'Edad de jubilación deseada',
@@ -7030,7 +7030,7 @@ const fr: TranslationTable = {
   fireSectionHelpDep: 'Tout se règle dans l\'onglet Profil et flux de cette page : profil (âge, pays, rendement, retrait, impôt, inflation, dépenses), dépenses de retraite par catégorie et flux de revenus futurs comme la retraite de base ou complémentaire. Les rendements sont réels, nets d\'inflation. C\'est un scénario, pas une prévision.',
 
   fireProfileTitle: 'Profil de retraite',
-  fireProfileSubtitle: 'Les chiffres qui gouvernent le plan. Chaque montant ou taux est en termes réels: tu le déclares une fois, l\'inflation ne le change pas.',
+  fireProfileSubtitle: "Les nombres qui gouvernent le calcul du plan. Le rendement et le taux de retrait sont en termes réels : l'inflation ne les change pas, et elle a son propre champ.",
   fireProfileBirthYear: 'Année de naissance',
   fireProfileCountry: 'Pays de référence',
   fireProfileRetirementAge: 'Âge de retraite souhaité',
