@@ -374,6 +374,11 @@ type BudgetBalance = { income: number; expenses: number; savings: number; stored
 const BUDGET_VUOTO: BudgetData = { items: [], plannedTotal: 0, actualTotal: 0,
   balance: { income: 0, expenses: 0, savings: 0, storedSavings: 0, hasIncomePlan: false } };
 type BudgetGroupSplit = { group: 'Needs' | 'Wants' | 'Other'; planned: number; actual: number; plannedShare: number; actualShare: number };
+// Le schede della pagina Budget. L'ultima non mostra numeri: tiene le due
+// impostazioni che decidono in che mese conta un'entrata incassata tardi.
+// Un nome solo per tutte e quattro le copie: aggiungere una scheda e
+// dimenticarne una e' il modo in cui le schede iniziano a non tornare.
+type BudgetView = 'dashboard' | 'trends' | 'plan' | 'categories' | 'entrateTardive';
 
 export type AnnualBudgetData = {
   year: number;
@@ -973,7 +978,7 @@ function MoneyDashboardInner() {
   // L'utente sceglie quali anni mettere a confronto in Trends. Default: gli
   // ultimi 3 anni disponibili, una volta che la lista arriva dal backend.
   const [trendYears, setTrendYears] = useState<number[]>([]);
-  const [budgetView, setBudgetView] = useState<'dashboard' | 'trends' | 'plan' | 'categories'>('dashboard');
+  const [budgetView, setBudgetView] = useState<BudgetView>('dashboard');
   const [budgetLoadFailed, setBudgetLoadFailed] = useState(false);
   const [trendsLoadFailed, setTrendsLoadFailed] = useState(false);
   const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlertData | null>(null);
@@ -1361,7 +1366,7 @@ function MoneyDashboardInner() {
       const salvato = JSON.parse(window.localStorage.getItem(CHIAVE_VISTA) ?? 'null') as
         { section?: string; period?: Partial<PeriodSelection>; year?: number; month?: number;
           overviewYear?: number; overviewMonth?: number | null; overviewCompareTo?: 'none' | 'prior_period' | 'prior_year';
-          trendYears?: number[]; budgetView?: 'dashboard' | 'trends' | 'plan' | 'categories' } | null;
+          trendYears?: number[]; budgetView?: BudgetView } | null;
       if (!salvato) return;
       if (salvato.section && salvato.section in SECTION_LABEL_KEYS) setActiveSection(salvato.section as Section);
       // Il vecchio formato aveva due periodi: durante la migrazione vince
@@ -3465,8 +3470,8 @@ function SectionView({
   onPeriodChange: (value: PeriodSelection) => void;
   budgetType: 'Expenses' | 'Income' | 'Savings';
   onBudgetTypeChange: (value: 'Expenses' | 'Income' | 'Savings') => void;
-  budgetView: 'dashboard' | 'trends' | 'plan' | 'categories';
-  onBudgetViewChange: (value: 'dashboard' | 'trends' | 'plan' | 'categories') => void;
+  budgetView: BudgetView;
+  onBudgetViewChange: (value: BudgetView) => void;
   settingsData: SettingsData;
   onSettingChange: (key: string, value: string) => Promise<void>;
   settingSaving: string;
@@ -3719,11 +3724,15 @@ function SectionView({
 
       {section === 'Budget' && <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-2">
-          <div role="group" aria-label={t('type')} className="flex gap-1.5 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
+          {/* Spese/Entrate/Risparmio non vale per le entrate tardive: quelle due
+              impostazioni decidono in che mese conta un'entrata, non quanto se
+              ne spende. Lasciare il selettore acceso li' vorrebbe dire mostrare
+              un comando che non cambia niente di quello che si sta guardando. */}
+          {budgetView !== 'entrateTardive' && <div role="group" aria-label={t('type')} className="flex gap-1.5 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
             {([['Expenses', t('expensesType')], ['Income', t('incomeType')], ['Savings', t('savingsType')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={budgetType === value} onClick={() => onBudgetTypeChange(value)} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${budgetType === value ? 'bg-[var(--money-primary)] text-white' : 'text-[#66736f] hover:bg-[#f4f5f1]'}`}>{label}</button>)}
-          </div>
+          </div>}
           <div role="group" aria-label={t('budget')} className="flex flex-wrap gap-1 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-            {([['dashboard', t('budgetTabDashboard')], ['trends', t('budgetTabTrends')], ['plan', t('budgetTabPlan')], ['categories', t('budgetTabCategories')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={budgetView === value} onClick={() => onBudgetViewChange(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${budgetView === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
+            {([['dashboard', t('budgetTabDashboard')], ['trends', t('budgetTabTrends')], ['plan', t('budgetTabPlan')], ['categories', t('budgetTabCategories')], ['entrateTardive', t('budgetTabLateIncome')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={budgetView === value} onClick={() => onBudgetViewChange(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${budgetView === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
           </div>
         </div>
         {budgetLoadFailed ? <Card className="border-[#efc4b8] bg-[#fff6f3] shadow-sm"><CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold">{t('budgetLoadFailed')}</p><p className="mt-1 text-xs text-[#52615d]">{t('budgetLoadFailedHint')}</p></div><Button variant="outline" size="sm" onClick={() => void onReload()}>{t('retry')}</Button></CardContent></Card> : <>
@@ -3744,6 +3753,15 @@ function SectionView({
             piu' - perche' due elenchi uguali in due stanze diverse sono due
             elenchi da tenere allineati. */}
         {budgetView === 'categories' && <CategoryTreeCard apiUrl={apiUrl} onChanged={onReload} />}
+        {/* Le due impostazioni che decidono in che mese conta un'entrata
+            incassata tardi: stavano fra le preferenze dell'app, ma non sono
+            preferenze dell'app - sono una regola del budget, e chi le cerca le
+            cerca qui. Il selettore del tipo di budget sparisce (sopra) perche'
+            qui non cambia niente. */}
+        {budgetView === 'entrateTardive' && <CardImpostazioni titolo={t('budgetTabLateIncome')}>
+          <SettingSelect label={t('shiftLateIncome')} value={settingsData.settings.late_income_shift} options={uniqueOptions(settingsData.settings.late_income_shift, ['Active', 'Inactive'])} saving={settingSaving === 'late_income_shift'} hint={t('shiftLateIncomeHint')} labels={{ Active: t('toggleActive'), Inactive: t('toggleInactive') }} onChange={(value) => void onSettingChange('late_income_shift', value)} />
+          <SettingSelect label={t('fromDay')} value={settingsData.settings.late_income_day} options={Array.from({ length: 28 }, (_, index) => String(index + 1))} saving={settingSaving === 'late_income_day'} disabled={settingsData.settings.late_income_shift !== 'Active'} hint={settingsData.settings.late_income_shift === 'Active' ? t('fromDayHintActive') : t('fromDayHintInactive')} onChange={(value) => void onSettingChange('late_income_day', value)} />
+        </CardImpostazioni>}
       </div>}
 
       {section === 'Obiettivi' && <GoalsView data={goalsData} accounts={accounts} onSave={onGoalSave} onDelete={onGoalDelete} onMilestoneAdd={onMilestoneAdd} onMilestoneDelete={onMilestoneDelete} />}
@@ -3769,8 +3787,6 @@ function SectionView({
             {settingError && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#bd5e46]">{settingError}</p>}
             <SettingSelect label={t('mainColor')} value={settingsData.settings.header_color} options={settingsData.options.colors} saving={settingSaving === 'header_color'} labels={{ Blue: t('colorBlue'), Orange: t('colorOrange'), Green: t('colorGreen'), Yellow: t('colorYellow'), Purple: t('colorPurple'), 'Light Blue': t('colorLightBlue') }} onChange={(value) => void onSettingChange('header_color', value)} />
             <SettingCurrencies label={t('netWorthCurrenciesSetting')} value={settingsData.settings.net_worth_currencies ?? 'USD,CHF,BTC'} saving={settingSaving === 'net_worth_currencies'} onChange={(value) => void onSettingChange('net_worth_currencies', value)} />
-            <SettingSelect label={t('shiftLateIncome')} value={settingsData.settings.late_income_shift} options={uniqueOptions(settingsData.settings.late_income_shift, ['Active', 'Inactive'])} saving={settingSaving === 'late_income_shift'} hint={t('shiftLateIncomeHint')} labels={{ Active: t('toggleActive'), Inactive: t('toggleInactive') }} onChange={(value) => void onSettingChange('late_income_shift', value)} />
-            <SettingSelect label={t('fromDay')} value={settingsData.settings.late_income_day} options={Array.from({ length: 28 }, (_, index) => String(index + 1))} saving={settingSaving === 'late_income_day'} disabled={settingsData.settings.late_income_shift !== 'Active'} hint={settingsData.settings.late_income_shift === 'Active' ? t('fromDayHintActive') : t('fromDayHintInactive')} onChange={(value) => void onSettingChange('late_income_day', value)} />
           </CardContent></Card>
           </div>
         </div>
