@@ -6578,13 +6578,19 @@ function BalanceSheetChart({ apiUrl, primoAnno }: { apiUrl: string; primoAnno: n
               <span className="font-medium text-[#1f2c28]">{titoloLivello}</span>
             </nav>
           </div>
-          <div className="flex gap-1 rounded-lg border border-black/6 bg-[#f4f5f1] p-1 text-xs">
-            {BALANCE_SHEET_RANGES.map((valore) => (
-              <button key={valore} type="button" onClick={() => setMesi(valore)}
-                className={`rounded-md px-2.5 py-1 font-medium transition ${mesi === valore ? 'bg-white text-[#173b33] shadow-sm' : 'text-[#66736f] hover:text-[#173b33]'}`}>
-                {valore === 0 ? t('bsRangeAll') : t('bsRangeMonths', { count: valore })}
-              </button>
-            ))}
+          {/* L'intervallo e' quello del grafico, non il mese scelto in alto:
+              la riga sopra i pulsanti lo dice, perche' due periodi nella stessa
+              schermata senza una scritta sono due numeri che non tornano. */}
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-[11px] font-medium text-[#7b8784]">{t('sharedRangeSelector')}</span>
+            <div role="group" aria-label={t('sharedRangeSelector')} className="flex gap-1 rounded-lg border border-black/6 bg-[#f4f5f1] p-1 text-xs">
+              {BALANCE_SHEET_RANGES.map((valore) => (
+                <button key={valore} type="button" onClick={() => setMesi(valore)}
+                  className={`rounded-md px-2.5 py-1 font-medium transition ${mesi === valore ? 'bg-white text-[#173b33] shadow-sm' : 'text-[#66736f] hover:text-[#173b33]'}`}>
+                  {valore === 0 ? t('bsRangeAll') : t('bsRangeMonths', { count: valore })}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </CardHeader>
