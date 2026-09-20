@@ -5682,7 +5682,7 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
     {scheda === 'patrimonio' && <>
     <div className="grid gap-4 lg:grid-cols-2">
       <MetricCard featured title={t('netWorthNet')} value={data.totals.netWorth} change={data.dataPeriod ? t('dataAsOf', { date: dataAsOfLabel }) : t('noData')} icon={Landmark} tone="worth" />
-      <MetricCard featured title={t('liquidityMetric')} titleHint={t('liquidityExplanation')} value={data.totals.liquid} change={t('liquidityAndCreditsLabel')} icon={WalletCards} tone="saving" />
+      <MetricCard featured title={t('liquidityMetric')} titleHint={t('liquidityMetricHint')} value={data.totals.liquid} change={data.dataPeriod ? t('dataAsOf', { date: dataAsOfLabel }) : t('noData')} icon={WalletCards} tone="saving" />
     </div>
     {/* I quattro totali di gruppo stanno gia' in testa alle due colonne del
         bilancio: quattro card grandi occupavano mezzo schermo per ripeterli.
