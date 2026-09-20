@@ -3362,6 +3362,10 @@ def investments_dashboard(session: Session = Depends(get_session)) -> dict[str, 
     instruments = _instrument_lookup(session)
     contributions = _contributions_by_month(session)
     quoted = sum(1 for p in positions if p["has_quote"] and p["units"] > 0)
+    # Le posizioni chiuse restano nell'elenco - sono un risultato acquisito - ma
+    # non fanno parte del "quante ne hai": contarle al denominatore faceva
+    # leggere "4/6" per sempre, come se due strumenti fossero ancora in mano.
+    aperte = sum(1 for p in positions if p["units"] > 0)
     position_items = []
     for p in positions:
         instrument = instruments.get(p["name"].strip().lower())
@@ -3403,7 +3407,7 @@ def investments_dashboard(session: Session = Depends(get_session)) -> dict[str, 
         for voce in position_items])
     rendimento = _portfolio_returns(session, history)
     confronto = _benchmark_curves(session, history)
-    return {"snapshot": {"period": latest["period"] if latest else None, "marketValue": market, "investedCapital": invested, "gain": gain, "returnRate": round(gain/invested*100, 2) if invested else 0}, "ledger": {"marketValue": market, "costBasis": invested, "gain": gain, "quotedPositions": quoted, "activePositions": len(positions)}, "positions": position_items, "history": [{"period": row["period"], "label": f"{MONTHS[date.fromisoformat(row['period']).month-1]} {date.fromisoformat(row['period']).year}", "marketValue": row["marketValue"], "investedCapital": row["investedCapital"], "gain": round(row["marketValue"] - row["investedCapital"], 2),
+    return {"snapshot": {"period": latest["period"] if latest else None, "marketValue": market, "investedCapital": invested, "gain": gain, "returnRate": round(gain/invested*100, 2) if invested else 0}, "ledger": {"marketValue": market, "costBasis": invested, "gain": gain, "quotedPositions": quoted, "activePositions": aperte}, "positions": position_items, "history": [{"period": row["period"], "label": f"{MONTHS[date.fromisoformat(row['period']).month-1]} {date.fromisoformat(row['period']).year}", "marketValue": row["marketValue"], "investedCapital": row["investedCapital"], "gain": round(row["marketValue"] - row["investedCapital"], 2),
         # Rendimento in percentuale: distingue "sta rendendo" da "ho versato di piu'".
         "returnRate": round((row["marketValue"] / row["investedCapital"] - 1) * 100, 2) if row["investedCapital"] else None,
         # Le due curve del confronto, a 100 nel primo mese in comune. Nulle
