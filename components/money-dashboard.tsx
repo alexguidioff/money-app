@@ -1,5 +1,6 @@
 'use client';
 
+import { suggerimentiSenzaRiga } from '@/lib/budget-suggestions';
 import { downloadFile, MessaggioUtente, messaggioDaErrore, responseError } from '@/lib/download';
 import { previewEffectiveDate } from '@/lib/effective-date';
 import { LEDGER_SENZA_QUOTE, nettoOperazioni } from '@/lib/ledger-preview';
@@ -5953,6 +5954,10 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
   // Il suggerimento e' quello della categoria scritta ora nella riga, non di
   // quella salvata: se stai rinominando, cambia con te.
   const suggestionFor = (category: string) => suggestions.find((item) => item.category.trim().toLowerCase() === category.trim().toLowerCase());
+  // Le categorie che hanno speso ma non hanno una riga di budget: sono quelle
+  // per cui il suggerimento servirebbe di piu', e prima non avevano nessun
+  // posto dove comparire, perche' il suggerimento vive solo dentro una riga.
+  const senzaRiga = useMemo(() => suggerimentiSenzaRiga(suggestions, data.items), [suggestions, data.items]);
   const actualLabel = budgetType === 'Expenses' ? t('spentMetric') : t('receivedMetric');
   const [drafts, setDrafts] = useState<Record<number, { category: string; amount: string }>>({});
   const [newCategory, setNewCategory] = useState('');
@@ -5970,6 +5975,25 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
     setError('');
     try {
       await onUpdate(item.id, budgetUpdatePayload(draft.category, draft.amount));
+    } catch {
+      setError(t('cannotSaveBudgetRow'));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  // Il suggerimento di una riga si salva subito: chi lo preme ha gia' scelto,
+  // e prima riempiva solo il campo — col risultato che il numero sembrava
+  // applicato e sul server non arrivava niente finche' non si premeva Salva.
+  // La mediana si scrive anche nel campo, cosi' resta li' se la scrittura
+  // fallisce e si puo' riprovare.
+  async function usaSuggerimento(item: BudgetItem, categoria: string, mediana: number) {
+    const valore = mediana.toFixed(2);
+    setDrafts((current) => ({ ...current, [item.id]: { category: categoria, amount: valore } }));
+    setBusy(`save-${item.id}`);
+    setError('');
+    try {
+      await onUpdate(item.id, budgetUpdatePayload(categoria, valore));
     } catch {
       setError(t('cannotSaveBudgetRow'));
     } finally {
@@ -6066,7 +6090,7 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
                   || !data.items.some((altra) => altra.id !== item.id && altra.category.trim().toLowerCase() === chiave);
               }).map((nome) => <option key={nome} value={nome}>{nome}</option>)}
             </select>
-            {usefulSuggestion && <button type="button" disabled={!canEdit} title={t('budgetSuggestionTitle', { average: formatEuro(usefulSuggestion.average), max: formatEuro(usefulSuggestion.max) })} onClick={() => setDrafts((current) => ({ ...current, [item.id]: { ...draft, amount: usefulSuggestion.median.toFixed(2) } }))} className="mt-1 text-left text-[11px] leading-4 text-[#397867] hover:underline disabled:cursor-default disabled:text-[#9aa5a2] disabled:no-underline">
+            {usefulSuggestion && <button type="button" disabled={!canEdit || Boolean(busy)} title={t('budgetSuggestionTitle', { average: formatEuro(usefulSuggestion.average), max: formatEuro(usefulSuggestion.max) })} onClick={() => void usaSuggerimento(item, draft.category, usefulSuggestion.median)} className="mt-1 text-left text-[11px] leading-4 text-[#397867] hover:underline disabled:cursor-default disabled:text-[#9aa5a2] disabled:no-underline">
               {t('budgetSuggestion', { amount: formatEuro(usefulSuggestion.median), months: usefulSuggestion.monthsWithSpending, total: usefulSuggestion.monthsConsidered })}
             </button>}
             </div>
@@ -6082,6 +6106,13 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
           </div>
         </div>;
       })])}</div>
+      {/* Dove il suggerimento serve davvero: le categorie che hanno speso e non
+          hanno ancora una riga. Premerne una riempie il modulo qui sotto —
+          categoria e importo — e resta da premere Aggiungi. */}
+      {canEdit && senzaRiga.length > 0 && <div className="mt-4 rounded-xl border border-black/6 bg-[#f9fbf9] p-3">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-[#87918e]">{t('budgetSuggestedNew')}</p>
+        <div className="mt-2 flex flex-wrap gap-2">{senzaRiga.map((voce) => <button key={voce.category} type="button" disabled={Boolean(busy)} title={t('budgetSuggestionTitle', { average: formatEuro(voce.average), max: formatEuro(voce.max) })} onClick={() => { setNewCategory(voce.category); setNewAmount(voce.median.toFixed(2)); }} className="rounded-full border border-black/10 bg-white px-3 py-1 text-xs text-[#397867] transition hover:border-[#397867] disabled:cursor-default disabled:text-[#9aa5a2]">{voce.category} · {t('budgetSuggestion', { amount: formatEuro(voce.median), months: voce.monthsWithSpending, total: voce.monthsConsidered })}</button>)}</div>
+      </div>}
       {canEdit && <form onSubmit={create} className="mt-4 grid gap-2 rounded-xl bg-[#f4f5f1] p-3 sm:grid-cols-[1fr_150px_auto]"><select required value={newCategory} onChange={(event) => setNewCategory(event.target.value)} className="h-10 rounded-md border border-input bg-white px-2 text-sm"><option value="">{t('budgetPickCategory')}</option>{categorieDisponibili.map((nome) => <option key={nome} value={nome}>{nome}</option>)}</select><Input required min="0" step="0.01" type="number" value={newAmount} onChange={(event) => setNewAmount(event.target.value)} placeholder={t('budgetPlaceholder')} className="h-10 bg-white" /><Button type="submit" disabled={Boolean(busy)} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('add')}</Button></form>}
     </CardContent>
   </Card>;
