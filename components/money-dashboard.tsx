@@ -4270,7 +4270,13 @@ function GoalsView({ data, accounts, onSave, onDelete, onMilestoneAdd, onMilesto
       </div>
     </div>
     {deleteError && <p role="alert" className="rounded-lg bg-[#fce9e3] px-3 py-2 text-sm text-[#a94f3a]">{deleteError}</p>}
-    {visibleGoals.length === 0 ? <Card><CardContent className="p-10 text-center text-sm text-[#71807c]">{t('noGoalsMatchFilter')}</CardContent></Card> : <div className="grid gap-5 lg:grid-cols-2">{visibleGoals.map((goal) => {
+    {visibleGoals.length === 0 ? <Card><CardContent className="p-10 text-center text-sm text-[#71807c]">
+      {/* Senza obiettivi non c'e' nessun filtro da incolpare. Il pulsante per
+          crearne uno non si ripete qui: sta gia' in cima alla pagina, e due
+          pulsanti con lo stesso nome sono due bersagli per chi naviga da
+          tastiera. */}
+      {data.items.length === 0 ? t('noGoalsYet') : t('noGoalsMatchFilter')}
+    </CardContent></Card> : <div className="grid gap-5 lg:grid-cols-2">{visibleGoals.map((goal) => {
       const historyData = goal.history.map((point) => ({ ...point, target: goal.targetAmount }));
       const subtitleParts: string[] = [];
       if (goal.completed) {
