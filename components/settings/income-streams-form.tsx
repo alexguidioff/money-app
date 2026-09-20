@@ -135,7 +135,10 @@ export function IncomeStreamsForm({ apiUrl }: { apiUrl: string }) {
                     {' '}{s.kind === 'annuity' ? t('fireStreamsPerYear', { amount: formatEuro(s.amount) }) : formatEuro(s.amount)} ·
                     {' '}{t('fireProfileYears')}: {s.startAge}
                     {s.indexed ? ` · ${t('fireStreamsIndexed')}` : ''}
-                    {s.country ? ` · ${s.country}` : ''}
+                    {/* Il nome del paese, non il codice: il modulo lo scrive
+                        tradotto, e "DE" nell'elenco voleva dire rileggere una
+                        sigla per controllare quello che si era scelto. */}
+                    {s.country ? ` · ${countryLabel(s.country, lang)}` : ''}
                   </p>
                 </div>
                 <Button size="sm" variant="outline" disabled={busy} onClick={() => { setEditing(s); setCreating(false); }}>
