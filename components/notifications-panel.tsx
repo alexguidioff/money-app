@@ -68,7 +68,12 @@ export function NotificationsPanel({ items, onDismiss, onDismissAll }: {
             <span className={`mt-1.5 size-1.5 shrink-0 rounded-full ${
               avviso.level === 'warning' ? 'bg-[#bd5e46]' : 'bg-[#87918e]'}`} />
             <span className="flex-1 text-xs leading-5 text-[#3d4a47]">
-              {TESTI[avviso.code] ? t(TESTI[avviso.code], conPeriodo(avviso.params)) : avviso.code}
+              {/* Un codice che questa versione non conosce usciva grezzo, in
+                  mezzo a frasi normali: sembrava un guasto dell'app. Il titolo
+                  tiene il codice per chi deve capirci qualcosa. */}
+              {TESTI[avviso.code]
+                ? t(TESTI[avviso.code], conPeriodo(avviso.params))
+                : <span title={avviso.code}>{t('notifUnknown')}</span>}
             </span>
             <button onClick={() => void onDismiss(avviso.key)} title={t('notifDismiss')} aria-label={t('notifDismiss')}
                     className="mt-0.5 text-[#a3adaa] transition hover:text-[#3d4a47]">
