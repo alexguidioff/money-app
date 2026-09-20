@@ -151,6 +151,11 @@ test('Debiti: una linea di credito si configura e si salva', async ({ page }) =>
   await expect(dialogo).toBeHidden();
   await expect(page.getByText('Impossibile salvare le condizioni del debito.')).toHaveCount(0);
   await expect(page.getByText('Linee di credito')).toBeVisible();
+  // Stessa azione, stesso nome sui due tipi di debito: sulla linea il pulsante
+  // diceva "Modifica", come se fosse un'altra cosa. E la statistica in alto non
+  // porta il nome del pulsante: dice quante passivita' hanno un piano.
+  await expect(page.getByRole('button', { name: 'Configura debito' })).toHaveCount(1);
+  await expect(page.getByText('Debiti con un piano')).toBeVisible();
   expect(errori).toEqual([]);
 });
 

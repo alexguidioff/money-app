@@ -4611,7 +4611,9 @@ function CreditLineCard({ item, onEdit, onDelete }: { item: CreditLineItem; onEd
         <p className="mt-1 text-xs text-[#7b8784]">{item.creditLimit === null ? t('debtNoCreditLimit') : t('debtCreditLineLabel')}</p>
         {item.unclassified.count > 0 && <p className="mt-1 text-xs font-medium text-[#a05f4e]">{t('debtUnclassifiedSummary', { count: item.unclassified.count, amount: formatEuro(item.unclassified.amount) })}</p>}
       </div>
-      <div className="flex gap-2"><Button variant="outline" size="sm" onClick={onEdit}>{t('edit')}</Button><Button variant="ghost" size="icon" aria-label={`${t('delete')} ${item.name}`} onClick={onDelete}><Trash2 className="size-4" /></Button></div>
+      {/* Stessa azione della scheda del prestito, stesso nome: era "Modifica"
+          qui e "Configura debito" li', per lo stesso modulo. */}
+      <div className="flex gap-2"><Button variant="outline" size="sm" onClick={onEdit}><Pencil className="size-4" />{t('configureDebt')}</Button><Button variant="ghost" size="icon" aria-label={`${t('delete')} ${item.name}`} onClick={onDelete}><Trash2 className="size-4" /></Button></div>
     </CardHeader>
     <CardContent>
       <div className="divide-y divide-black/5">
@@ -4760,7 +4762,9 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
     [t('debtTotal'), formatEuro(data.summary.totalDebt)],
     [t('debtAverageRate'), data.summary.weightedRate == null ? '—' : `${formatPercentNumber(data.summary.weightedRate)}%`],
     [t('debtMonthlyService'), formatEuro(data.summary.monthlyService)],
-    [t('configureDebt'), t('debtConfigured', { configured: data.summary.configured, total: data.summary.total })],
+    // La quarta statistica non si chiama come il pulsante che la sistema:
+    // dice quante passività hanno un piano, e il numero e' "2 di 3".
+    [t('debtsWithPlan'), t('debtConfigured', { configured: data.summary.configured, total: data.summary.total })],
   ];
   // Il tipo separa i due strumenti: il compilatore non lascia leggere il piano
   // di una linea ne' l'esposizione di un prestito.
