@@ -5,7 +5,7 @@ import { previewEffectiveDate } from '@/lib/effective-date';
 import { LEDGER_SENZA_QUOTE, nettoOperazioni } from '@/lib/ledger-preview';
 import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, eventAttachPayload, goalMilestonePayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
 import { messaggioErroreRegola } from '@/lib/rule-errors';
-import { Fragment, SyntheticEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, SyntheticEvent, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Flame,
   AlertCircle,
   ArrowDownRight,
@@ -3752,7 +3752,7 @@ function SectionView({
 
       {section === 'Debiti' && <LiabilitiesView apiUrl={apiUrl} onDeleted={onReloadData} accounts={accounts} version={movimentiVersione} onPayment={onTransfer} onNewAccount={() => onNewAccount('liability')} onEditAccount={onAccountEdit} onEditTransaction={onEditTransaction} />}
 
-      {section === 'Investimenti' && <InvestmentsView apiUrl={apiUrl} onQuotesChanged={onReloadData} dashboard={investmentDashboardData} ledger={investmentLedger} allocation={investmentAllocationData} onSave={onInvestmentSave} onDelete={onInvestmentDelete} onInstrumentSave={onInstrumentSave} onRefresh={onMarketRefresh} accounts={accounts} />}
+      {section === 'Investimenti' && <InvestmentsView apiUrl={apiUrl} onQuotesChanged={onReloadData} dashboard={investmentDashboardData} ledger={investmentLedger} allocation={investmentAllocationData} onSave={onInvestmentSave} onDelete={onInvestmentDelete} onInstrumentSave={onInstrumentSave} onRefresh={onMarketRefresh} accounts={accounts} impostazioni={{ valori: settingsData.settings, inCorso: settingSaving, onCambia: onSettingChange }} />}
 
       {section === 'Impostazioni' && <div className="space-y-5">
         {/* Due colonne: a sinistra chi sei e cosa entra, a destra come l'app
@@ -3771,16 +3771,6 @@ function SectionView({
             <SettingCurrencies label={t('netWorthCurrenciesSetting')} value={settingsData.settings.net_worth_currencies ?? 'USD,CHF,BTC'} saving={settingSaving === 'net_worth_currencies'} onChange={(value) => void onSettingChange('net_worth_currencies', value)} />
             <SettingSelect label={t('shiftLateIncome')} value={settingsData.settings.late_income_shift} options={uniqueOptions(settingsData.settings.late_income_shift, ['Active', 'Inactive'])} saving={settingSaving === 'late_income_shift'} hint={t('shiftLateIncomeHint')} labels={{ Active: t('toggleActive'), Inactive: t('toggleInactive') }} onChange={(value) => void onSettingChange('late_income_shift', value)} />
             <SettingSelect label={t('fromDay')} value={settingsData.settings.late_income_day} options={Array.from({ length: 28 }, (_, index) => String(index + 1))} saving={settingSaving === 'late_income_day'} disabled={settingsData.settings.late_income_shift !== 'Active'} hint={settingsData.settings.late_income_shift === 'Active' ? t('fromDayHintActive') : t('fromDayHintInactive')} onChange={(value) => void onSettingChange('late_income_day', value)} />
-            <SettingBenchmark label={t('benchmarkSymbol')} value={settingsData.settings.benchmark_symbol ?? ''} saving={settingSaving === 'benchmark_symbol'} apiUrl={apiUrl} hint={t('benchmarkSymbolHint')} onChange={(value) => void onSettingChange('benchmark_symbol', value)} />
-            {/* Il metodo di carico. Raggruppato, "media", che e' quello che
-                l'app ha sempre calcolato: chi non sceglie non vede un numero
-                muoversi, e la nota dice cosa cambia a chi sceglie. */}
-            <SettingSelect label={t('costBasisMethod')} value={settingsData.settings.cost_basis_method ?? 'media'} options={['media', 'fifo', 'lifo']} saving={settingSaving === 'cost_basis_method'} hint={t('costBasisMethodHint')} labels={{ media: t('costBasisMedia'), fifo: t('costBasisFifo'), lifo: t('costBasisLifo') }} onChange={(value) => void onSettingChange('cost_basis_method', value)} />
-            {/* Il paese dove sono tassati gli investimenti. Non sceglie il
-                metodo al posto tuo e non muove un numero: mostra quello che
-                l'app sa di quel paese, che e' l'unica cosa che puo' dire senza
-                inventare. */}
-            <SettingCountry label={t('taxCountry')} value={settingsData.settings.tax_country ?? ''} saving={settingSaving === 'tax_country'} hint={t('taxCountryHint')} onChange={(value) => void onSettingChange('tax_country', value)} />
           </CardContent></Card>
           </div>
         </div>
@@ -4989,9 +4979,9 @@ function RendimentoCard({ titolo, spiegazione, esito }: {
   </Card>;
 }
 
-function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChanged, onSave, onDelete, onInstrumentSave, onRefresh, accounts }: { apiUrl: string; onQuotesChanged: () => Promise<void>; dashboard: InvestmentDashboardData; ledger: InvestmentTransaction[]; allocation: InvestmentAllocationData; onSave: (transactionId: number | null, payload: Record<string, string | number | boolean>) => Promise<void>; onDelete: (transaction: InvestmentTransaction) => Promise<void>; onInstrumentSave: (instrumentId: number, payload: Record<string, string | number | null>) => Promise<void>; onRefresh: () => Promise<{ updated: number; errors: Array<{ code?: string; error?: string }> }>; accounts: Account[] }) {
+function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChanged, onSave, onDelete, onInstrumentSave, onRefresh, accounts, impostazioni }: { apiUrl: string; onQuotesChanged: () => Promise<void>; dashboard: InvestmentDashboardData; ledger: InvestmentTransaction[]; allocation: InvestmentAllocationData; onSave: (transactionId: number | null, payload: Record<string, string | number | boolean>) => Promise<void>; onDelete: (transaction: InvestmentTransaction) => Promise<void>; onInstrumentSave: (instrumentId: number, payload: Record<string, string | number | null>) => Promise<void>; onRefresh: () => Promise<{ updated: number; errors: Array<{ code?: string; error?: string }> }>; accounts: Account[]; impostazioni: ImpostazioniDellaPagina }) {
   const { t, lang, locale, formatEuro, formatCompactEuro, formatDate, monthNames, formatPeriodLabel } = useI18n();
-  const [tab, setTab] = useState<'portfolio' | 'ledger' | 'instruments' | 'allocation' | 'quotes'>('portfolio');
+  const [tab, setTab] = useState<'portfolio' | 'ledger' | 'instruments' | 'allocation' | 'quotes' | 'metodo'>('portfolio');
   const [showClosedPositions, setShowClosedPositions] = useState(false);
   // "Chiusa" vuol dire zero quote. Ma gli interessi del broker, una
   // commissione, un versamento nascono a zero quote: una riga cosi' non e'
@@ -5299,7 +5289,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
 
   return <div className="space-y-5">
     <div className="flex flex-wrap gap-2 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-      {([['portfolio', t('investTabPortfolio')], ['ledger', t('investTabLedger')], ['instruments', t('investTabInstruments')], ['allocation', t('investTabAllocation')], ['quotes', t('investTabQuotes')]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setTab(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${tab === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
+      {([['portfolio', t('investTabPortfolio')], ['ledger', t('investTabLedger')], ['instruments', t('investTabInstruments')], ['allocation', t('investTabAllocation')], ['quotes', t('investTabQuotes')], ['metodo', t('investTabMethod')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={tab === value} onClick={() => setTab(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${tab === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
     </div>
 
     {tab === 'portfolio' && <div className="space-y-5">
@@ -5497,6 +5487,22 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
     </div>}
 
     {tab === 'quotes' && <InstrumentQuotesView apiUrl={apiUrl} rows={instruments} reload={loadInstruments} onSaved={onQuotesChanged} onRefresh={onRefresh} />}
+
+    {/* Com'e' calcolato quello che si e' appena visto: con cosa si confronta il
+        portafoglio, come si sceglie il costo delle quote vendute, e dove sono
+        tassati gli investimenti. Stanno qui e non fra le impostazioni dell'app
+        perche' sono di questa pagina e si cercano qui. */}
+    {tab === 'metodo' && <CardImpostazioni titolo={t('investTabMethod')}>
+      <SettingBenchmark label={t('benchmarkSymbol')} value={impostazioni.valori.benchmark_symbol ?? ''} saving={impostazioni.inCorso === 'benchmark_symbol'} apiUrl={apiUrl} hint={t('benchmarkSymbolHint')} onChange={(value) => void impostazioni.onCambia('benchmark_symbol', value)} />
+      {/* Il metodo di carico. Raggruppato, "media", che e' quello che l'app ha
+          sempre calcolato: chi non sceglie non vede un numero muoversi, e la
+          nota dice cosa cambia a chi sceglie. */}
+      <SettingSelect label={t('costBasisMethod')} value={impostazioni.valori.cost_basis_method ?? 'media'} options={['media', 'fifo', 'lifo']} saving={impostazioni.inCorso === 'cost_basis_method'} hint={t('costBasisMethodHint')} labels={{ media: t('costBasisMedia'), fifo: t('costBasisFifo'), lifo: t('costBasisLifo') }} onChange={(value) => void impostazioni.onCambia('cost_basis_method', value)} />
+      {/* Il paese dove sono tassati gli investimenti. Non sceglie il metodo al
+          posto tuo e non muove un numero: mostra quello che l'app sa di quel
+          paese, che e' l'unica cosa che puo' dire senza inventare. */}
+      <SettingCountry label={t('taxCountry')} value={impostazioni.valori.tax_country ?? ''} saving={impostazioni.inCorso === 'tax_country'} hint={t('taxCountryHint')} onChange={(value) => void impostazioni.onCambia('tax_country', value)} />
+    </CardImpostazioni>}
 
     <Dialog open={ledgerCsvOpen} onOpenChange={(open) => { setLedgerCsvOpen(open); if (!open) { setLedgerCsvFile(null); setLedgerCsvPreview([]); setLedgerCsvError(''); } }}>
       <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-[95vw]">
@@ -6094,6 +6100,25 @@ const MODULO_VUOTO = { occurred: '', type: '', amount: 0, origine: '' };
 
 function uniqueOptions(current: string, options: string[]) {
   return Array.from(new Set([current, ...options].filter(Boolean)));
+}
+
+// Le impostazioni che valgono per una pagina sola stanno nella pagina, non
+// nella voce "Impostazioni": chi cerca l'indice di confronto lo cerca fra gli
+// investimenti, chi cerca quando conta l'entrata lo cerca nel budget. La' resta
+// quello che vale per tutta l'app o per il tuo account.
+//
+// La scheda si chiama come quello che c'e' dentro e non "Impostazioni": quel
+// nome ce l'ha gia' la voce della barra laterale, e due cose diverse con lo
+// stesso nome in due punti dello schermo si cercano nel posto sbagliato.
+type ImpostazioniDellaPagina = {
+  valori: Record<string, string>;
+  inCorso: string;
+  onCambia: (key: string, value: string) => Promise<void>;
+};
+
+/** La scheda che tiene le impostazioni di una pagina: titolo e righe. */
+function CardImpostazioni({ titolo, sottotitolo, children }: { titolo: string; sottotitolo?: string; children: ReactNode }) {
+  return <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{titolo}</CardTitle>{sottotitolo && <p className="mt-1 text-xs leading-5 text-[#7b8784]">{sottotitolo}</p>}</CardHeader><CardContent className="space-y-4">{children}</CardContent></Card>;
 }
 
 // Valute in cui rileggere il patrimonio. Non e' un elenco chiuso: qualunque
