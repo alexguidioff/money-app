@@ -112,7 +112,7 @@ export function AccountSettings({ apiUrl, account, onChanged }: {
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
       <CardHeader>
         <CardTitle className="text-[17px]">{t('account')}</CardTitle>
-        <p className="text-xs leading-5 text-[#7b8784]">{t('accountSubtitle')}</p>
+        <p className="text-xs leading-5 text-[#5e6c68]">{t('accountSubtitle')}</p>
       </CardHeader>
       <CardContent className="space-y-5">
         <label className="flex items-start gap-3">
@@ -125,8 +125,8 @@ export function AccountSettings({ apiUrl, account, onChanged }: {
           />
           <span>
             <span className="block text-sm font-medium text-[#173b33]">{t('shareTotals')}</span>
-            <span className="mt-0.5 block text-xs leading-5 text-[#7b8784]">{t('shareTotalsHint')}</span>
-            {erroreCondivisione && <span role="alert" className="mt-1 block text-xs text-[#a65b49]">{erroreCondivisione}</span>}
+            <span className="mt-0.5 block text-xs leading-5 text-[#5e6c68]">{t('shareTotalsHint')}</span>
+            {erroreCondivisione && <span role="alert" className="mt-1 block text-xs text-[#a94f3a]">{erroreCondivisione}</span>}
           </span>
         </label>
 
@@ -144,21 +144,21 @@ export function AccountSettings({ apiUrl, account, onChanged }: {
               la password non arriva a sei caratteri, e senza questa riga non si
               sa perche'. E' la stessa frase dell'errore, cosi' le due non
               possono dire due numeri diversi. */}
-          <span className="block text-xs text-[#7b8784]">{t('passwordTooShort')}</span>
+          <span className="block text-xs text-[#5e6c68]">{t('passwordTooShort')}</span>
           <Button type="submit" disabled={busy || next.length < 6}
                   className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">
             {account.hasPassword ? t('changePassword') : t('setPassword')}
           </Button>
           {outcome && (
-            <p className={`text-xs ${outcome.ok ? 'text-[#2d7b65]' : 'text-[#a65b49]'}`}>{outcome.message}</p>
+            <p className={`text-xs ${outcome.ok ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>{outcome.message}</p>
           )}
         </form>
 
         <div className="border-t border-black/6 pt-4">
           {cancellazione ? (
             <div className="space-y-2.5">
-              <p className="text-sm font-medium text-[#a65b49]">{t('deleteAccount')}</p>
-              <p className="text-xs leading-5 text-[#7b8784]">{t('deleteAccountHint')}</p>
+              <p className="text-sm font-medium text-[#a94f3a]">{t('deleteAccount')}</p>
+              <p className="text-xs leading-5 text-[#5e6c68]">{t('deleteAccountHint')}</p>
               <Input value={conferma} onChange={(event) => setConferma(event.target.value)}
                      placeholder={t('deleteAccountConfirm', { name: account.displayName })}
                      className="h-10 bg-white" />
@@ -173,11 +173,11 @@ export function AccountSettings({ apiUrl, account, onChanged }: {
                   {t('cancel')}
                 </Button>
               </div>
-              {erroreCancellazione && <p className="text-xs text-[#a65b49]">{erroreCancellazione}</p>}
+              {erroreCancellazione && <p className="text-xs text-[#a94f3a]">{erroreCancellazione}</p>}
             </div>
           ) : (
             <button type="button" onClick={() => setCancellazione(true)}
-                    className="text-xs font-medium text-[#a65b49] hover:underline">
+                    className="text-xs font-medium text-[#a94f3a] hover:underline">
               {t('deleteAccount')}
             </button>
           )}

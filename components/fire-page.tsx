@@ -106,14 +106,14 @@ export function FirePage({ apiUrl }: { apiUrl: string }) {
   useEffect(() => { if (scheda === 'piano') void carica(); }, [scheda, carica]);
 
   function contenutoPiano() {
-    if (errore) return <Card className="border-[#efc4b8] bg-[#fff6f3] shadow-sm"><CardContent className="py-14 text-center"><p role="alert" className="text-sm text-[#bd5e46]">{t('fireProfileLoadError')}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void carica()}>{t('retry')}</Button></CardContent></Card>;
-    if (!dati) return <p className="py-16 text-center text-sm text-[#87918e]">{t('loading')}</p>;
+    if (errore) return <Card className="border-[#efc4b8] bg-[#fff6f3] shadow-sm"><CardContent className="py-14 text-center"><p role="alert" className="text-sm text-[#a94f3a]">{t('fireProfileLoadError')}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void carica()}>{t('retry')}</Button></CardContent></Card>;
+    if (!dati) return <p className="py-16 text-center text-sm text-[#5e6c68]">{t('loading')}</p>;
 
     // Senza profilo non si mostra un piano costruito su ipotesi che nessuno ha
     // dichiarato: si chiede di compilarlo, e i dati si compilano qui accanto.
     if (!dati.configured || !dati.plan) {
       return <Card className="border-black/6 bg-white shadow-sm"><CardContent className="py-14 text-center">
-        <Flame className="mx-auto mb-3 size-8 text-[#87918e]" />
+        <Flame className="mx-auto mb-3 size-8 text-[#5e6c68]" />
         <p className="text-sm text-[#173b33]">{t('fireNotConfigured')}</p>
         <Button className="mt-4 bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]" onClick={() => setScheda('profilo')}>{t('fireGoToSettings')}</Button>
       </CardContent></Card>;
@@ -148,23 +148,23 @@ export function FirePage({ apiUrl }: { apiUrl: string }) {
     return <div className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="border-0 bg-[var(--money-deep)] text-white shadow-sm"><CardContent className="p-5">
-          <p className="text-sm text-white/55">{t('fireCapitalNeeded')}</p>
+          <p className="text-sm text-white/70">{t('fireCapitalNeeded')}</p>
           <p className="mt-2 text-3xl font-semibold tabular-nums">{formatEuro(piano.capitalNeeded)}</p>
           {/* Senza pensioni non c'e' ponte: "ponte €0 · rabbocco = tutto" e' rumore. */}
-          {pensione && <p className="mt-2 text-xs text-white/65">{t('fireBridgeCapital')} {formatCompactEuro(piano.bridgeCapital)} · {t('fireTopUpCapital')} {formatCompactEuro(piano.topUpCapital)}</p>}
+          {pensione && <p className="mt-2 text-xs text-white/70">{t('fireBridgeCapital')} {formatCompactEuro(piano.bridgeCapital)} · {t('fireTopUpCapital')} {formatCompactEuro(piano.topUpCapital)}</p>}
         </CardContent></Card>
         <Card className="border-black/6 bg-white shadow-sm"><CardContent className="p-5">
-          <p className="text-sm text-[#71807c]">{t('fireSupportsToday')}</p>
+          <p className="text-sm text-[#5e6c68]">{t('fireSupportsToday')}</p>
           <p className="mt-2 text-3xl font-semibold tabular-nums">{t('firePerMonth', { amount: formatEuro(alMese) })}</p>
-          {dati.expensesUsed !== undefined && <p className="mt-2 text-xs text-[#87918e]">{t('fireExpensesUsed', { amount: formatCompactEuro(dati.expensesUsed) })}</p>}
-          {dati.retirementExpenses !== undefined && dati.retirementExpenses !== dati.expensesUsed && <p className="mt-1 text-xs text-[#87918e]">{t('fireRetirementExpenses', { amount: formatCompactEuro(dati.retirementExpenses) })}</p>}
-          {dati.annualSavings !== undefined && <p className="mt-1 text-xs text-[#87918e]">{t('fireSavingsUsed', { amount: formatCompactEuro(dati.annualSavings), rate: formatNumber(dati.savingsRate ?? 0, { maximumFractionDigits: 1 }) })}</p>}
+          {dati.expensesUsed !== undefined && <p className="mt-2 text-xs text-[#5e6c68]">{t('fireExpensesUsed', { amount: formatCompactEuro(dati.expensesUsed) })}</p>}
+          {dati.retirementExpenses !== undefined && dati.retirementExpenses !== dati.expensesUsed && <p className="mt-1 text-xs text-[#5e6c68]">{t('fireRetirementExpenses', { amount: formatCompactEuro(dati.retirementExpenses) })}</p>}
+          {dati.annualSavings !== undefined && <p className="mt-1 text-xs text-[#5e6c68]">{t('fireSavingsUsed', { amount: formatCompactEuro(dati.annualSavings), rate: formatNumber(dati.savingsRate ?? 0, { maximumFractionDigits: 1 }) })}</p>}
         </CardContent></Card>
         <Card className="border-black/6 bg-white shadow-sm sm:col-span-2"><CardContent className="p-5">
           {piano.reachedAtAge !== null && piano.reachedInYear !== null
             ? <p className="text-2xl font-semibold">{t('fireReachedAt', { age: piano.reachedAtAge, year: piano.reachedInYear })}</p>
-            : <p className="text-sm text-[#71807c]">{t('fireNotReached')}</p>}
-          {piano.yearsLeft !== null && <p className="mt-1 text-xs text-[#87918e]">{t('fireYearsLeft', { years: piano.yearsLeft })}</p>}
+            : <p className="text-sm text-[#5e6c68]">{t('fireNotReached')}</p>}
+          {piano.yearsLeft !== null && <p className="mt-1 text-xs text-[#5e6c68]">{t('fireYearsLeft', { years: piano.yearsLeft })}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
             {piano.phases.map((fase) => (
               <span key={fase.kind} className="rounded-lg bg-[#f4f5f1] px-2.5 py-1 text-xs text-[#52615d]">
@@ -210,7 +210,7 @@ export function FirePage({ apiUrl }: { apiUrl: string }) {
       {/* Lo scenario-non-previsione lo dice gia' il grafico: ripeterlo qui era
           un doppione. Un codice sconosciuto non si mostra grezzo. */}
       {avvisi.length > 0 && <Card className="border-black/6 bg-[#fafaf8] shadow-sm"><CardContent className="space-y-1 p-4">
-        {avvisi.map(([codice, testo]) => <p key={codice} className="text-xs leading-5 text-[#71807c]">{testo}</p>)}
+        {avvisi.map(([codice, testo]) => <p key={codice} className="text-xs leading-5 text-[#5e6c68]">{testo}</p>)}
       </CardContent></Card>}
     </div>;
   }
@@ -222,7 +222,7 @@ export function FirePage({ apiUrl }: { apiUrl: string }) {
     <div id="fire-tabs" className="flex flex-wrap gap-2 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
       {([['piano', t('fireTabPlan')], ['profilo', t('fireTabSettings')]] as const).map(([valore, etichetta]) =>
         <button key={valore} type="button" aria-pressed={scheda === valore} onClick={() => setScheda(valore)}
-                className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${scheda === valore ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>{etichetta}</button>)}
+                className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${scheda === valore ? 'bg-[var(--money-deep)] text-white' : 'text-[#5e6c68] hover:bg-[#f0f2ee]'}`}>{etichetta}</button>)}
     </div>
     {/* La scheda nascosta non si tiene montata: le impostazioni si rileggono
         ogni volta che ci si entra, e i flussi salvati prima ci sono. */}

@@ -39,7 +39,7 @@ export function FireSettingsSection({ apiUrl }: { apiUrl: string }) {
           essere tornato all'inizio della pagina. */}
       <div>
         <h2 className="flex items-center text-lg font-semibold tracking-[-0.02em]">{t('fireTabSettings')}</h2>
-        <p className="mt-1 text-xs text-[#7b8784]">{t('fireSectionDesc')}</p>
+        <p className="mt-1 text-xs text-[#5e6c68]">{t('fireSectionDesc')}</p>
       </div>
       <div className="grid items-start gap-5 xl:grid-cols-2">
         <div className="space-y-5">

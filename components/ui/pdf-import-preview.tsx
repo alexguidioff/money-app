@@ -169,7 +169,7 @@ function ColonneDelFile({ headers, mapping, onChange, disabled, modelli }: {
       <div className="w-fit rounded-lg border border-black/6 bg-[#f4f5f1] p-1 text-xs">
         {([['single', t('csvAmountSingle')], ['split', t('csvAmountSplit')]] as const).map(([nome, etichetta]) => (
           <button key={nome} type="button" disabled={disabled} onClick={() => cambiaModo(nome === 'split')}
-            className={`rounded-md px-2.5 py-1 font-medium transition ${separato === (nome === 'split') ? 'bg-white text-[#173b33] shadow-sm' : 'text-[#71807c] hover:text-[#173b33]'}`}>
+            className={`rounded-md px-2.5 py-1 font-medium transition ${separato === (nome === 'split') ? 'bg-white text-[#173b33] shadow-sm' : 'text-[#5e6c68] hover:text-[#173b33]'}`}>
             {etichetta}
           </button>
         ))}
@@ -300,20 +300,20 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, cat
             </select>
             {/* Da dove viene la categoria: senza, una casella gia' piena sembra
                 una lettura del file. La × la riporta a "Da categorizzare". */}
-            {row.categoryRule && !spostamento && <p className="mt-1 flex items-center gap-1 text-xs text-[#7b8784]">
+            {row.categoryRule && !spostamento && <p className="mt-1 flex items-center gap-1 text-xs text-[#5e6c68]">
               <span>{t('categoryFromRule', { rule: row.categoryRule })}</span>
               <button type="button" disabled={isSaving} aria-label={t('categoryRuleClear')}
                 onClick={() => updateRow(index, { categoryRule: null, category: '', categoryAutomatic: true })}
-                className="text-[#7b8784] hover:text-[#28312f]"><X className="size-3" /></button>
+                className="text-[#5e6c68] hover:text-[#28312f]"><X className="size-3" /></button>
             </p>}</td>
             {/* La lettura del PDF puo' sbagliare una cifra: l'importo si corregge qui.
                 Resta sempre positivo, il verso lo dice il tipo. */}
-            <td className={`whitespace-nowrap p-2 tabular-nums ${spostamento ? 'text-[#28312f]' : outgoing ? 'text-[#c75f44]' : 'text-[#2d7b65]'}`}>
+            <td className={`whitespace-nowrap p-2 tabular-nums ${spostamento ? 'text-[#28312f]' : outgoing ? 'text-[#a94f3a]' : 'text-[#237056]'}`}>
               <span aria-hidden>{spostamento ? '' : outgoing ? '−' : '+'}</span>
               <Input type="number" inputMode="decimal" min="0.01" step="0.01" aria-label={t('amount')} aria-invalid={row.selected && !(row.amount > 0)}
                 value={Number.isNaN(row.amount) ? '' : row.amount} disabled={isSaving} className="ml-1 inline-block w-28 text-right"
                 onChange={e => cambiaImporto(index, e.target.value === '' ? Number.NaN : Math.abs(Number(e.target.value)))} />
-              {row.divisa && <p className={`text-[11px] ${sommaSbagliata(row) ? 'text-red-700' : 'text-[#71807c]'}`}>{t(sommaSbagliata(row) ? 'splitSumMismatch' : 'splitPartOf', { total: formatEuro(row.divisa.totale) })}</p>}
+              {row.divisa && <p className={`text-[11px] ${sommaSbagliata(row) ? 'text-red-700' : 'text-[#5e6c68]'}`}>{t(sommaSbagliata(row) ? 'splitSumMismatch' : 'splitPartOf', { total: formatEuro(row.divisa.totale) })}</p>}
             </td>
             <td className="p-2"><select aria-label={t('type')} value={row.transactionType} disabled={isSaving} className="rounded border p-2"
               onChange={e => {
@@ -336,8 +336,8 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, cat
         })}</tbody>
       </table>
     </div>
-    {invalid && <p role="alert" className="text-xs text-[#a65b49]">{t('statementRequiredFields')}</p>}
-    {feedback && <p role="status" className={`text-xs ${feedback.ok ? 'text-[#2d7b65]' : 'text-[#a65b49]'}`}>{feedback.message}</p>}
+    {invalid && <p role="alert" className="text-xs text-[#a94f3a]">{t('statementRequiredFields')}</p>}
+    {feedback && <p role="status" className={`text-xs ${feedback.ok ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>{feedback.message}</p>}
     <div className="flex shrink-0 justify-end gap-3">
       <Button variant="outline" disabled={isSaving} onClick={onCancel}>{t('cancel')}</Button>
       <Button disabled={isSaving || invalid || !selected.length} onClick={async () => {

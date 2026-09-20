@@ -151,7 +151,7 @@ export function RetirementProfileForm({ apiUrl, onSaved }: { apiUrl: string; onS
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
       <CardHeader>
         <CardTitle className="text-[17px]">{t('fireProfileTitle')}</CardTitle>
-        <p className="mt-1 text-xs text-[#7b8784]">{t('fireProfileSubtitle')}</p>
+        <p className="mt-1 text-xs text-[#5e6c68]">{t('fireProfileSubtitle')}</p>
       </CardHeader>
       <CardContent>
         <form onSubmit={save} className="space-y-4">
@@ -169,7 +169,7 @@ export function RetirementProfileForm({ apiUrl, onSaved }: { apiUrl: string; onS
               </select>
               {country && (
                 <a href={country.simulatorUrl} target="_blank" rel="noopener noreferrer"
-                  className="mt-1 inline-block text-xs text-[#2d7b65] underline">
+                  className="mt-1 inline-block text-xs text-[#237056] underline">
                   {t('fireProfileCountrySimulator')} ({countryName})
                 </a>
               )}
@@ -185,7 +185,7 @@ export function RetirementProfileForm({ apiUrl, onSaved }: { apiUrl: string; onS
             <Field label={t('fireReturnVolatility')} unit="%">
               <Input type="number" step="0.5" min={0} max={100} value={profile.returnVolatility}
                 onChange={(e) => setProfile({ ...profile, returnVolatility: Number(e.target.value) })} className="h-10 bg-white" />
-              <span className="block text-[10px] font-normal text-[#87918e]">{t('fireReturnVolatilityHelp')}</span>
+              <span className="block text-[10px] font-normal text-[#5e6c68]">{t('fireReturnVolatilityHelp')}</span>
             </Field>
             <Field label={t('fireProfileWithdrawalRate')} unit={`% (${t('fireProfileReal')})`}>
               <Input type="number" step="0.1" min={0.1} max={100} value={profile.withdrawalRate}
@@ -224,9 +224,9 @@ export function RetirementProfileForm({ apiUrl, onSaved }: { apiUrl: string; onS
               onChange={(e) => setProfile({ ...profile, notes: e.target.value })}
               className="min-h-[64px] w-full rounded-lg border border-input bg-white px-3 py-2 text-sm outline-none focus:border-ring" />
           </Field>
-          {error && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#bd5e46]">{error}</p>}
+          {error && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#a94f3a]">{error}</p>}
           {outcome && (
-            <p role="status" className={`rounded-xl border px-4 py-2 text-sm ${outcome.ok ? 'border-[#cfe6dc] bg-[#e5f3ed] text-[#2d7b65]' : 'border-[#f4d8ce] bg-[#fce9e3] text-[#bd5e46]'}`}>
+            <p role="status" className={`rounded-xl border px-4 py-2 text-sm ${outcome.ok ? 'border-[#cfe6dc] bg-[#e5f3ed] text-[#237056]' : 'border-[#f4d8ce] bg-[#fce9e3] text-[#a94f3a]'}`}>
               {outcome.message}
             </p>
           )}
@@ -246,8 +246,8 @@ function Field({ label, unit, hint, children }: { label: string; unit?: string; 
     <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
       <span className="flex items-baseline gap-1.5">
         {label}
-        {unit && <span className="text-[10px] font-normal text-[#87918e]">({unit})</span>}
-        {hint && <span className="text-[10px] font-normal text-[#87918e]">· {hint}</span>}
+        {unit && <span className="text-[10px] font-normal text-[#5e6c68]">({unit})</span>}
+        {hint && <span className="text-[10px] font-normal text-[#5e6c68]">· {hint}</span>}
       </span>
       {children}
     </label>

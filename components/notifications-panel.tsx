@@ -50,14 +50,14 @@ export function NotificationsPanel({ items, onDismiss, onDismissAll }: {
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-semibold">{t('notifications')}</p>
         {items.length > 0 && (
-          <button onClick={() => void onDismissAll()} className="text-xs font-medium text-[#397867] hover:underline">
+          <button onClick={() => void onDismissAll()} className="text-xs font-medium text-[#237056] hover:underline">
             {t('notifDismissAll')}
           </button>
         )}
       </div>
 
       {items.length === 0 && (
-        <p className="mt-2 text-xs leading-5 text-[#71807c]">{t('notificationsUpToDate')}</p>
+        <p className="mt-2 text-xs leading-5 text-[#5e6c68]">{t('notificationsUpToDate')}</p>
       )}
 
       <ul className="mt-2 max-h-80 space-y-1.5 overflow-y-auto">

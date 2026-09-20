@@ -51,7 +51,7 @@ export function PageHelp({ titolo, testo, dipendenza }: {
             </span>
             <span className="mt-2 block whitespace-pre-line text-xs leading-5 text-[#52615d]">{t(testo)}</span>
             {dipendenza && (
-              <span className="mt-2.5 block whitespace-pre-line rounded-lg bg-[#f4f5f1] px-3 py-2 text-xs leading-5 text-[#71807c]">
+              <span className="mt-2.5 block whitespace-pre-line rounded-lg bg-[#f4f5f1] px-3 py-2 text-xs leading-5 text-[#5e6c68]">
                 {t(dipendenza)}
               </span>
             )}

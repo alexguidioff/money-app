@@ -69,22 +69,22 @@ export function ExpensesByCategory({ apiUrl }: { apiUrl: string }) {
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
       <CardHeader>
         <CardTitle className="text-[17px]">{t('fireExpensesByCategoryTitle')}</CardTitle>
-        <p className="mt-1 text-xs text-[#7b8784]">{t('fireExpensesByCategorySubtitle')}</p>
+        <p className="mt-1 text-xs text-[#5e6c68]">{t('fireExpensesByCategorySubtitle')}</p>
       </CardHeader>
       <CardContent className="space-y-3">
-        {stato === 'loading' && <p className="text-sm text-[#7b8784]">{t('loading')}</p>}
-        {stato === 'noProfile' && <p className="text-sm text-[#7b8784]">{t('fireExpensesCategoryNoProfile')}</p>}
-        {stato === 'error' && <p role="alert" className="text-sm text-[#bd5e46]">{t('fireExpensesCategoryLoadError')}</p>}
-        {stato === 'ready' && data && !data.applies && <p className="text-sm text-[#7b8784]">{t('fireExpensesCategoryCustom')}</p>}
+        {stato === 'loading' && <p className="text-sm text-[#5e6c68]">{t('loading')}</p>}
+        {stato === 'noProfile' && <p className="text-sm text-[#5e6c68]">{t('fireExpensesCategoryNoProfile')}</p>}
+        {stato === 'error' && <p role="alert" className="text-sm text-[#a94f3a]">{t('fireExpensesCategoryLoadError')}</p>}
+        {stato === 'ready' && data && !data.applies && <p className="text-sm text-[#5e6c68]">{t('fireExpensesCategoryCustom')}</p>}
         {stato === 'ready' && data?.applies && (rows.length === 0
-          ? <p className="text-sm text-[#7b8784]">{t('fireExpensesCategoryEmpty')}</p>
+          ? <p className="text-sm text-[#5e6c68]">{t('fireExpensesCategoryEmpty')}</p>
           : <>
             <ul className="divide-y divide-black/5 rounded-xl border border-black/6 bg-white">
               {rows.map((r) => (
                 <li key={r.category} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <span className="min-w-[120px] flex-1">
                     <span className="block text-sm font-medium text-[#3a4a46]">{r.category}</span>
-                    <span className="block text-xs tabular-nums text-[#87918e]">{t('fireExpensesCategoryPerYear', { amount: formatEuro(r.amount) })}</span>
+                    <span className="block text-xs tabular-nums text-[#5e6c68]">{t('fireExpensesCategoryPerYear', { amount: formatEuro(r.amount) })}</span>
                   </span>
                   <select value={r.mode} aria-label={r.category}
                     onChange={(e) => update(r.category, { mode: e.target.value as Mode })}
@@ -106,7 +106,7 @@ export function ExpensesByCategory({ apiUrl }: { apiUrl: string }) {
               {t('fireExpensesRetirementTotal', { retirement: formatEuro(anteprima), today: formatEuro(data.referenceExpenses) })}
             </p>
             {outcome && (
-              <p role="status" className={`rounded-xl border px-4 py-2 text-sm ${outcome.ok ? 'border-[#cfe6dc] bg-[#e5f3ed] text-[#2d7b65]' : 'border-[#f4d8ce] bg-[#fce9e3] text-[#bd5e46]'}`}>
+              <p role="status" className={`rounded-xl border px-4 py-2 text-sm ${outcome.ok ? 'border-[#cfe6dc] bg-[#e5f3ed] text-[#237056]' : 'border-[#f4d8ce] bg-[#fce9e3] text-[#a94f3a]'}`}>
                 {outcome.message}
               </p>
             )}

@@ -816,9 +816,9 @@ function ControlRow({ control, onOpenBudget }: { control: Summary['control']; on
   // Nessun budget nel periodo: non c'e' niente da tenere sotto controllo.
   if (!control.spentPercent && !control.overBudgetCategories) return null;
   const stile = {
-    ok: { classe: 'border-[#cfe6dc] bg-[#e5f3ed] text-[#2d7b65]', titolo: t('controlOk') },
-    watch: { classe: 'border-[#f0e2c2] bg-[#fbf3e2] text-[#9a7b2f]', titolo: t('controlWatch') },
-    over: { classe: 'border-[#f4d8ce] bg-[#fce9e3] text-[#bd5e46]', titolo: t('controlOver') },
+    ok: { classe: 'border-[#cfe6dc] bg-[#eaf5ef] text-[#237056]', titolo: t('controlOk') },
+    watch: { classe: 'border-[#f0e2c2] bg-[#fdf6ec] text-[#7d6119]', titolo: t('controlWatch') },
+    over: { classe: 'border-[#f4d8ce] bg-[#fce9e3] text-[#a94f3a]', titolo: t('controlOver') },
   }[control.level];
   const dettaglio = control.overBudgetCategories > 0
     ? t('controlDetailWithCategories', { spent: control.spentPercent, time: control.timePercent, count: control.overBudgetCategories })
@@ -826,7 +826,7 @@ function ControlRow({ control, onOpenBudget }: { control: Summary['control']; on
   return <button type="button" onClick={onOpenBudget} className={`mb-5 flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition hover:brightness-[0.98] ${stile.classe}`}>
     <span className="flex items-center gap-3">
       <span className="size-2.5 shrink-0 rounded-full bg-current" />
-      <span><span className="text-sm font-semibold">{stile.titolo}</span> <span className="text-xs opacity-80">{dettaglio}</span></span>
+      <span><span className="text-sm font-semibold">{stile.titolo}</span> <span className="text-xs">{dettaglio}</span></span>
     </span>
     <ChevronRight className="size-4 shrink-0 opacity-70" />
   </button>;
@@ -2467,7 +2467,7 @@ function MoneyDashboardInner() {
               </div>
               <div>
                 <p className="text-lg font-semibold tracking-tight">{t('appName')}</p>
-                <p className="text-xs text-white/45">{t('appTagline')}</p>
+                <p className="text-xs text-white/70">{t('appTagline')}</p>
               </div>
             </div>
             <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 hover:text-white lg:hidden" onClick={() => setMenuOpen(false)} aria-label={t('closeMenu')}>
@@ -2476,7 +2476,7 @@ function MoneyDashboardInner() {
           </div>
           <nav className="space-y-1">
             {navItems.map(({ label, labelKey, icon: Icon }) => (
-              <button key={label} onClick={() => navigate(label as Section)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${activeSection === label ? 'bg-white/12 font-medium text-white' : 'text-white/58 hover:bg-white/7 hover:text-white'}`}>
+              <button key={label} onClick={() => navigate(label as Section)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${activeSection === label ? 'bg-white/12 font-medium text-white' : 'text-white/70 hover:bg-white/7 hover:text-white'}`}>
                 <Icon className="size-[18px]" />{t(labelKey)}
               </button>
             ))}
@@ -2486,7 +2486,7 @@ function MoneyDashboardInner() {
               <span className={`size-2 rounded-full ${connected ? 'bg-[#87db9b]' : 'bg-[#f1c96b]'}`} />
               {connected ? t('dataUpdated') : t('localPreview')}
             </div>
-            <p className="text-xs leading-5 text-white/48">
+            <p className="text-xs leading-5 text-white/70">
               {connected
                 ? connectionError ? t('statusReadyExcelIssue', { error: connectionError }) : t('statusReadyConnected')
                 : dbSummary
@@ -2496,7 +2496,7 @@ function MoneyDashboardInner() {
                   : connectionError ? t('statusCheckConnection', { error: connectionError }) : t('statusConnecting')}
             </p>
             {dbSummary && !dbSummary.isEmpty && (
-              <p className="mt-2 text-[10px] leading-4 text-white/35">
+              <p className="mt-2 text-[10px] leading-4 text-white/70">
                 {t('statsSummaryLine', { transactions: dbSummary.counts.transactions.toLocaleString(locale), accounts: dbSummary.counts.accounts, budgets: dbSummary.counts.budgets, goals: dbSummary.counts.goals, investments: dbSummary.counts.investments })}
               </p>
             )}
@@ -2509,19 +2509,19 @@ function MoneyDashboardInner() {
               <span className="min-w-0 flex-1 truncate text-xs font-medium text-white/80">{auth.user.displayName}</span>
               {auth.users.length > 1 && (
                 <button onClick={() => setSceltaProfilo(true)} title={t('switchProfile')} aria-label={t('switchProfile')}
-                  className="text-white/45 transition hover:text-white">
+                  className="text-white/70 transition hover:text-white">
                   <Users className="size-4" />
                 </button>
               )}
               {auth.loginRequired && (
                 <button onClick={() => void handleLogout()} title={t('logout')} aria-label={t('logout')}
-                  className="text-white/45 transition hover:text-white">
+                  className="text-white/70 transition hover:text-white">
                   <LogOut className="size-4" />
                 </button>
               )}
             </div>
           )}
-          <button onClick={() => navigate('Impostazioni')} className={`mt-3 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm hover:bg-white/7 hover:text-white ${activeSection === 'Impostazioni' ? 'bg-white/12 font-medium text-white' : 'text-white/58'}`}>
+          <button onClick={() => navigate('Impostazioni')} className={`mt-3 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm hover:bg-white/7 hover:text-white ${activeSection === 'Impostazioni' ? 'bg-white/12 font-medium text-white' : 'text-white/70'}`}>
             <Settings className="size-[18px]" />{t('navImpostazioni')}
           </button>
         </aside>
@@ -2538,16 +2538,16 @@ function MoneyDashboardInner() {
               </div>
             </div>
             <div className="relative flex items-center gap-2">
-              {inCorso > 0 && <span role="status" className="mr-1 hidden items-center gap-1.5 rounded-lg bg-white/70 px-2.5 py-1.5 text-xs text-[#71807c] sm:flex">
+              {inCorso > 0 && <span role="status" className="mr-1 hidden items-center gap-1.5 rounded-lg bg-white/70 px-2.5 py-1.5 text-xs text-[#5e6c68] sm:flex">
                 <RefreshCw className="size-3.5 animate-spin" />{t('updating')}
               </span>}
-              <Button aria-label={t('notifications')} aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((value) => !value); setProfileOpen(false); }} variant="outline" size="icon" className="relative border-black/7 bg-white/70"><Bell className="size-[18px]" />{notifications.length > 0 && <span className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-[#bd5e46] px-1 text-[10px] font-semibold leading-4 text-white">{notifications.length}</span>}</Button>
+              <Button aria-label={t('notifications')} aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((value) => !value); setProfileOpen(false); }} variant="outline" size="icon" className="relative border-black/7 bg-white/70"><Bell className="size-[18px]" />{notifications.length > 0 && <span className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-[#a94f3a] px-1 text-[10px] font-semibold leading-4 text-white">{notifications.length}</span>}</Button>
               <button aria-label={t('profile')} aria-expanded={profileOpen} onClick={() => { setProfileOpen((value) => !value); setNotificationsOpen(false); }} className="ml-1 flex items-center gap-2 rounded-xl p-1.5 pr-2 hover:bg-black/5"><span className="grid size-8 place-items-center rounded-lg bg-[var(--money-accent)] text-xs font-bold text-[#18342e]">{initials}</span><ChevronDown className="size-4 text-black/45" /></button>
               {notificationsOpen && <NotificationsPanel items={notifications} onDismiss={dismissNotification} onDismissAll={dismissAllNotifications} />}
               {profileOpen && <div className="absolute right-0 top-12 w-56 rounded-xl border border-black/7 bg-white p-2 shadow-xl">
-                <div className="px-3 py-2"><p className="text-sm font-semibold">{displayName}</p><p className="text-xs text-[#71807c]">{t('personalArchive')}</p></div>
+                <div className="px-3 py-2"><p className="text-sm font-semibold">{displayName}</p><p className="text-xs text-[#5e6c68]">{t('personalArchive')}</p></div>
                 <div className="px-3 py-2">
-                  <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-[#87918e]">{t('language')}</p>
+                  <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-[#5e6c68]">{t('language')}</p>
                   <div className="flex gap-1 rounded-lg bg-[#f3f5f1] p-1">
                     {(['it', 'en', 'de', 'es', 'fr'] as Lang[]).map((code) => (
                       <button key={code} type="button" title={LANG_LABELS[code]} onClick={() => setLang(code)} className={`flex-1 rounded-md py-1 text-xs font-semibold uppercase transition ${lang === code ? 'bg-[var(--money-primary)] text-white' : 'text-[#52615d] hover:bg-white'}`}>
@@ -2564,7 +2564,7 @@ function MoneyDashboardInner() {
           <div className="mx-auto max-w-[1450px] px-4 py-7 sm:px-7 lg:px-9 lg:py-9">
             {activeSection === 'Panoramica' ? <>
             <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-              <div><p className="mb-1 text-sm font-medium text-[#71807c]">{t('panoramicaSubtitle')}</p><h1 className="flex items-center text-2xl font-semibold tracking-[-0.03em] sm:text-[30px]">{t('panoramicaGreeting', { name: displayName.split(/\s+/)[0] })}<PageHelp titolo="helpTitle" testo="helpPanoramica" dipendenza="helpPanoramicaDep" /></h1></div>
+              <div><p className="mb-1 text-sm font-medium text-[#5e6c68]">{t('panoramicaSubtitle')}</p><h1 className="flex items-center text-2xl font-semibold tracking-[-0.03em] sm:text-[30px]">{t('panoramicaGreeting', { name: displayName.split(/\s+/)[0] })}<PageHelp titolo="helpTitle" testo="helpPanoramica" dipendenza="helpPanoramicaDep" /></h1></div>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {overviewView === 'panoramica' && <PeriodSelector
                   value={period}
@@ -2608,7 +2608,7 @@ function MoneyDashboardInner() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-start gap-3">
                     <span className="mt-0.5 grid size-9 place-items-center rounded-xl bg-[#fce9e3]">
-                      <AlertCircle className="size-5 text-[#bd5e46]" />
+                      <AlertCircle className="size-5 text-[#a94f3a]" />
                     </span>
                     <div>
                       <p className="text-sm font-semibold">{t('overviewLoadFailed')}</p>
@@ -2641,41 +2641,41 @@ function MoneyDashboardInner() {
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
                 <CardContent className="p-5">
-                  <div className="flex items-center justify-between"><span className="text-sm font-medium text-[#71807c]">{t('periodCompletion')}</span><span className="text-xs text-[#87918e]">{t('daysOf', { passed: summary.daysPassed, total: summary.daysInPeriod })}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-sm font-medium text-[#5e6c68]">{t('periodCompletion')}</span><span className="text-xs text-[#5e6c68]">{t('daysOf', { passed: summary.daysPassed, total: summary.daysInPeriod })}</span></div>
                   <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{formatPercentNumber(summary.periodCompletion * 100)}%</p>
                   <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#eef0ec]"><div className="h-full rounded-full bg-[#6d8ff4]" style={{ width: `${summary.periodCompletion * 100}%` }} /></div>
                 </CardContent>
               </Card>
               <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
                 <CardContent className="p-5">
-                  <div className="flex items-center justify-between"><span className="text-sm font-medium text-[#71807c]">{t('periodSavingsRate')}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-sm font-medium text-[#5e6c68]">{t('periodSavingsRate')}</span></div>
                   <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{summary.savingsRate !== null ? `${formatPercentNumber(summary.savingsRate * 100)}%` : '—'}</p>
-                  <p className="mt-3 text-xs text-[#87918e]">{summary.savingsRate !== null ? t('onPeriodIncome') : t('noIncomeInPeriod')}</p>
+                  <p className="mt-3 text-xs text-[#5e6c68]">{summary.savingsRate !== null ? t('onPeriodIncome') : t('noIncomeInPeriod')}</p>
                 </CardContent>
               </Card>
               {/* Su un mese chiuso la card resta - togliendola ballerebbe la
                   griglia - ma dice che non c'e' niente da stimare. */}
               {summary.projection && <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
                 <CardContent className="p-5">
-                  <span className="text-sm font-medium text-[#71807c]">{t('endOfMonthEstimate')}</span>
+                  <span className="text-sm font-medium text-[#5e6c68]">{t('endOfMonthEstimate')}</span>
                   {summary.projection.state === 'closed' ? <>
-                    <p className="mt-2 text-2xl font-semibold tracking-tight text-[#a0a8a5]">—</p>
-                    <p className="mt-3 text-xs text-[#87918e]">{t('estimateClosedMonth')}</p>
-                    <p className="mt-1 text-[11px] leading-4 text-[#a0a8a5]">{t('estimateClosedTotal', { spent: formatCompactEuro(summary.projection.spentSoFar) })}</p>
+                    <p className="mt-2 text-2xl font-semibold tracking-tight text-[#5e6c68]">—</p>
+                    <p className="mt-3 text-xs text-[#5e6c68]">{t('estimateClosedMonth')}</p>
+                    <p className="mt-1 text-[11px] leading-4 text-[#5e6c68]">{t('estimateClosedTotal', { spent: formatCompactEuro(summary.projection.spentSoFar) })}</p>
                   </> : <>
                     <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{formatEuro(summary.projection.estimate ?? 0)}</p>
-                    <p className="mt-3 text-xs text-[#87918e]">{summary.projection.planned > 0
+                    <p className="mt-3 text-xs text-[#5e6c68]">{summary.projection.planned > 0
                       ? t('estimateVsPlanned', { spent: formatCompactEuro(summary.projection.spentSoFar), planned: formatCompactEuro(summary.projection.planned) })
                       : t('estimateSoFar', { spent: formatCompactEuro(summary.projection.spentSoFar) })}</p>
-                    <p className="mt-1 text-[11px] leading-4 text-[#a0a8a5]">{t('estimateRule')}</p>
+                    <p className="mt-1 text-[11px] leading-4 text-[#5e6c68]">{t('estimateRule')}</p>
                   </>}
                 </CardContent>
               </Card>}
               {summary.goalCoverage.monthlyNeeded > 0 && <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
                 <CardContent className="p-5">
-                  <span className="text-sm font-medium text-[#71807c]">{t('goalCoverage')}</span>
+                  <span className="text-sm font-medium text-[#5e6c68]">{t('goalCoverage')}</span>
                   <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{formatPercentNumber(summary.goalCoverage.coverage ?? 0)}%</p>
-                  <p className="mt-3 text-xs text-[#87918e]">{t('goalCoverageDetail', { saved: formatCompactEuro(summary.goalCoverage.savedThisPeriod), needed: formatCompactEuro(summary.goalCoverage.monthlyNeeded) })}</p>
+                  <p className="mt-3 text-xs text-[#5e6c68]">{t('goalCoverageDetail', { saved: formatCompactEuro(summary.goalCoverage.savedThisPeriod), needed: formatCompactEuro(summary.goalCoverage.monthlyNeeded) })}</p>
                 </CardContent>
               </Card>}
             </div>
@@ -2684,12 +2684,12 @@ function MoneyDashboardInner() {
               <PeriodBreakdownCard breakdown={summaryBreakdown} isWholeYear={overviewMonth === null} />
 
               <Card className="flex flex-col border-black/6 bg-[var(--money-deep)] text-white shadow-sm shadow-black/[0.04]">
-                <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-[17px]">{t('budgetOfPeriod')}</CardTitle><CircleDollarSign className="size-5 text-[var(--money-accent)]" /></div><p className="text-xs text-white/50">{t('howMuchLeftToSpend')}</p></CardHeader>
+                <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-[17px]">{t('budgetOfPeriod')}</CardTitle><CircleDollarSign className="size-5 text-[var(--money-accent)]" /></div><p className="text-xs text-white/70">{t('howMuchLeftToSpend')}</p></CardHeader>
                 <CardContent className="flex min-h-0 flex-1 flex-col">
                   <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">{formatEuro(remainingBudget)}</p>
                   <div className="mt-6 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[var(--money-accent)]" style={{ width: `${Math.min(summary.budgetUsed, 100)}%` }} /></div>
-                  <div className="mt-2 flex justify-between text-xs text-white/48"><span>{t('usedPercent', { percent: formatPercentNumber(summary.budgetUsed) })}</span><span>{t('availablePercent', { percent: Math.max(0, 100 - summary.budgetUsed) })}</span></div>
-                  {budgetAlerts && budgetAlerts.alert_count > 0 && <p className="mt-3 text-xs font-medium text-[#efb09e]">{t('categoriesOverBudgetCount', { count: budgetAlerts.alert_count })}</p>}
+                  <div className="mt-2 flex justify-between text-xs text-white/70"><span>{t('usedPercent', { percent: formatPercentNumber(summary.budgetUsed) })}</span><span>{t('availablePercent', { percent: Math.max(0, 100 - summary.budgetUsed) })}</span></div>
+                  {budgetAlerts && budgetAlerts.alert_count > 0 && <p className="mt-3 text-xs font-medium text-[#f6c6b0]">{t('categoriesOverBudgetCount', { count: budgetAlerts.alert_count })}</p>}
                   {(() => {
                     const categorie = (summaryBreakdown?.sections.expenses.categories ?? [])
                       .map((categoria) => ({
@@ -2711,7 +2711,7 @@ function MoneyDashboardInner() {
                         return <div key={categoria.nome} className="space-y-1">
                           <div className="flex items-baseline justify-between gap-2 text-sm">
                             <span className="truncate text-white/72">{categoria.nome}</span>
-                            <span className="shrink-0 font-medium">{formatCompactEuro(categoria.speso)} <span className="font-normal text-white/35">/ {categoria.budget > 0 ? formatCompactEuro(categoria.budget) : '—'}</span></span>
+                            <span className="shrink-0 font-medium">{formatCompactEuro(categoria.speso)} <span className="font-normal text-white/70">/ {categoria.budget > 0 ? formatCompactEuro(categoria.budget) : '—'}</span></span>
                           </div>
                           {categoria.budget > 0 && <div className="h-1 overflow-hidden rounded-full bg-white/12">
                             <div className="h-full rounded-full" style={{ width: `${Math.min((categoria.speso / categoria.budget) * 100, 100)}%`, background: categoria.speso > categoria.budget ? '#ef8e72' : 'var(--money-accent)' }} />
@@ -2720,7 +2720,7 @@ function MoneyDashboardInner() {
                       })}</div>
                       {/* Le altre non spariscono: di loro serve sapere solo
                           quanto margine resta, e da qui si va a vederle tutte. */}
-                      <button type="button" onClick={() => navigate('Budget')} className="mt-4 flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-xs text-white/55 transition hover:bg-white/8 hover:text-white/80">
+                      <button type="button" onClick={() => navigate('Budget')} className="mt-4 flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-xs text-white/70 transition hover:bg-white/8 hover:text-white/80">
                         {/* Niente cifra qui: il margine delle altre categorie
                             non e' spendibile - una parte copre lo sforamento di
                             quelle sopra - e messo accanto al totale in cima
@@ -2888,7 +2888,7 @@ function MoneyDashboardInner() {
               <label htmlFor="movement-debt-interest" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDebtCharge')}
                 <Input id="movement-debt-interest" name="debt_interest" type="number" min="0" step="0.01" placeholder={t('fieldDebtChargeNone')} defaultValue={formTransaction?.liabilitySplit?.interest ?? ''} />
               </label>
-              <span className="block text-[11px] leading-4 text-[#7b8784]">{t('fieldDebtChargeHint')}</span>
+              <span className="block text-[11px] leading-4 text-[#5e6c68]">{t('fieldDebtChargeHint')}</span>
             </div>}
             {movementType === 'Debt' && <div className="space-y-3 rounded-xl border border-[#bd5e46]/20 bg-[#fff9f6] p-3"><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('principalShare')}<Input required min="0" step="0.01" name="debt_principal" type="number" defaultValue={formTransaction?.liabilitySplit?.principal ?? (origineDaDebito && formTransaction ? Math.abs(formTransaction.amount) : undefined)} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('interestShare')}<Input required min="0" step="0.01" name="debt_interest" type="number" defaultValue={formTransaction?.liabilitySplit?.interest ?? 0} /></label></div></div>}
             {!isSpostamento && <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="exclude_budget" defaultChecked={formTransaction?.countsInBudget === false} />{t('excludeBudget')}</label>}
@@ -2930,7 +2930,7 @@ function MoneyDashboardInner() {
                           <button
                             type="button"
                             onClick={() => setLinkedLedgerRows(linkedLedgerRows.filter((_, i) => i !== index))}
-                            className="text-[11px] text-[#bd5e46] hover:underline"
+                            className="text-[11px] text-[#a94f3a] hover:underline"
                             aria-label={t('removeRow')}
                           >
                             {t('removeRow')}
@@ -3032,7 +3032,7 @@ function MoneyDashboardInner() {
                 {/* La quadratura, sempre a video: un bonifico e le operazioni che
                     ha finanziato devono dire la stessa cifra, e quando non lo
                     fanno si deve vedere subito di quanto. */}
-                <div className={`grid grid-cols-3 gap-2 rounded-md px-2 py-1.5 text-[10px] ${Math.abs(scarto) < 0.005 ? 'bg-[#e5f3ed] text-[#2d7b65]' : 'bg-[#fdf3e7] text-[#9a6320]'}`}>
+                <div className={`grid grid-cols-3 gap-2 rounded-md px-2 py-1.5 text-[10px] ${Math.abs(scarto) < 0.005 ? 'bg-[#eaf5ef] text-[#237056]' : 'bg-[#fdf3e7] text-[#7d6119]'}`}>
                   <span className="min-w-0">{t('linkTransferAmount')}<br /><b className="tabular-nums text-xs">{formatEuro(atteso)}</b></span>
                   <span className="min-w-0">{t('linkOperationsTotal')}<br /><b className="tabular-nums text-xs">{formatEuro(nettoOperazioni)}</b></span>
                   <span className="min-w-0">{Math.abs(scarto) < 0.005
@@ -3042,7 +3042,7 @@ function MoneyDashboardInner() {
                 {nuovaOpAperta && (
                   <div className="space-y-2 rounded-md border border-[#5c8f82]/30 bg-white p-2">
                     <p className="text-[11px] font-semibold text-[#3b6a5b]">{t('createLedgerOperation')}</p>
-                    <p className="text-[10px] leading-4 text-[#87918e]">{t('createLedgerOperationHint')}</p>
+                    <p className="text-[10px] leading-4 text-[#5e6c68]">{t('createLedgerOperationHint')}</p>
                     <div className="grid grid-cols-2 gap-2">
                       <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('instrument')}
                         <Input list="strumenti-esistenti" autoComplete="off" value={nuovaOpNome} onChange={(e) => setNuovaOpNome(e.target.value)} className="h-8 bg-white text-xs" /></label>
@@ -3068,11 +3068,11 @@ function MoneyDashboardInner() {
                     {linkedLedgerItems.map((item) => (
                       <li key={item.linkId} className="flex items-start justify-between gap-2 rounded-md border border-black/8 bg-white p-2">
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-medium">{item.name} <span className="ml-1 rounded-full bg-[#edf0ed] px-1.5 py-0.5 text-[10px] font-normal text-[#5d716b]">{item.transactionType}</span></p>
+                          <p className="truncate text-xs font-medium">{item.name} <span className="ml-1 rounded-full bg-[#edf0ed] px-1.5 py-0.5 text-[10px] font-normal text-[#5e6c68]">{item.transactionType}</span></p>
                           {/* La data come la scrive il resto dell'app: qui usciva in ISO. */}
-                          <p className="mt-0.5 text-[10px] text-[#87918e]">{formatDate(`${item.occurredOn}T12:00:00`)} · <b className="font-medium tabular-nums text-[#52615d]">{formatEuro(item.transactionType === 'Sell' ? -Math.abs(item.amount) : Math.abs(item.amount))}</b>{item.units != null ? ` · ${item.units} @ ${item.price}` : ''}</p>
+                          <p className="mt-0.5 text-[10px] text-[#5e6c68]">{formatDate(`${item.occurredOn}T12:00:00`)} · <b className="font-medium tabular-nums text-[#52615d]">{formatEuro(item.transactionType === 'Sell' ? -Math.abs(item.amount) : Math.abs(item.amount))}</b>{item.units != null ? ` · ${item.units} @ ${item.price}` : ''}</p>
                         </div>
-                        <Button type="button" variant="ghost" size="icon" title={t('unlinkOperation')} aria-label={`${t('unlinkOperation')} ${item.name}`} disabled={linkEditingBusy} onClick={() => void unlinkLedgerRow(item.linkId)} className="size-7 shrink-0 text-[#bd5e46]"><Unlink className="size-3.5" /></Button>
+                        <Button type="button" variant="ghost" size="icon" title={t('unlinkOperation')} aria-label={`${t('unlinkOperation')} ${item.name}`} disabled={linkEditingBusy} onClick={() => void unlinkLedgerRow(item.linkId)} className="size-7 shrink-0 text-[#a94f3a]"><Unlink className="size-3.5" /></Button>
                       </li>
                     ))}
                   </ul>
@@ -3108,13 +3108,13 @@ function MoneyDashboardInner() {
                         {trovati.slice(0, 50).map((item) => (
                           <li key={item.id}>
                             <Button type="button" variant="ghost" disabled={linkEditingBusy} onClick={() => void linkExistingLedger(item.id)} className="h-auto w-full justify-between whitespace-normal rounded-md border border-black/5 bg-white px-2 py-1.5 text-left text-xs hover:bg-[#f4f5f1]">
-                              <span className="min-w-0 flex-1 truncate">{item.name} <span className="ml-1 text-[10px] text-[#87918e]">{item.transactionType}</span></span>
-                              <span className="ml-2 shrink-0 text-[10px] text-[#87918e]">{formatDate(`${item.occurredOn}T12:00:00`)} · {item.amount} {item.currency}</span>
+                              <span className="min-w-0 flex-1 truncate">{item.name} <span className="ml-1 text-[10px] text-[#5e6c68]">{item.transactionType}</span></span>
+                              <span className="ml-2 shrink-0 text-[10px] text-[#5e6c68]">{formatDate(`${item.occurredOn}T12:00:00`)} · {item.amount} {item.currency}</span>
                             </Button>
                           </li>
                         ))}
                       </ul>
-                      <p className="mt-1.5 text-[10px] text-[#87918e]">{trovati.length > 50 ? t('operationsShownOfMatching', { shown: 50, total: trovati.length }) : t('operationsToLink', { count: trovati.length })}</p>
+                      <p className="mt-1.5 text-[10px] text-[#5e6c68]">{trovati.length > 50 ? t('operationsShownOfMatching', { shown: 50, total: trovati.length }) : t('operationsToLink', { count: trovati.length })}</p>
                     </>}
                   </>;
                 })()}
@@ -3156,7 +3156,7 @@ function MoneyDashboardInner() {
                 <DialogDescription>{t('valuationsDialogDesc')}</DialogDescription>
               </DialogHeader>
               {stime.length === 0
-                ? <p className="rounded-lg bg-[#fafaf8] px-3 py-4 text-center text-xs text-[#87918e]">{t('valuationsEmpty')}</p>
+                ? <p className="rounded-lg bg-[#fafaf8] px-3 py-4 text-center text-xs text-[#5e6c68]">{t('valuationsEmpty')}</p>
                 : <ul className="divide-y divide-black/5 rounded-lg border border-black/6">
                     {stime.map((stima) => {
                       // La stessa forma della conferma di cancellazione
@@ -3164,10 +3164,10 @@ function MoneyDashboardInner() {
                       // giorno nella stessa finestra erano due date diverse.
                       const quando = formatDate(`${stima.observedOn}T12:00:00`, { day: 'numeric', month: 'short', year: 'numeric' });
                       return <li key={stima.id} className="flex items-center gap-3 px-3 py-2.5">
-                        <span className="w-24 shrink-0 text-xs tabular-nums text-[#71807c]">{quando}</span>
+                        <span className="w-24 shrink-0 text-xs tabular-nums text-[#5e6c68]">{quando}</span>
                         <span className="flex-1 text-sm font-semibold tabular-nums">{formatEuro(stima.value)}</span>
-                        {stima.notes && <span className="truncate text-xs text-[#87918e]">{stima.notes}</span>}
-                        <Button size="icon" variant="ghost" aria-label={`${t('delete')} ${quando}`} onClick={() => void handleValuationDelete(stima.id, stima.observedOn)} className="text-[#bd5e46] hover:text-[#a04f3a]"><Trash2 className="size-4" /></Button>
+                        {stima.notes && <span className="truncate text-xs text-[#5e6c68]">{stima.notes}</span>}
+                        <Button size="icon" variant="ghost" aria-label={`${t('delete')} ${quando}`} onClick={() => void handleValuationDelete(stima.id, stima.observedOn)} className="text-[#a94f3a] hover:text-[#a04f3a]"><Trash2 className="size-4" /></Button>
                       </li>;
                     })}
                   </ul>}
@@ -3205,12 +3205,12 @@ function MoneyDashboardInner() {
                   <option value="asset">{t('groupAsset')}</option>
                   <option value="liability">{t('groupLiability')}</option>
                 </select></label>
-                <label htmlFor="account-balance" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldInitialBalance')}<Input id="account-balance" name="starting_balance" type="number" step="0.01" defaultValue={conto ? String(conto.startingBalance) : '0'} className="h-10 bg-white" />{accountGroup === 'liability' && <span className="block pt-1 font-normal leading-5 text-[#7b8784]">{t('initialBalanceSignHint')}</span>}</label>
+                <label htmlFor="account-balance" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldInitialBalance')}<Input id="account-balance" name="starting_balance" type="number" step="0.01" defaultValue={conto ? String(conto.startingBalance) : '0'} className="h-10 bg-white" />{accountGroup === 'liability' && <span className="block pt-1 font-normal leading-5 text-[#5e6c68]">{t('initialBalanceSignHint')}</span>}</label>
                 <label htmlFor="account-notes" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('note')}<textarea id="account-notes" name="notes" defaultValue={conto?.notes ?? ''} className="min-h-20 w-full rounded-lg border border-input bg-white p-2.5 text-sm" /></label>
                 <label className="flex items-center gap-2.5 text-xs font-medium text-[#52615d]"><input type="checkbox" name="counts_in_net_worth" defaultChecked={conto ? conto.countsInNetWorth !== false : true} className="size-4 accent-[var(--money-primary)]" />{t('fieldCountsInNetWorth')}</label>
                 {accountGroup === 'asset' && <label title={t('liquidityExplanation')} className="flex items-center gap-2.5 text-xs font-medium text-[#52615d]"><input type="checkbox" name="is_liquid" defaultChecked={conto?.isLiquid === true} className="size-4 accent-[var(--money-primary)]" />{t('fieldLiquid')}</label>}
-                {accountGroup === 'asset' && <label className="block space-y-1 text-xs font-medium text-[#52615d]"><span className="flex items-center gap-2.5"><input type="checkbox" name="is_broker" defaultChecked={conto?.isBroker === true} className="size-4 accent-[var(--money-primary)]" />{t('fieldBroker')}</span><span className="block pl-6.5 pt-1 font-normal leading-5 text-[#7b8784]">{t('brokerHint')}</span></label>}
-                {accountGroup === 'asset' && <label className="block space-y-1 text-xs font-medium text-[#52615d]"><span className="flex items-center gap-2.5"><input type="checkbox" name="needs_manual_valuation" defaultChecked={conto?.needsManualValuation === true} className="size-4 accent-[var(--money-primary)]" />{t('fieldManualValuation')}</span><span className="block pl-6.5 pt-1 font-normal leading-5 text-[#7b8784]">{t('manualValuationHint')}</span></label>}
+                {accountGroup === 'asset' && <label className="block space-y-1 text-xs font-medium text-[#52615d]"><span className="flex items-center gap-2.5"><input type="checkbox" name="is_broker" defaultChecked={conto?.isBroker === true} className="size-4 accent-[var(--money-primary)]" />{t('fieldBroker')}</span><span className="block pl-6.5 pt-1 font-normal leading-5 text-[#5e6c68]">{t('brokerHint')}</span></label>}
+                {accountGroup === 'asset' && <label className="block space-y-1 text-xs font-medium text-[#52615d]"><span className="flex items-center gap-2.5"><input type="checkbox" name="needs_manual_valuation" defaultChecked={conto?.needsManualValuation === true} className="size-4 accent-[var(--money-primary)]" />{t('fieldManualValuation')}</span><span className="block pl-6.5 pt-1 font-normal leading-5 text-[#5e6c68]">{t('manualValuationHint')}</span></label>}
                 {conto && <label className="flex items-center gap-2.5 text-xs font-medium text-[#52615d]"><input type="checkbox" name="is_archived" defaultChecked={conto.isActive === false} className="size-4 accent-[var(--money-primary)]" />{t('fieldArchived')}</label>}
                 {accountError && <p className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{accountError}</p>}
                 <DialogFooter className="mx-0 mb-0 mt-5 border-0 bg-transparent p-0">
@@ -3300,7 +3300,7 @@ const MAX_ANNI_CONFRONTO = TREND_COLORS.length;
 function YearComparisonSelector({ availableYears, selected, onChange }: { availableYears: number[]; selected: number[]; onChange: (years: number[]) => void }) {
   const { t } = useI18n();
   if (!availableYears.length) {
-    return <p className="text-xs text-[#71807c]">{t('trendsNoYears')}</p>;
+    return <p className="text-xs text-[#5e6c68]">{t('trendsNoYears')}</p>;
   }
   const alTetto = selected.length >= MAX_ANNI_CONFRONTO;
   const toggle = (year: number) => {
@@ -3318,7 +3318,7 @@ function YearComparisonSelector({ availableYears, selected, onChange }: { availa
   return (
     <details className="group relative">
       <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-xl border border-black/7 bg-white px-3.5 text-sm font-medium shadow-sm shadow-black/[0.02] transition hover:bg-[#f8f9f6] [&::-webkit-details-marker]:hidden">
-        <span className="text-[#61706c]">{t('trendsCompareYears')}:</span>
+        <span className="text-[#5e6c68]">{t('trendsCompareYears')}:</span>
         <span className="tabular-nums">{selected.join(', ')}</span>
         <ChevronDown className="size-4 shrink-0 text-black/45 transition group-open:rotate-180" />
       </summary>
@@ -3329,10 +3329,10 @@ function YearComparisonSelector({ availableYears, selected, onChange }: { availa
             // Al tetto restano premibili solo quelli gia' scelti, per poterli
             // togliere: gli altri si spengono invece di rifiutare il clic.
             const bloccato = !active && alTetto;
-            return <button key={year} type="button" aria-pressed={active} disabled={bloccato} onClick={() => toggle(year)} className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${active ? 'border-[var(--money-deep)] bg-[var(--money-deep)] text-white' : bloccato ? 'cursor-not-allowed border-black/5 bg-[#fafaf8] text-[#b6bdba]' : 'border-black/8 bg-white text-[#61706c] hover:bg-[#f0f2ee]'}`}>{year}</button>;
+            return <button key={year} type="button" aria-pressed={active} disabled={bloccato} onClick={() => toggle(year)} className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${active ? 'border-[var(--money-deep)] bg-[var(--money-deep)] text-white' : bloccato ? 'cursor-not-allowed border-black/5 bg-[#fafaf8] text-[#b6bdba]' : 'border-black/8 bg-white text-[#5e6c68] hover:bg-[#f0f2ee]'}`}>{year}</button>;
           })}
         </div>
-        <p className="mt-2 px-0.5 text-[11px] leading-4 text-[#87918e]">{t('trendsMaxYears', { max: MAX_ANNI_CONFRONTO })}</p>
+        <p className="mt-2 px-0.5 text-[11px] leading-4 text-[#5e6c68]">{t('trendsMaxYears', { max: MAX_ANNI_CONFRONTO })}</p>
       </div>
       <output className="sr-only" aria-live="polite">{t('selectedYearsAnnouncement', { years: selected.join(', ') })}</output>
     </details>
@@ -3674,7 +3674,7 @@ function SectionView({
   return (
     <>
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div><p className="mb-1 text-sm font-medium text-[#71807c]">{t(SECTION_DESC_KEYS[section])}</p><h1 className="flex items-center text-2xl font-semibold tracking-[-0.03em] sm:text-[30px]">{t(SECTION_LABEL_KEYS[section])}<PageHelp titolo="helpTitle" testo={SECTION_HELP_KEYS[section][0]} dipendenza={SECTION_HELP_KEYS[section][1]} /></h1></div>
+        <div><p className="mb-1 text-sm font-medium text-[#5e6c68]">{t(SECTION_DESC_KEYS[section])}</p><h1 className="flex items-center text-2xl font-semibold tracking-[-0.03em] sm:text-[30px]">{t(SECTION_LABEL_KEYS[section])}<PageHelp titolo="helpTitle" testo={SECTION_HELP_KEYS[section][0]} dipendenza={SECTION_HELP_KEYS[section][1]} /></h1></div>
         {section === 'Movimenti' && <div className="flex flex-wrap gap-2"><div className="flex flex-wrap gap-2"><Button disabled={pdfImporting} onClick={() => void onPdfImport()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileText className={`size-4 ${pdfImporting ? 'animate-spin' : ''}`} />{pdfImporting ? t('importingEllipsis') : t('importFromPdf')}</Button><Button disabled={pdfImporting} onClick={() => void onCsvImport()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileSpreadsheet className={`size-4 ${pdfImporting ? 'animate-spin' : ''}`} />{pdfImporting ? t('importingEllipsis') : t('importFromCsv')}</Button></div><Button variant="outline" className="h-10 rounded-xl bg-white" onClick={() => onTransfer()}><ArrowRightLeft className="size-4" />{t('transfer')}</Button><Button className="h-10 rounded-xl bg-[var(--money-primary)] px-4 text-white hover:bg-[var(--money-primary-hover)]" onClick={onNewTransaction}><Plus className="size-4" />{t('newTransaction')}</Button></div>}
         {/* Le Categorie e le Entrate tardive non leggono il periodo: il primo
             mostra due alberi interi, il secondo due impostazioni. Il selettore
@@ -3690,16 +3690,16 @@ function SectionView({
         {section === 'Report' && <PeriodSelector value={period} years={years} onChange={onPeriodChange} allowYear={false} />}
       </div>
 
-      {section === 'Movimenti' && <div className="space-y-4"><p className="text-xs text-[#7b8784]">{t('statementAllDates')}</p>
+      {section === 'Movimenti' && <div className="space-y-4"><p className="text-xs text-[#5e6c68]">{t('statementAllDates')}</p>
         {/* Un import che non riesce non e' una notizia come le altre: `ok`
             c'era gia' e non si guardava, e la riga d'errore aveva l'aspetto di
             quella di riuscita. */}
         {importFeedback && (importFeedback.ok
           ? <p role="status" className="rounded-xl border border-black/6 bg-white px-4 py-2 text-sm text-[#3a4a46] shadow-sm shadow-black/[0.02]">{importFeedback.message}</p>
-          : <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#bd5e46]">{importFeedback.message}</p>)}
-        {refundError && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#bd5e46]">{refundError}</p>}
+          : <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#a94f3a]">{importFeedback.message}</p>)}
+        {refundError && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#a94f3a]">{refundError}</p>}
         <div className="flex flex-wrap gap-2 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-          {([['list', t('movementsTabList')], ['recurring', t('movementsTabRecurring')], ['rules', t('movementsTabRules')]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setMovementsView(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${movementsView === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
+          {([['list', t('movementsTabList')], ['recurring', t('movementsTabRecurring')], ['rules', t('movementsTabRules')]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setMovementsView(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${movementsView === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#5e6c68] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
         </div>
         {movementsView === 'rules'
           ? <CategoryRulesCard rules={categorizationRules} categories={categorieRegola} categoryTree={settingsData.categoryTree} apiUrl={apiUrl}
@@ -3707,7 +3707,7 @@ function SectionView({
           : movementsView === 'recurring' ? <RecurringTransactionsView accounts={accounts} data={recurringTransactions} categoriesByType={settingsData.categoriesByType} categoryTree={settingsData.categoryTree} onCreate={onCreateRecurring} onDelete={onDeleteRecurring} onGenerate={onGenerateRecurring} /> : <>
         <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
           <CardHeader className="gap-4">
-            <div><CardTitle className="text-[17px]">{t('allMovements')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('resultsOfTotal', { count: movimenti.length, total: totaleMovimenti })}</p></div>
+            <div><CardTitle className="text-[17px]">{t('allMovements')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('resultsOfTotal', { count: movimenti.length, total: totaleMovimenti })}</p></div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(190px,1fr)_150px_180px_130px_150px]">
               <div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-black/35" /><Input aria-label={t('searchInMovements')} value={searchQuery} onChange={(event) => onSearchChange(event.target.value)} className="h-10 bg-[#fafaf8] pl-9" placeholder={t('searchInMovementsPlaceholder')} />{searchQuery && <button aria-label={t('clearSearch')} onClick={() => onSearchChange('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-black/40 hover:text-black"><X className="size-4" /></button>}</div>
               <FilterSelect label={t('filterByType')} value={transactionTypeFilter} onChange={setTransactionTypeFilter} options={[["all", t('allTypes')], ["Income", t('incomeType')], ["Expenses", t('expensesType')], ["Transfers", t('transfersType')], ["Investment", t('investmentType')], ["Debt", t('debtTypeMovement')]]} />
@@ -3730,7 +3730,7 @@ function SectionView({
             </label>
             <Button type="button" variant="outline" size="sm" className="ml-auto h-9 rounded-lg bg-white" disabled={bulkBusy || totaleMovimenti === 0} onClick={() => void selectAll()}>{bulkBusy ? t('updating') : t('selectFiltered')}</Button>
           </div>
-          {bulkError && <p role="alert" className="px-6 text-[#bd5e46]">{bulkError}</p>}
+          {bulkError && <p role="alert" className="px-6 text-[#a94f3a]">{bulkError}</p>}
           <CardContent className="px-3 sm:px-6">{movimenti.length ? <><div className={`divide-y divide-black/5 ${caricandoMovimenti ? 'opacity-60' : ''}`}>{movimenti.map((transaction) => <div key={transaction.id} className="flex items-center gap-2"><input type="checkbox" aria-label={t('selectMovement', { description: transaction.description })} checked={selection.has(String(transaction.id))} onChange={e => setSelection(old => { const next = new Set(old); e.target.checked ? next.add(String(transaction.id)) : next.delete(String(transaction.id)); return next; })} /><div className="min-w-0 flex-1"><TransactionRow transaction={transaction} onRefund={openRefundedTransaction} onEdit={onEditTransaction} onDuplicate={onDuplicateTransaction} onDelete={onDeleteTransaction} onSplit={onSplitTransaction} /></div></div>)}</div>{movimenti.length < totaleMovimenti && <div className="border-t border-black/5 py-4 text-center"><Button type="button" variant="outline" disabled={caricandoMovimenti} onClick={() => setPagina((corrente) => corrente + 1)}>{caricandoMovimenti ? t('updating') : t('showMore100')}</Button></div>}</> : (() => {
             // Un elenco vuoto non ha sempre un filtro da incolpare: la prima
             // volta il vuoto e' il punto di partenza, e li' l'unica cosa utile
@@ -3738,11 +3738,11 @@ function SectionView({
             // pulsante in cima alla pagina non rende ovvio.
             const filtrato = Boolean(ricerca.trim()) || incompleteOnly
               || [transactionTypeFilter, accountFilter, goalFilter, eventFilter, yearFilter, monthFilter].some((valore) => valore !== 'all');
-            if (caricandoMovimenti) return <p className="py-12 text-center text-sm text-[#71807c]">{t('updating')}</p>;
-            if (filtrato) return <p className="py-12 text-center text-sm text-[#71807c]">{t('noMovementsMatchFilters')}</p>;
+            if (caricandoMovimenti) return <p className="py-12 text-center text-sm text-[#5e6c68]">{t('updating')}</p>;
+            if (filtrato) return <p className="py-12 text-center text-sm text-[#5e6c68]">{t('noMovementsMatchFilters')}</p>;
             return (
               <div className="flex flex-col items-center gap-4 py-12 text-center">
-                <p className="text-sm text-[#71807c]">{t('noMovementsYet')}</p>
+                <p className="text-sm text-[#5e6c68]">{t('noMovementsYet')}</p>
                 <Button onClick={onNewTransaction} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('newTransaction')}</Button>
               </div>
             );
@@ -3786,10 +3786,10 @@ function SectionView({
               filtra niente. Lasciarlo acceso li' vuol dire mostrare un comando
               che non cambia quello che si sta guardando. */}
           {VISTE_CON_TIPO.includes(budgetView) && <div role="group" aria-label={t('type')} className="flex gap-1.5 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-            {([['Expenses', t('expensesType')], ['Income', t('incomeType')], ['Savings', t('savingsType')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={budgetType === value} onClick={() => onBudgetTypeChange(value)} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${budgetType === value ? 'bg-[var(--money-primary)] text-white' : 'text-[#66736f] hover:bg-[#f4f5f1]'}`}>{label}</button>)}
+            {([['Expenses', t('expensesType')], ['Income', t('incomeType')], ['Savings', t('savingsType')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={budgetType === value} onClick={() => onBudgetTypeChange(value)} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${budgetType === value ? 'bg-[var(--money-primary)] text-white' : 'text-[#5e6c68] hover:bg-[#f4f5f1]'}`}>{label}</button>)}
           </div>}
           <div role="group" aria-label={t('budget')} className="flex flex-wrap gap-1 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-            {([['dashboard', t('budgetTabDashboard')], ['trends', t('budgetTabTrends')], ['plan', t('budgetTabPlan')], ['categories', t('budgetTabCategories')], ['entrateTardive', t('budgetTabLateIncome')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={budgetView === value} onClick={() => onBudgetViewChange(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${budgetView === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
+            {([['dashboard', t('budgetTabDashboard')], ['trends', t('budgetTabTrends')], ['plan', t('budgetTabPlan')], ['categories', t('budgetTabCategories')], ['entrateTardive', t('budgetTabLateIncome')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={budgetView === value} onClick={() => onBudgetViewChange(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${budgetView === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#5e6c68] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
           </div>
         </div>
         {budgetLoadFailed ? <Card className="border-[#efc4b8] bg-[#fff6f3] shadow-sm"><CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold">{t('budgetLoadFailed')}</p><p className="mt-1 text-xs text-[#52615d]">{t('budgetLoadFailedHint')}</p></div><Button variant="outline" size="sm" onClick={() => void onReload()}>{t('retry')}</Button></CardContent></Card> : <>
@@ -3874,23 +3874,23 @@ function BudgetBalanceCard({ balance, scope }: { balance: BudgetBalance; scope: 
   const negativo = balance.savings < 0;
   // Senza piano entrate, un savings negativo vuol dire che le spese superano
   // quello che si pensava di incassare: e' comunque un segnale da segnalare.
-  const tono = negativo ? 'text-[#bd5e46]' : !balance.hasIncomePlan ? 'text-[#71807c]' : 'text-[#2d7b65]';
+  const tono = negativo ? 'text-[#a94f3a]' : !balance.hasIncomePlan ? 'text-[#5e6c68]' : 'text-[#237056]';
   const messaggio = negativo
     ? t('budgetBalanceOverplanned', { amount: formatEuro(Math.abs(balance.savings)) })
     : !balance.hasIncomePlan
       ? t('budgetBalanceNoIncome')
       : t('budgetBalanceSaves', { amount: formatEuro(balance.savings) });
   return <Card className="border-black/6 bg-white shadow-sm">
-    <CardHeader><CardTitle className="text-[17px]">{scope === 'year' ? t('budgetBalanceTitleYear') : t('budgetBalanceTitle')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{scope === 'year' ? t('budgetBalanceSubtitleYear') : t('budgetBalanceSubtitle')}</p></CardHeader>
+    <CardHeader><CardTitle className="text-[17px]">{scope === 'year' ? t('budgetBalanceTitleYear') : t('budgetBalanceTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{scope === 'year' ? t('budgetBalanceSubtitleYear') : t('budgetBalanceSubtitle')}</p></CardHeader>
     <CardContent className="space-y-3">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm tabular-nums">
         <span className="font-semibold">{formatEuro(balance.income)}</span>
-        <span className="text-[#87918e]">{t('budgetBalanceIncome')}</span>
-        <span className="text-[#87918e]">−</span>
+        <span className="text-[#5e6c68]">{t('budgetBalanceIncome')}</span>
+        <span className="text-[#5e6c68]">−</span>
         <span className="font-semibold">{formatEuro(balance.expenses)}</span>
-        <span className="text-[#87918e]">{t('budgetBalanceExpenses')}</span>
-        <span className="text-[#87918e]">=</span>
-        <span className="text-[#87918e]">{t('budgetBalanceSavings')}</span>
+        <span className="text-[#5e6c68]">{t('budgetBalanceExpenses')}</span>
+        <span className="text-[#5e6c68]">=</span>
+        <span className="text-[#5e6c68]">{t('budgetBalanceSavings')}</span>
       </div>
       <p className={`text-2xl font-semibold tabular-nums ${tono}`}>{formatEuro(balance.savings)}</p>
       <p className={`text-xs ${tono}`}>{messaggio}</p>
@@ -3898,14 +3898,14 @@ function BudgetBalanceCard({ balance, scope }: { balance: BudgetBalance; scope: 
   </Card>;
 }
 
-const GROUP_COLORS: Record<string, string> = { Needs: '#4d7f70', Wants: '#e0a458', Other: '#b7bfbb' };
+const GROUP_COLORS: Record<string, string> = { Needs: '#237056', Wants: '#e0a458', Other: '#b7bfbb' };
 
 function NeedsWantsCard({ groups }: { groups: BudgetGroupSplit[] }) {
   const { t, formatEuro } = useI18n();
   const totale = groups.reduce((sum, group) => sum + group.actual, 0);
   const etichetta = (group: string) => group === 'Needs' ? t('groupNeeds') : group === 'Wants' ? t('groupWants') : t('groupOther');
   return <Card className="border-black/6 bg-white shadow-sm">
-    <CardHeader><CardTitle className="text-[17px]">{t('needsWantsTitle')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('needsWantsSubtitle')}</p></CardHeader>
+    <CardHeader><CardTitle className="text-[17px]">{t('needsWantsTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('needsWantsSubtitle')}</p></CardHeader>
     <CardContent className="space-y-3">
       {totale > 0 ? <>
         <div className="flex h-3 overflow-hidden rounded-full bg-[#f0f2ee]">
@@ -3914,11 +3914,11 @@ function NeedsWantsCard({ groups }: { groups: BudgetGroupSplit[] }) {
         <ul className="space-y-2">
           {groups.map((group) => <li key={group.group} className="flex items-center justify-between gap-3 text-xs">
             <span className="flex items-center gap-2"><span className="size-2.5 rounded-full" style={{ backgroundColor: GROUP_COLORS[group.group] }} />{etichetta(group.group)}</span>
-            <span className="tabular-nums text-[#52615d]">{formatEuro(group.actual)} · {group.actualShare}%{group.planned > 0 && <span className="text-[#87918e]"> ({t('plannedShort', { amount: formatEuro(group.planned) })})</span>}</span>
+            <span className="tabular-nums text-[#52615d]">{formatEuro(group.actual)} · {group.actualShare}%{group.planned > 0 && <span className="text-[#5e6c68]"> ({t('plannedShort', { amount: formatEuro(group.planned) })})</span>}</span>
           </li>)}
         </ul>
-        {(groups.find((group) => group.group === 'Other')?.actual ?? 0) > 0 && <p className="rounded-lg bg-[#f4f5f1] px-3 py-2 text-[11px] leading-4 text-[#71807c]">{t('needsWantsUnclassified')}</p>}
-      </> : <p className="text-xs text-[#71807c]">{t('needsWantsEmpty')}</p>}
+        {(groups.find((group) => group.group === 'Other')?.actual ?? 0) > 0 && <p className="rounded-lg bg-[#f4f5f1] px-3 py-2 text-[11px] leading-4 text-[#5e6c68]">{t('needsWantsUnclassified')}</p>}
+      </> : <p className="text-xs text-[#5e6c68]">{t('needsWantsEmpty')}</p>}
     </CardContent>
   </Card>;
 }
@@ -3965,13 +3965,13 @@ function BudgetDashboardView({ data, budgetType, onGoToView }: { data: BudgetDas
     </div>
     {isExpense && <NeedsWantsCard groups={data.groups} />}
     <div className={`grid gap-5 ${isSavings ? '' : 'xl:grid-cols-[1.3fr_1fr]'}`}>
-      <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('budgetAndActualByType', { 0: budgetType })}</CardTitle><p className="text-xs text-[#7b8784]">{t('budgetAndActualByTypeSubtitle', { 0: budgetType })}</p></CardHeader><CardContent><ChartContainer config={budgetChartConfig} className="h-[300px] w-full"><BarChart accessibilityLayer data={data.months}><CartesianGrid vertical={false} strokeDasharray="3 5" /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} /><YAxis tickLine={false} axisLine={false} tickFormatter={(value) => formatCompactEuro(Number(value))} width={70} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} />} /><ChartLegend content={<ChartLegendContent />} /><Bar dataKey="planned" fill="var(--color-planned)" radius={[4, 4, 0, 0]} maxBarSize={22} /><Bar dataKey="actual" fill="var(--color-actual)" radius={[4, 4, 0, 0]} maxBarSize={22} /></BarChart></ChartContainer></CardContent></Card>
-      {!isSavings && <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('periodCategories')}</CardTitle><p className="text-xs text-[#7b8784]">{t('monthCategoriesSubtitle')}</p></CardHeader>{data.categories.length === 0 ? <CardContent className="p-6 text-center text-xs text-[#87918e]">{t('budgetNotPlanned')}</CardContent> : <CardContent className="divide-y divide-black/5">{[...data.categories].sort((a, b) => (b.actual - a.actual) || (b.planned - a.planned)).slice(0, CATEGORIE_IN_CARD).map((item) => { const good = budgetVarianceIsGood(budgetType, item.variance); const message = isExpense ? (item.variance < 0 ? t('overBudgetBy', { amount: formatEuro(Math.abs(item.variance)) }) : t('availableAmount', { amount: formatEuro(item.variance) })) : (item.variance < 0 ? t('exceededTargetBy', { amount: formatEuro(Math.abs(item.variance)) }) : t('belowTargetBy', { amount: formatEuro(item.variance) })); return <div key={item.category} className="grid grid-cols-[1fr_auto] gap-3 py-3"><div><p className="text-sm font-medium">{item.categoryLabel}</p><p className={`mt-1 text-xs ${good ? 'text-[#71807c]' : 'text-[#bd5e46]'}`}>{message}</p>{item.previousLeftover !== 0 && <p className="mt-0.5 text-[11px] text-[#87918e]">{item.previousLeftover > 0 ? t('budgetPreviousLeft', { amount: formatEuro(item.previousLeftover) }) : t('budgetPreviousOver', { amount: formatEuro(Math.abs(item.previousLeftover)) })}</p>}</div><div className="text-right text-xs"><p className="font-semibold">{formatEuro(item.actual)}</p><p className="mt-1 text-[#87918e]">{t('ofPlannedShort', { amount: formatEuro(item.planned) })}</p></div></div>; })}
+      <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('budgetAndActualByType', { 0: budgetType })}</CardTitle><p className="text-xs text-[#5e6c68]">{t('budgetAndActualByTypeSubtitle', { 0: budgetType })}</p></CardHeader><CardContent><ChartContainer config={budgetChartConfig} className="h-[300px] w-full"><BarChart accessibilityLayer data={data.months}><CartesianGrid vertical={false} strokeDasharray="3 5" /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} /><YAxis tickLine={false} axisLine={false} tickFormatter={(value) => formatCompactEuro(Number(value))} width={70} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} />} /><ChartLegend content={<ChartLegendContent />} /><Bar dataKey="planned" fill="var(--color-planned)" radius={[4, 4, 0, 0]} maxBarSize={22} /><Bar dataKey="actual" fill="var(--color-actual)" radius={[4, 4, 0, 0]} maxBarSize={22} /></BarChart></ChartContainer></CardContent></Card>
+      {!isSavings && <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('periodCategories')}</CardTitle><p className="text-xs text-[#5e6c68]">{t('monthCategoriesSubtitle')}</p></CardHeader>{data.categories.length === 0 ? <CardContent className="p-6 text-center text-xs text-[#5e6c68]">{t('budgetNotPlanned')}</CardContent> : <CardContent className="divide-y divide-black/5">{[...data.categories].sort((a, b) => (b.actual - a.actual) || (b.planned - a.planned)).slice(0, CATEGORIE_IN_CARD).map((item) => { const good = budgetVarianceIsGood(budgetType, item.variance); const message = isExpense ? (item.variance < 0 ? t('overBudgetBy', { amount: formatEuro(Math.abs(item.variance)) }) : t('availableAmount', { amount: formatEuro(item.variance) })) : (item.variance < 0 ? t('exceededTargetBy', { amount: formatEuro(Math.abs(item.variance)) }) : t('belowTargetBy', { amount: formatEuro(item.variance) })); return <div key={item.category} className="grid grid-cols-[1fr_auto] gap-3 py-3"><div><p className="text-sm font-medium">{item.categoryLabel}</p><p className={`mt-1 text-xs ${good ? 'text-[#5e6c68]' : 'text-[#a94f3a]'}`}>{message}</p>{item.previousLeftover !== 0 && <p className="mt-0.5 text-[11px] text-[#5e6c68]">{item.previousLeftover > 0 ? t('budgetPreviousLeft', { amount: formatEuro(item.previousLeftover) }) : t('budgetPreviousOver', { amount: formatEuro(Math.abs(item.previousLeftover)) })}</p>}</div><div className="text-right text-xs"><p className="font-semibold">{formatEuro(item.actual)}</p><p className="mt-1 text-[#5e6c68]">{t('ofPlannedShort', { amount: formatEuro(item.planned) })}</p></div></div>; })}
         {/* Le righe sopra sono le prime dieci per importo: l'elenco intero, con
             le categorie che non ci sono, sta nella scheda Categorie. Senza
             questa riga il conto non tornava col totale in cima alla pagina e
             non si sapeva dove fossero finite le altre. */}
-        {data.categories.length > CATEGORIE_IN_CARD && <button type="button" onClick={() => onGoToView('categories')} className="mt-1 flex w-full items-center justify-between gap-2 px-2 py-3 text-left text-xs font-medium text-[#71807c] transition hover:text-[#173b33]"><span>{t('otherCategories', { count: data.categories.length - CATEGORIE_IN_CARD })}</span><ChevronRight className="size-4 shrink-0" /></button>}</CardContent>}</Card>}
+        {data.categories.length > CATEGORIE_IN_CARD && <button type="button" onClick={() => onGoToView('categories')} className="mt-1 flex w-full items-center justify-between gap-2 px-2 py-3 text-left text-xs font-medium text-[#5e6c68] transition hover:text-[#173b33]"><span>{t('otherCategories', { count: data.categories.length - CATEGORIE_IN_CARD })}</span><ChevronRight className="size-4 shrink-0" /></button>}</CardContent>}</Card>}
     </div>
   </div>;
 }
@@ -4004,7 +4004,7 @@ function BudgetPlanMonthTotals({ data, budgetType, calculations, year, month }: 
         : t(variance < 0 ? 'abovePlan' : 'belowPlan');
   const periodRef = formatPeriodRef(monthNames, year, month);
   return <div className="grid gap-5 md:grid-cols-3">
-    <Card className="border-0 bg-[var(--money-deep)] text-white shadow-sm"><CardContent className="p-6"><p className="text-sm text-white/55">{varianceLabel}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{formatEuro(budgetType === 'Expenses' ? variance : Math.abs(variance))}</p><p className="mt-2 text-xs text-white/65">{varianceStatus}</p><div className="mt-7 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[var(--money-accent)]" style={{ width: `${planned ? Math.min(actual / planned * 100, 100) : 0}%` }} /></div></CardContent></Card>
+    <Card className="border-0 bg-[var(--money-deep)] text-white shadow-sm"><CardContent className="p-6"><p className="text-sm text-white/70">{varianceLabel}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{formatEuro(budgetType === 'Expenses' ? variance : Math.abs(variance))}</p><p className="mt-2 text-xs text-white/70">{varianceStatus}</p><div className="mt-7 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[var(--money-accent)]" style={{ width: `${planned ? Math.min(actual / planned * 100, 100) : 0}%` }} /></div></CardContent></Card>
     <MetricCard title={actualLabel} value={actual} change={periodRef} icon={CreditCard} tone={budgetType === 'Expenses' ? 'expense' : 'worth'} />
     {budgetType === 'Savings'
       ? <MetricCard title={t('savingsRateLabel')} value={calculations?.savingsRate ?? 0} valueLabel={calculations?.savingsRate == null ? '—' : `${formatPercentNumber(calculations.savingsRate * 100)}%`} change={calculations ? t('daysOfDays', { passed: calculations.daysPassed, total: calculations.daysInPeriod }) : t('calculationInProgress')} icon={PiggyBank} tone="saving" />
@@ -4015,7 +4015,7 @@ function BudgetPlanMonthTotals({ data, budgetType, calculations, year, month }: 
 function BudgetTabEmpty({ loading }: { loading: boolean }) {
   const { t } = useI18n();
   return <Card className="border-black/6 bg-white shadow-sm">
-    <CardContent className="flex h-40 items-center justify-center text-sm text-[#71807c]">
+    <CardContent className="flex h-40 items-center justify-center text-sm text-[#5e6c68]">
       {loading ? t('loading') : t('budgetTabEmpty')}
     </CardContent>
   </Card>;
@@ -4029,8 +4029,8 @@ function BudgetTrendsView({ data, budgetType, loading }: { data: BudgetTrendsDat
   const yearTitle = (year: number) => budgetType === 'Expenses' ? t('spentYear', { year }) : budgetType === 'Income' ? t('receivedYear', { year }) : t('savedYear', { year });
   if (!data.years.length) return <BudgetTabEmpty loading={loading} />;
   return <div className="space-y-5">
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{data.years.map((item) => { const good = budgetVarianceIsGood(budgetType, item.plannedTotal - item.actualTotal); return <Card key={item.year} className="border-black/6 bg-white shadow-sm"><CardContent className="p-5"><p className="text-sm font-medium text-[#71807c]">{yearTitle(item.year)}</p><p className="mt-3 text-2xl font-semibold">{formatEuro(item.actualTotal)}</p><p className={`mt-2 text-xs ${good ? 'text-[#2d7b65]' : 'text-[#bd5e46]'}`}>{t('budgetMetric')} {formatEuro(item.plannedTotal)}</p></CardContent></Card>; })}</div>
-    <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('monthlyComparisonAcrossYears')}</CardTitle><p className="text-xs text-[#7b8784]">{t('monthlyComparisonAcrossYearsSubtitle')}</p></CardHeader><CardContent><ChartContainer config={trendConfig} className="h-[360px] w-full"><LineChart accessibilityLayer data={data.comparison}><CartesianGrid vertical={false} strokeDasharray="3 5" /><XAxis dataKey="month" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} /><YAxis tickLine={false} axisLine={false} width={72} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} />} /><ChartLegend content={<ChartLegendContent />} />{data.years.map((item, index) => <Line key={item.year} type="monotone" dataKey={String(item.year)} stroke={TREND_COLORS[index % TREND_COLORS.length]} strokeWidth={2.5} dot={false} connectNulls />)}</LineChart></ChartContainer></CardContent></Card>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{data.years.map((item) => { const good = budgetVarianceIsGood(budgetType, item.plannedTotal - item.actualTotal); return <Card key={item.year} className="border-black/6 bg-white shadow-sm"><CardContent className="p-5"><p className="text-sm font-medium text-[#5e6c68]">{yearTitle(item.year)}</p><p className="mt-3 text-2xl font-semibold">{formatEuro(item.actualTotal)}</p><p className={`mt-2 text-xs ${good ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>{t('budgetMetric')} {formatEuro(item.plannedTotal)}</p></CardContent></Card>; })}</div>
+    <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('monthlyComparisonAcrossYears')}</CardTitle><p className="text-xs text-[#5e6c68]">{t('monthlyComparisonAcrossYearsSubtitle')}</p></CardHeader><CardContent><ChartContainer config={trendConfig} className="h-[360px] w-full"><LineChart accessibilityLayer data={data.comparison}><CartesianGrid vertical={false} strokeDasharray="3 5" /><XAxis dataKey="month" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} /><YAxis tickLine={false} axisLine={false} width={72} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} />} /><ChartLegend content={<ChartLegendContent />} />{data.years.map((item, index) => <Line key={item.year} type="monotone" dataKey={String(item.year)} stroke={TREND_COLORS[index % TREND_COLORS.length]} strokeWidth={2.5} dot={false} connectNulls />)}</LineChart></ChartContainer></CardContent></Card>
   </div>;
 }
 
@@ -4104,9 +4104,9 @@ function AnnualBudgetEditor({ data, padreDi, onApply }: { data: AnnualBudgetData
   }
 
   return <div className="space-y-5">
-    <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('applySameValueToMultipleMonths')}</CardTitle><p className="text-xs text-[#7b8784]">{t('applySameValueToMultipleMonthsSubtitle')}</p></CardHeader><CardContent><form onSubmit={applyMany} className="space-y-4"><div className="flex flex-wrap items-start gap-3"><select aria-label={t('category')} value={effectiveCategory} onChange={(event) => setCategory(event.target.value)} className="h-10 rounded-lg border border-input bg-white px-3 text-sm">{data.items.map((item) => <option key={item.category} value={item.category}>{item.categoryLabel}</option>)}</select>{padreDiVoce(effectiveCategory) && <span className="self-center rounded-full bg-[#f2f5f3] px-2.5 py-1 text-[11px] text-[#5b6b66]">{t('budgetInsideParent', { parent: padreDiVoce(effectiveCategory) ?? '' })}</span>}<Input required min="0" step="0.01" type="number" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={t('monthlyAmountPlaceholder')} /><Button type="submit" disabled={busy || !months.length} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Save className="size-4" />{busy ? t('savingEllipsis') : t('applyToMonths', { count: months.length || 0 })}</Button></div><div className="flex flex-wrap gap-2">{monthNamesShort.map((name, index) => { const month = index + 1; const selected = months.includes(month); return <button key={name} type="button" onClick={() => setMonths((current) => selected ? current.filter((value) => value !== month) : [...current, month].sort((a, b) => a - b))} className={`rounded-lg border px-3 py-2 text-xs font-medium ${selected ? 'border-[var(--money-deep)] bg-[var(--money-deep)] text-white' : 'border-black/8 bg-[#fafaf8] text-[#61706c]'}`}>{name}</button>; })}<button type="button" onClick={() => setMonths(months.length === 12 ? [] : Array.from({ length: 12 }, (_, index) => index + 1))} className="rounded-lg px-3 py-2 text-xs font-semibold text-[#397867]">{months.length === 12 ? t('deselectAll') : t('wholeYearAction')}</button></div></form></CardContent></Card>
+    <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('applySameValueToMultipleMonths')}</CardTitle><p className="text-xs text-[#5e6c68]">{t('applySameValueToMultipleMonthsSubtitle')}</p></CardHeader><CardContent><form onSubmit={applyMany} className="space-y-4"><div className="flex flex-wrap items-start gap-3"><select aria-label={t('category')} value={effectiveCategory} onChange={(event) => setCategory(event.target.value)} className="h-10 rounded-lg border border-input bg-white px-3 text-sm">{data.items.map((item) => <option key={item.category} value={item.category}>{item.categoryLabel}</option>)}</select>{padreDiVoce(effectiveCategory) && <span className="self-center rounded-full bg-[#f2f5f3] px-2.5 py-1 text-[11px] text-[#5b6b66]">{t('budgetInsideParent', { parent: padreDiVoce(effectiveCategory) ?? '' })}</span>}<Input required min="0" step="0.01" type="number" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={t('monthlyAmountPlaceholder')} /><Button type="submit" disabled={busy || !months.length} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Save className="size-4" />{busy ? t('savingEllipsis') : t('applyToMonths', { count: months.length || 0 })}</Button></div><div className="flex flex-wrap gap-2">{monthNamesShort.map((name, index) => { const month = index + 1; const selected = months.includes(month); return <button key={name} type="button" onClick={() => setMonths((current) => selected ? current.filter((value) => value !== month) : [...current, month].sort((a, b) => a - b))} className={`rounded-lg border px-3 py-2 text-xs font-medium ${selected ? 'border-[var(--money-deep)] bg-[var(--money-deep)] text-white' : 'border-black/8 bg-[#fafaf8] text-[#5e6c68]'}`}>{name}</button>; })}<button type="button" onClick={() => setMonths(months.length === 12 ? [] : Array.from({ length: 12 }, (_, index) => index + 1))} className="rounded-lg px-3 py-2 text-xs font-semibold text-[#237056]">{months.length === 12 ? t('deselectAll') : t('wholeYearAction')}</button></div></form></CardContent></Card>
     {error && <p className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}
-    <Card className="overflow-hidden border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('annualPlan', { year: data.year })}</CardTitle><p className="text-xs text-[#7b8784]">{t('annualPlanSubtitle')}</p></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1320px] w-full text-xs"><thead className="sticky top-0 bg-[#f4f5f1] text-[#52615d]"><tr><th className="sticky left-0 z-10 bg-[#f4f5f1] px-4 py-3 text-left">{t('category')}</th>{monthNamesShort.map((month) => <th key={month} className="px-2 py-3 text-right">{month}</th>)}<th className="px-4 py-3 text-right">{t('total')}</th></tr></thead><tbody className="divide-y divide-black/5">{gruppi.map(({ padre, voci }) => <Fragment key={padre ?? "(radici)"}>{padre && <tr className="bg-[#f6f8f6]"><td className="sticky left-0 z-10 bg-[#f6f8f6] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#5b6b66]" colSpan={14}>{padre}</td></tr>}{voci.map((item) => <tr key={item.category}><td className="sticky left-0 z-10 bg-white px-4 py-2 font-medium">{padre && <span aria-hidden className="mr-2 inline-block h-3 w-px translate-y-0.5 bg-[#dfe4e1]" />}{item.categoryLabel}</td>{item.months.map((month) => <td key={month.month} className="px-1.5 py-1.5"><input key={`${data.year}-${item.category}-${month.month}`} aria-label={`${item.categoryLabel} ${monthNamesShort[month.month - 1]}`} type="number" min="0" step="0.01" defaultValue={month.amount.toFixed(2)} onBlur={(event) => void applyCell(event, item.category, month.month, month.amount, item.categoryGroup)} className="h-8 w-full rounded-md border border-transparent bg-[#fafaf8] px-2 text-right tabular-nums outline-none hover:border-black/10 focus:border-[#5c8f82]" /></td>)}<td className="px-4 py-2 text-right font-semibold">{formatEuro(item.plannedTotal)}</td></tr>)}</Fragment>)}</tbody><tfoot className="border-t border-black/8 bg-[#f4f5f1] font-semibold"><tr><td className="sticky left-0 bg-[#f4f5f1] px-4 py-3">{t('total')}</td>{data.monthTotals.map((month) => <td key={month.month} className="px-2 py-3 text-right">{formatCompactEuro(month.planned)}</td>)}<td className="px-4 py-3 text-right">{formatEuro(data.monthTotals.reduce((total, month) => total + month.planned, 0))}</td></tr></tfoot></table></div></CardContent></Card>
+    <Card className="overflow-hidden border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('annualPlan', { year: data.year })}</CardTitle><p className="text-xs text-[#5e6c68]">{t('annualPlanSubtitle')}</p></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1320px] w-full text-xs"><thead className="sticky top-0 bg-[#f4f5f1] text-[#52615d]"><tr><th className="sticky left-0 z-10 bg-[#f4f5f1] px-4 py-3 text-left">{t('category')}</th>{monthNamesShort.map((month) => <th key={month} className="px-2 py-3 text-right">{month}</th>)}<th className="px-4 py-3 text-right">{t('total')}</th></tr></thead><tbody className="divide-y divide-black/5">{gruppi.map(({ padre, voci }) => <Fragment key={padre ?? "(radici)"}>{padre && <tr className="bg-[#f6f8f6]"><td className="sticky left-0 z-10 bg-[#f6f8f6] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#5b6b66]" colSpan={14}>{padre}</td></tr>}{voci.map((item) => <tr key={item.category}><td className="sticky left-0 z-10 bg-white px-4 py-2 font-medium">{padre && <span aria-hidden className="mr-2 inline-block h-3 w-px translate-y-0.5 bg-[#dfe4e1]" />}{item.categoryLabel}</td>{item.months.map((month) => <td key={month.month} className="px-1.5 py-1.5"><input key={`${data.year}-${item.category}-${month.month}`} aria-label={`${item.categoryLabel} ${monthNamesShort[month.month - 1]}`} type="number" min="0" step="0.01" defaultValue={month.amount.toFixed(2)} onBlur={(event) => void applyCell(event, item.category, month.month, month.amount, item.categoryGroup)} className="h-8 w-full rounded-md border border-transparent bg-[#fafaf8] px-2 text-right tabular-nums outline-none hover:border-black/10 focus:border-[#5c8f82]" /></td>)}<td className="px-4 py-2 text-right font-semibold">{formatEuro(item.plannedTotal)}</td></tr>)}</Fragment>)}</tbody><tfoot className="border-t border-black/8 bg-[#f4f5f1] font-semibold"><tr><td className="sticky left-0 bg-[#f4f5f1] px-4 py-3">{t('total')}</td>{data.monthTotals.map((month) => <td key={month.month} className="px-2 py-3 text-right">{formatCompactEuro(month.planned)}</td>)}<td className="px-4 py-3 text-right">{formatEuro(data.monthTotals.reduce((total, month) => total + month.planned, 0))}</td></tr></tfoot></table></div></CardContent></Card>
   </div>;
 }
 
@@ -4114,9 +4114,9 @@ function GoalStatusBadge({ status }: { status: GoalData['status'] }) {
   const { t } = useI18n();
   if (!status || status === 'completed') return null;
   const stile = {
-    on_track: { testo: t('goalOnTrack'), classe: 'bg-[#e5f3ed] text-[#2d7b65]' },
-    slightly_behind: { testo: t('goalSlightlyBehind'), classe: 'bg-[#fbf3e2] text-[#9a7b2f]' },
-    behind: { testo: t('goalBehind'), classe: 'bg-[#fce9e3] text-[#bd5e46]' },
+    on_track: { testo: t('goalOnTrack'), classe: 'bg-[#eaf5ef] text-[#237056]' },
+    slightly_behind: { testo: t('goalSlightlyBehind'), classe: 'bg-[#fdf6ec] text-[#7d6119]' },
+    behind: { testo: t('goalBehind'), classe: 'bg-[#fce9e3] text-[#a94f3a]' },
   }[status];
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${stile.classe}`}>{stile.testo}</span>;
 }
@@ -4188,12 +4188,12 @@ function GoalMilestones({ goal, onAdd, onRemove }: {
     {goal.milestones.length > 0 && <ul className="space-y-1.5">{goal.milestones.map((tappa) => (
       <li key={tappa.id} className="flex flex-wrap items-center gap-2 text-xs">
         <span aria-hidden className={`size-2 shrink-0 rounded-full ${tappa.status === 'completed' ? 'bg-[#397867]' : 'bg-[#c9d2f0]'}`} />
-        <span className={`font-medium ${tappa.status === 'completed' ? 'text-[#87918e] line-through' : 'text-[#52615d]'}`}>{tappa.name}</span>
-        <span className="text-[#7b8784]">{formatEuro(tappa.targetAmount)}</span>
+        <span className={`font-medium ${tappa.status === 'completed' ? 'text-[#5e6c68] line-through' : 'text-[#52615d]'}`}>{tappa.name}</span>
+        <span className="text-[#5e6c68]">{formatEuro(tappa.targetAmount)}</span>
         {tappa.status === 'completed'
-          ? <span className="rounded-full bg-[#e5f3ed] px-2 py-0.5 text-[11px] font-medium text-[#2d7b65]">{t('goalMilestoneReached')}</span>
+          ? <span className="rounded-full bg-[#eaf5ef] px-2 py-0.5 text-[11px] font-medium text-[#237056]">{t('goalMilestoneReached')}</span>
           : <GoalStatusBadge status={tappa.status} />}
-        <button type="button" aria-label={`${t('delete')} ${tappa.name}`} onClick={() => void togli(tappa)} className="ml-auto text-[#bd5e46]"><Trash2 className="size-3.5" /></button>
+        <button type="button" aria-label={`${t('delete')} ${tappa.name}`} onClick={() => void togli(tappa)} className="ml-auto text-[#a94f3a]"><Trash2 className="size-3.5" /></button>
       </li>
     ))}</ul>}
     {aggiunta
@@ -4204,7 +4204,7 @@ function GoalMilestones({ goal, onAdd, onRemove }: {
           <Button type="submit" disabled={busy} className="h-9 bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('goalMilestoneAdd')}</Button>
           <Button type="button" variant="outline" className="h-9" onClick={() => { setAggiunta(false); setErrore(''); }}>{t('cancel')}</Button>
         </form>
-      : <button type="button" onClick={() => { setAggiunta(true); setErrore(''); }} className="inline-flex items-center gap-1 text-xs font-medium text-[#397867] hover:underline"><Plus className="size-3.5" />{t('goalMilestoneAdd')}</button>}
+      : <button type="button" onClick={() => { setAggiunta(true); setErrore(''); }} className="inline-flex items-center gap-1 text-xs font-medium text-[#237056] hover:underline"><Plus className="size-3.5" />{t('goalMilestoneAdd')}</button>}
     {errore && <p role="alert" className="mt-2 rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{errore}</p>}
   </div>;
 }
@@ -4215,7 +4215,7 @@ function GoalsBalanceRow({ data }: { data: GoalsData }) {
   if (!data.monthlyNeededTotal) return null;
   const senzaPiano = !data.hasPlannedSavings;
   const ciStanno = data.monthlyGap >= 0;
-  const tono = senzaPiano ? 'text-[#71807c]' : ciStanno ? 'text-[#2d7b65]' : 'text-[#bd5e46]';
+  const tono = senzaPiano ? 'text-[#5e6c68]' : ciStanno ? 'text-[#237056]' : 'text-[#a94f3a]';
   const messaggio = senzaPiano
     ? t('goalsNoPlan', { amount: formatEuro(data.monthlyNeededTotal) })
     : ciStanno
@@ -4270,8 +4270,8 @@ function GoalsView({ data, accounts, onSave, onDelete, onMilestoneAdd, onMilesto
 
   return <div className="space-y-5">
     <div className="grid gap-4 sm:grid-cols-2">
-      <Card className="border-0 bg-[var(--money-deep)] text-white"><CardContent className="p-6"><p className="text-sm text-white/55">{t('allocatedTotal')}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{formatEuro(data.currentTotal)}</p><p className="mt-3 text-xs text-white/48">{t('ofAllGoals', { amount: formatEuro(data.targetTotal) })}</p></CardContent></Card>
-      <Card className="border-black/6 bg-white"><CardContent className="p-6"><p className="text-sm text-[#71807c]">{t('activeGoals')}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{data.active}</p><p className="mt-3 text-xs text-[#87918e]">{t('goalsAchievedOfTotal', { completed: data.completed, total: data.items.length })}</p></CardContent></Card>
+      <Card className="border-0 bg-[var(--money-deep)] text-white"><CardContent className="p-6"><p className="text-sm text-white/70">{t('allocatedTotal')}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{formatEuro(data.currentTotal)}</p><p className="mt-3 text-xs text-white/70">{t('ofAllGoals', { amount: formatEuro(data.targetTotal) })}</p></CardContent></Card>
+      <Card className="border-black/6 bg-white"><CardContent className="p-6"><p className="text-sm text-[#5e6c68]">{t('activeGoals')}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{data.active}</p><p className="mt-3 text-xs text-[#5e6c68]">{t('goalsAchievedOfTotal', { completed: data.completed, total: data.items.length })}</p></CardContent></Card>
     </div>
     <GoalsBalanceRow data={data} />
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -4280,13 +4280,13 @@ function GoalsView({ data, accounts, onSave, onDelete, onMilestoneAdd, onMilesto
         : t('goalListTitle', { visible: visibleGoals.length, total: data.items.length })}</p>
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1 rounded-xl border border-black/6 bg-white p-1 shadow-sm">
-        {([['all', t('goalFilterAll')], ['active', t('goalFilterActive')]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setGoalFilter(value)} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${goalFilter === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#66736f] hover:bg-[#f4f5f1]'}`}>{label}</button>)}
+        {([['all', t('goalFilterAll')], ['active', t('goalFilterActive')]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setGoalFilter(value)} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${goalFilter === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#5e6c68] hover:bg-[#f4f5f1]'}`}>{label}</button>)}
         </div>
         <Button className="h-10 rounded-xl bg-[var(--money-primary)] px-4 text-white hover:bg-[var(--money-primary-hover)]" onClick={() => apriGoal(null)}><Plus className="size-4" />{t('newGoal')}</Button>
       </div>
     </div>
     {deleteError && <p role="alert" className="rounded-lg bg-[#fce9e3] px-3 py-2 text-sm text-[#a94f3a]">{deleteError}</p>}
-    {visibleGoals.length === 0 ? <Card><CardContent className="p-10 text-center text-sm text-[#71807c]">
+    {visibleGoals.length === 0 ? <Card><CardContent className="p-10 text-center text-sm text-[#5e6c68]">
       {/* Senza obiettivi non c'e' nessun filtro da incolpare. Il pulsante per
           crearne uno non si ripete qui: sta gia' in cima alla pagina, e due
           pulsanti con lo stesso nome sono due bersagli per chi naviga da
@@ -4304,11 +4304,11 @@ function GoalsView({ data, accounts, onSave, onDelete, onMilestoneAdd, onMilesto
       } else {
         subtitleParts.push(t('noDeadline'));
       }
-      return <Card key={goal.id} className={`border-black/6 bg-white shadow-sm ${goal.completed ? 'opacity-75' : ''}`}><CardHeader className="flex-row items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><CardTitle className="text-[17px]">{goal.name}</CardTitle><GoalStatusBadge status={goal.status} /></div><p className="mt-1 text-xs text-[#7b8784]">{subtitleParts.join(' · ')}</p></div><div className="flex"><Button size="icon" variant="ghost" aria-label={`${t('edit')} ${goal.name}`} onClick={() => apriGoal(goal)}><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${goal.name}`} onClick={() => void remove(goal)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button></div></CardHeader><CardContent><div className="flex items-end justify-between"><p className="text-2xl font-semibold">{formatEuro(goal.currentAmount)}</p><p className="text-sm font-semibold text-[#397867]">{formatPercentPoints(goal.progress)}</p></div><div className="relative mt-4 h-2 overflow-hidden rounded-full bg-[#eef0ec]"><div className="h-full rounded-full bg-[#6d8ff4]" style={{ width: `${goal.progress}%` }} />{goal.milestones.map((tappa) => <span key={tappa.id} aria-hidden className={`absolute top-0 h-full w-[2px] ${tappa.status === 'completed' ? 'bg-white' : 'bg-[#2c3f7a]/70'}`} style={{ left: `${percentualeTappa(goal, tappa)}%` }} />)}</div><GoalMilestones goal={goal} onAdd={onMilestoneAdd} onRemove={onMilestoneDelete} />{goal.history.length > 1 ? <div className="mt-4"><ChartContainer config={historyConfig} className="h-[88px] w-full"><LineChart accessibilityLayer data={historyData} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}><YAxis hide domain={[(min: number) => Math.min(min, 0), (max: number) => Math.max(max, goal.targetAmount)]} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} hide /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} nameKey="amount" formatter={(value) => formatEuro(Number(value))} />} /><Line type="monotone" dataKey="target" stroke="var(--color-target)" strokeWidth={1.5} strokeDasharray="3 4" dot={false} /><Line type="monotone" dataKey="amount" stroke="var(--color-amount)" strokeWidth={2.4} dot={false} /></LineChart></ChartContainer></div> : <p className="mt-4 text-xs text-[#87918e]">{t('goalHistoryUnavailable')}</p>}{goal.monthlyNeeded !== null && <p className="mt-3 text-sm"><span className="font-semibold text-[var(--money-deep)]">{t('goalMonthlyNeeded', { amount: formatEuro(goal.monthlyNeeded) })}</span> <span className="text-xs text-[#7b8784]">{t('goalWeeklyNeeded', { amount: formatEuro(goal.weeklyNeeded ?? 0) })}</span></p>}
-      {goal.overdue && !goal.completed && <p className="mt-3 text-sm font-medium text-[#bd5e46]">{t('goalOverdue', { amount: formatEuro(goal.remainingAmount) })}</p>}
-      <div className="mt-3 flex justify-between text-xs text-[#7b8784]"><span>{goal.kind === 'contributions' ? `${t('movementsAndAmount', { count: goal.linkedMovements, amount: formatEuro(goal.linkedAmount) })}${goal.targetAccount ? ` · ${t('goalTargetAccountOn', { account: goal.targetAccount })}` : ''}` : t(goal.kind === 'portfolio' ? 'goalKindPortfolio' : 'goalKindNetWorth')}</span><span>{goal.startingAmount > 0 ? `${t('startingAmount')} ${formatEuro(goal.startingAmount)} · ` : ''}{t('goalTarget', { amount: formatEuro(goal.targetAmount) })}</span></div></CardContent></Card>;
+      return <Card key={goal.id} className={`border-black/6 bg-white shadow-sm ${goal.completed ? 'opacity-75' : ''}`}><CardHeader className="flex-row items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><CardTitle className="text-[17px]">{goal.name}</CardTitle><GoalStatusBadge status={goal.status} /></div><p className="mt-1 text-xs text-[#5e6c68]">{subtitleParts.join(' · ')}</p></div><div className="flex"><Button size="icon" variant="ghost" aria-label={`${t('edit')} ${goal.name}`} onClick={() => apriGoal(goal)}><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${goal.name}`} onClick={() => void remove(goal)} className="text-[#a94f3a]"><Trash2 className="size-4" /></Button></div></CardHeader><CardContent><div className="flex items-end justify-between"><p className="text-2xl font-semibold">{formatEuro(goal.currentAmount)}</p><p className="text-sm font-semibold text-[#237056]">{formatPercentPoints(goal.progress)}</p></div><div className="relative mt-4 h-2 overflow-hidden rounded-full bg-[#eef0ec]"><div className="h-full rounded-full bg-[#6d8ff4]" style={{ width: `${goal.progress}%` }} />{goal.milestones.map((tappa) => <span key={tappa.id} aria-hidden className={`absolute top-0 h-full w-[2px] ${tappa.status === 'completed' ? 'bg-white' : 'bg-[#2c3f7a]/70'}`} style={{ left: `${percentualeTappa(goal, tappa)}%` }} />)}</div><GoalMilestones goal={goal} onAdd={onMilestoneAdd} onRemove={onMilestoneDelete} />{goal.history.length > 1 ? <div className="mt-4"><ChartContainer config={historyConfig} className="h-[88px] w-full"><LineChart accessibilityLayer data={historyData} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}><YAxis hide domain={[(min: number) => Math.min(min, 0), (max: number) => Math.max(max, goal.targetAmount)]} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} hide /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} nameKey="amount" formatter={(value) => formatEuro(Number(value))} />} /><Line type="monotone" dataKey="target" stroke="var(--color-target)" strokeWidth={1.5} strokeDasharray="3 4" dot={false} /><Line type="monotone" dataKey="amount" stroke="var(--color-amount)" strokeWidth={2.4} dot={false} /></LineChart></ChartContainer></div> : <p className="mt-4 text-xs text-[#5e6c68]">{t('goalHistoryUnavailable')}</p>}{goal.monthlyNeeded !== null && <p className="mt-3 text-sm"><span className="font-semibold text-[var(--money-deep)]">{t('goalMonthlyNeeded', { amount: formatEuro(goal.monthlyNeeded) })}</span> <span className="text-xs text-[#5e6c68]">{t('goalWeeklyNeeded', { amount: formatEuro(goal.weeklyNeeded ?? 0) })}</span></p>}
+      {goal.overdue && !goal.completed && <p className="mt-3 text-sm font-medium text-[#a94f3a]">{t('goalOverdue', { amount: formatEuro(goal.remainingAmount) })}</p>}
+      <div className="mt-3 flex justify-between text-xs text-[#5e6c68]"><span>{goal.kind === 'contributions' ? `${t('movementsAndAmount', { count: goal.linkedMovements, amount: formatEuro(goal.linkedAmount) })}${goal.targetAccount ? ` · ${t('goalTargetAccountOn', { account: goal.targetAccount })}` : ''}` : t(goal.kind === 'portfolio' ? 'goalKindPortfolio' : 'goalKindNetWorth')}</span><span>{goal.startingAmount > 0 ? `${t('startingAmount')} ${formatEuro(goal.startingAmount)} · ` : ''}{t('goalTarget', { amount: formatEuro(goal.targetAmount) })}</span></div></CardContent></Card>;
     })}</div>}
-    <Dialog open={editing !== undefined} onOpenChange={(open) => { if (!open) setEditing(undefined); }}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>{editing ? t('editGoal') : t('newGoalTitle')}</DialogTitle><DialogDescription>{t('goalDialogDesc')}</DialogDescription></DialogHeader><form key={editing?.id ?? 'new-goal'} onSubmit={save} className="space-y-4"><label htmlFor="goal-name" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldName')}<Input id="goal-name" required name="name" defaultValue={editing?.name ?? ''} /></label><div className="grid grid-cols-2 gap-3"><label htmlFor="goal-start-amount" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('startingAmount')}<Input id="goal-start-amount" required name="starting_amount" type="number" min="0" step="0.01" defaultValue={editing?.startingAmount ?? 0} /></label><label htmlFor="goal-target-amount" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldTarget')}<Input id="goal-target-amount" required name="target_amount" type="number" min="0.01" step="0.01" defaultValue={editing?.targetAmount ?? ''} /></label></div><div className="grid grid-cols-2 gap-3"><label htmlFor="goal-start-date" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('startDate')}<Input id="goal-start-date" name="start_date" type="date" defaultValue={editing?.startDate ?? ''} /></label><label htmlFor="goal-target-date" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDeadline')}<Input id="goal-target-date" name="target_date" type="date" defaultValue={editing?.targetDate ?? ''} /></label></div><label htmlFor="goal-kind" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('goalKindLabel')}<select id="goal-kind" name="kind" value={kindScelto} onChange={(event) => setKindScelto(event.target.value as GoalData['kind'])} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring"><option value="contributions">{t('goalKindContributionsOption')}</option><option value="portfolio">{t('goalKindPortfolioOption')}</option><option value="net_worth">{t('goalKindNetWorthOption')}</option></select></label>{kindScelto === 'contributions' && <label htmlFor="goal-target-account" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('goalTargetAccountLabel')}<select id="goal-target-account" name="target_account" defaultValue={editing?.targetAccount ?? ''} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring"><option value="">{t('goalTargetAccountNone')}</option>{accounts.map((conto) => <option key={conto.id} value={conto.name}>{conto.name}</option>)}</select><span className="block pt-1 font-normal leading-5 text-[#7b8784]">{t('goalTargetAccountHint')}</span></label>}<label htmlFor="goal-completed-date" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('achievedDate')}<Input id="goal-completed-date" name="completed_at" type="date" defaultValue={editing?.completedAt ?? ''} /></label>{error && <p className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => setEditing(undefined)}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('saveGoal')}</Button></DialogFooter></form></DialogContent></Dialog>
+    <Dialog open={editing !== undefined} onOpenChange={(open) => { if (!open) setEditing(undefined); }}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>{editing ? t('editGoal') : t('newGoalTitle')}</DialogTitle><DialogDescription>{t('goalDialogDesc')}</DialogDescription></DialogHeader><form key={editing?.id ?? 'new-goal'} onSubmit={save} className="space-y-4"><label htmlFor="goal-name" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldName')}<Input id="goal-name" required name="name" defaultValue={editing?.name ?? ''} /></label><div className="grid grid-cols-2 gap-3"><label htmlFor="goal-start-amount" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('startingAmount')}<Input id="goal-start-amount" required name="starting_amount" type="number" min="0" step="0.01" defaultValue={editing?.startingAmount ?? 0} /></label><label htmlFor="goal-target-amount" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldTarget')}<Input id="goal-target-amount" required name="target_amount" type="number" min="0.01" step="0.01" defaultValue={editing?.targetAmount ?? ''} /></label></div><div className="grid grid-cols-2 gap-3"><label htmlFor="goal-start-date" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('startDate')}<Input id="goal-start-date" name="start_date" type="date" defaultValue={editing?.startDate ?? ''} /></label><label htmlFor="goal-target-date" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDeadline')}<Input id="goal-target-date" name="target_date" type="date" defaultValue={editing?.targetDate ?? ''} /></label></div><label htmlFor="goal-kind" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('goalKindLabel')}<select id="goal-kind" name="kind" value={kindScelto} onChange={(event) => setKindScelto(event.target.value as GoalData['kind'])} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring"><option value="contributions">{t('goalKindContributionsOption')}</option><option value="portfolio">{t('goalKindPortfolioOption')}</option><option value="net_worth">{t('goalKindNetWorthOption')}</option></select></label>{kindScelto === 'contributions' && <label htmlFor="goal-target-account" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('goalTargetAccountLabel')}<select id="goal-target-account" name="target_account" defaultValue={editing?.targetAccount ?? ''} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring"><option value="">{t('goalTargetAccountNone')}</option>{accounts.map((conto) => <option key={conto.id} value={conto.name}>{conto.name}</option>)}</select><span className="block pt-1 font-normal leading-5 text-[#5e6c68]">{t('goalTargetAccountHint')}</span></label>}<label htmlFor="goal-completed-date" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('achievedDate')}<Input id="goal-completed-date" name="completed_at" type="date" defaultValue={editing?.completedAt ?? ''} /></label>{error && <p className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => setEditing(undefined)}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('saveGoal')}</Button></DialogFooter></form></DialogContent></Dialog>
   </div>;
 }
 
@@ -4400,7 +4400,7 @@ function InstrumentAnalysisView({ apiUrl, positions, onGoToLedger }: { apiUrl: s
   });
   const chartConfig = {
     price: { label: t('price'), color: '#6d8ff4' },
-    buy: { label: t('buy'), color: '#2d7b65' },
+    buy: { label: t('buy'), color: '#237056' },
     sell: { label: t('sell'), color: '#bd5e46' },
   } satisfies ChartConfig;
 
@@ -4409,7 +4409,7 @@ function InstrumentAnalysisView({ apiUrl, positions, onGoToLedger }: { apiUrl: s
       <Card className="border-black/6 bg-white shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-[17px]">{t('gainByInstrument')}</CardTitle>
-          <p className="mt-1 text-xs text-[#7b8784]">{t('gainByInstrumentSubtitle')}</p>
+          <p className="mt-1 text-xs text-[#5e6c68]">{t('gainByInstrumentSubtitle')}</p>
         </CardHeader>
         <CardContent className="space-y-1.5">
           {ranked.map((position) => (
@@ -4435,7 +4435,7 @@ function InstrumentAnalysisView({ apiUrl, positions, onGoToLedger }: { apiUrl: s
                   }}
                 />
               </span>
-              <span className={`w-28 shrink-0 text-right text-sm font-semibold tabular-nums ${position.totalGain >= 0 ? 'text-[#2d7b65]' : 'text-[#bd5e46]'}`}>
+              <span className={`w-28 shrink-0 text-right text-sm font-semibold tabular-nums ${position.totalGain >= 0 ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>
                 {formatEuro(position.totalGain)}
               </span>
             </button>
@@ -4446,13 +4446,13 @@ function InstrumentAnalysisView({ apiUrl, positions, onGoToLedger }: { apiUrl: s
       <Card className="border-black/6 bg-white shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-[17px]">{selected ?? t('instrument')}</CardTitle>
-          <p className="mt-1 text-xs text-[#7b8784]">
+          <p className="mt-1 text-xs text-[#5e6c68]">
             {history?.symbol ? t('instrumentHistorySubtitle', { symbol: history.symbol }) : t('instrumentHistoryNoTicker')}
           </p>
         </CardHeader>
         <CardContent>
-          {loading && <div className="flex h-[300px] items-center justify-center text-sm text-[#87918e]">{t('loading')}</div>}
-          {!loading && chartData.length === 0 && <div className="flex h-[300px] items-center justify-center text-sm text-[#87918e]">{t('instrumentHistoryEmpty')}</div>}
+          {loading && <div className="flex h-[300px] items-center justify-center text-sm text-[#5e6c68]">{t('loading')}</div>}
+          {!loading && chartData.length === 0 && <div className="flex h-[300px] items-center justify-center text-sm text-[#5e6c68]">{t('instrumentHistoryEmpty')}</div>}
           {!loading && chartData.length > 0 && (
             <ChartContainer config={chartConfig} className="h-[300px] w-full">
               <ComposedChart accessibilityLayer data={chartData}>
@@ -4462,7 +4462,7 @@ function InstrumentAnalysisView({ apiUrl, positions, onGoToLedger }: { apiUrl: s
                 <ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} formatter={(value) => formatEuro(Number(value))} />} />
                 <ChartLegend content={<ChartLegendContent />} />
                 <Line type="monotone" dataKey="price" stroke="var(--color-price)" strokeWidth={2} dot={false} />
-                <Line dataKey="buy" stroke="none" dot={{ r: 4, fill: '#2d7b65' }} legendType="circle" />
+                <Line dataKey="buy" stroke="none" dot={{ r: 4, fill: '#237056' }} legendType="circle" />
                 <Line dataKey="sell" stroke="none" dot={{ r: 4, fill: '#bd5e46' }} legendType="circle" />
               </ComposedChart>
             </ChartContainer>
@@ -4497,8 +4497,8 @@ function TickerResults({ items, onPick }: { items: TickerResult[]; onPick: (symb
   if (items.length === 0) return null;
   return <div className="mt-2 divide-y divide-black/5 rounded-lg border border-black/8 bg-white">
     {items.map((item) => <button key={item.symbol} type="button" onClick={() => onPick(item.symbol)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs hover:bg-[#f4f5f1]">
-      <span><span className="font-semibold">{item.symbol}</span> <span className="text-[#71807c]">{item.name}</span></span>
-      <span className="shrink-0 text-[#87918e]">{item.exchange} · {item.type}</span>
+      <span><span className="font-semibold">{item.symbol}</span> <span className="text-[#5e6c68]">{item.name}</span></span>
+      <span className="shrink-0 text-[#5e6c68]">{item.exchange} · {item.type}</span>
     </button>)}
   </div>;
 }
@@ -4604,13 +4604,13 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
     <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <CardTitle className="text-[17px]">{t('instrumentTickers')}</CardTitle>
-        <p className="mt-1 text-xs text-[#7b8784]">{t('instrumentTickersSubtitle', { configured, total: rows.length })}</p>
+        <p className="mt-1 text-xs text-[#5e6c68]">{t('instrumentTickersSubtitle', { configured, total: rows.length })}</p>
       </div>
       <div className="flex flex-col items-end gap-1">
         <Button type="button" variant="outline" disabled={busy === 'refresh'} onClick={() => void refreshAll()}>
           <RefreshCw className={`size-4 ${busy === 'refresh' ? 'animate-spin' : ''}`} />{t('refreshQuotes')}
         </Button>
-        {summary && <span role={refreshFailed ? 'alert' : undefined} className={`text-xs ${refreshFailed ? 'text-[#bd5e46]' : 'text-[#397867]'}`}>{summary}</span>}
+        {summary && <span role={refreshFailed ? 'alert' : undefined} className={`text-xs ${refreshFailed ? 'text-[#a94f3a]' : 'text-[#237056]'}`}>{summary}</span>}
       </div>
     </CardHeader>
     <CardContent className="p-0">
@@ -4620,7 +4620,7 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
           <Input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder={t('instrumentNamePlaceholder')} className="h-9 w-[240px] bg-white" />
           <Input value={newSymbol} onChange={(event) => setNewSymbol(event.target.value)} placeholder={t('tickerPlaceholder')} className="h-9 w-[150px] bg-white" />
           <Button type="button" size="sm" disabled={creating || !newName.trim()} onClick={() => void createInstrument()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('add')}</Button>
-          {createError && <span className="text-xs text-[#bd5e46]">{createError}</span>}
+          {createError && <span className="text-xs text-[#a94f3a]">{createError}</span>}
         </div>
       </div>
       <div className="overflow-x-auto">
@@ -4641,11 +4641,11 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
               const check = checks[row.id];
               return <tr key={row.id}>
                 <td className="px-5 py-2.5 font-medium">{row.name}</td>
-                <td className="px-3 py-2.5 text-xs text-[#71807c]">{row.currency}</td>
+                <td className="px-3 py-2.5 text-xs text-[#5e6c68]">{row.currency}</td>
                 <td className="px-3 py-2.5">
                   <Input value={value} placeholder={t('tickerPlaceholder')} onChange={(event) => setDrafts((d) => ({ ...d, [row.id]: event.target.value }))} className="h-9 w-[150px] bg-[#fafaf8]" />
                 </td>
-                <td className={`px-3 py-2.5 text-xs ${check ? (check.ok ? 'text-[#2d7b65]' : 'text-[#bd5e46]') : 'text-[#87918e]'}`}>{check ? check.text : '—'}</td>
+                <td className={`px-3 py-2.5 text-xs ${check ? (check.ok ? 'text-[#237056]' : 'text-[#a94f3a]') : 'text-[#5e6c68]'}`}>{check ? check.text : '—'}</td>
                 <td className="px-5 py-2.5">
                   <div className="flex justify-end gap-1">
                     <Button type="button" size="sm" variant="ghost" onClick={() => { setSearchFor(searchFor === row.id ? null : row.id); setSearchText(row.name); setResults([]); }}><Search className="size-4" />{t('tickerSearch')}</Button>
@@ -4663,7 +4663,7 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
                   <Button type="button" size="sm" variant="outline" disabled={searching} onClick={() => void runSearch(searchText)}>{searching ? t('searchingEllipsis') : t('tickerSearch')}</Button>
                 </div>
                 <TickerResults items={results} onPick={(symbol) => pick(row.id, symbol)} />
-                {!searching && results.length === 0 && <p className="mt-2 text-xs text-[#87918e]">{t('tickerSearchHint')}</p>}
+                {!searching && results.length === 0 && <p className="mt-2 text-xs text-[#5e6c68]">{t('tickerSearchHint')}</p>}
               </td></tr>];
             })}
           </tbody>
@@ -4697,8 +4697,8 @@ function CreditLineCard({ item, onEdit, onEditMovement, onDelete }: { item: Cred
     <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
       <div>
         <CardTitle className="text-[17px]">{item.name}</CardTitle>
-        <p className="mt-1 text-xs text-[#7b8784]">{item.creditLimit === null ? t('debtNoCreditLimit') : t('debtCreditLineLabel')}</p>
-        {item.unclassified.count > 0 && <p className="mt-1 text-xs font-medium text-[#a05f4e]">{t('debtUnclassifiedSummary', { count: item.unclassified.count, amount: formatEuro(item.unclassified.amount) })}</p>}
+        <p className="mt-1 text-xs text-[#5e6c68]">{item.creditLimit === null ? t('debtNoCreditLimit') : t('debtCreditLineLabel')}</p>
+        {item.unclassified.count > 0 && <p className="mt-1 text-xs font-medium text-[#a94f3a]">{t('debtUnclassifiedSummary', { count: item.unclassified.count, amount: formatEuro(item.unclassified.amount) })}</p>}
       </div>
       {/* Stessa azione della scheda del prestito, stesso nome: era "Modifica"
           qui e "Configura debito" li', per lo stesso modulo. */}
@@ -4708,7 +4708,7 @@ function CreditLineCard({ item, onEdit, onEditMovement, onDelete }: { item: Cred
       <div className="divide-y divide-black/5">
         {voci.map(([etichetta, valore]) => (
           <div key={etichetta} className="flex items-baseline justify-between gap-3 py-2">
-            <span className="text-xs text-[#7b8784]">{etichetta}</span>
+            <span className="text-xs text-[#5e6c68]">{etichetta}</span>
             <span className="text-sm font-semibold tabular-nums">{valore}</span>
           </div>
         ))}
@@ -4732,7 +4732,7 @@ function CreditLineCard({ item, onEdit, onEditMovement, onDelete }: { item: Cred
                   <Line dataKey="exposure" stroke="var(--color-exposure)" strokeWidth={2.5} dot={item.trend.length === 1} />
                 </LineChart>
               </ChartContainer>
-            : <p className="text-sm text-[#71807c]">{t('noTransactions')}</p>}
+            : <p className="text-sm text-[#5e6c68]">{t('noTransactions')}</p>}
         </div>
         <div>
           <p className="mb-3 text-sm font-semibold">{t('debtMovements')}</p>
@@ -4752,12 +4752,12 @@ function CreditLineCard({ item, onEdit, onEditMovement, onDelete }: { item: Cred
                   {/* La stessa modifica che ha il registro di un prestito: qui
                       il movimento "Da classificare" si vedeva e non si poteva
                       toccare, quindi la riga arancione restava arancione. */}
-                  <td className="px-3 py-2">{movimento.description}{dettaglio && !dettaglio.classified && <span className="ml-2 text-[11px] font-medium text-[#a05f4e]">{t('debtUnclassified')}</span>}<Button type="button" size="sm" variant="ghost" className="mt-1 h-7 px-2" onClick={() => onEditMovement(movimento.id)}><Pencil className="size-3.5" />{t('edit')}</Button></td>
-                  <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${effetto >= 0 ? 'text-[#bd5e46]' : 'text-[#2d7b65]'}`}>{effetto >= 0 ? '+' : '−'}{formatEuro(Math.abs(effetto))}</td>
+                  <td className="px-3 py-2">{movimento.description}{dettaglio && !dettaglio.classified && <span className="ml-2 text-[11px] font-medium text-[#a94f3a]">{t('debtUnclassified')}</span>}<Button type="button" size="sm" variant="ghost" className="mt-1 h-7 px-2" onClick={() => onEditMovement(movimento.id)}><Pencil className="size-3.5" />{t('edit')}</Button></td>
+                  <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${effetto >= 0 ? 'text-[#a94f3a]' : 'text-[#237056]'}`}>{effetto >= 0 ? '+' : '−'}{formatEuro(Math.abs(effetto))}</td>
                 </tr>;
               })}</tbody>
             </table>
-          </div> : <p className="text-sm text-[#71807c]">{t('noTransactions')}</p>}
+          </div> : <p className="text-sm text-[#5e6c68]">{t('noTransactions')}</p>}
         </div>
       </div>}
     </CardContent>
@@ -4852,7 +4852,7 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
     } catch { setError(t('debtSaveFailed')); } finally { setBusy(false); }
   }
 
-  if (!data) return <Card><CardContent className="p-10 text-center text-sm text-[#71807c]">{error || t('updating')}</CardContent></Card>;
+  if (!data) return <Card><CardContent className="p-10 text-center text-sm text-[#5e6c68]">{error || t('updating')}</CardContent></Card>;
   const metriche = [
     [t('debtTotal'), formatEuro(data.summary.totalDebt)],
     [t('debtAverageRate'), data.summary.weightedRate == null ? '—' : `${formatPercentNumber(data.summary.weightedRate)}%`],
@@ -4867,50 +4867,50 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
   const prestiti = data.items.filter((item): item is TermLoanItem => item.kind === 'term_loan');
 
   return <div className="space-y-5">
-    <div className="flex flex-wrap items-center justify-between gap-3"><p role="status" className="text-sm text-[#71807c]">{t('debtAsOf', { date: formatDate(`${data.asOf}T12:00:00`) })}</p><Button onClick={() => onNewAccount()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('newLiability')}</Button></div>
-    {error && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-3 text-sm text-[#bd5e46]">{error}</p>}
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{metriche.map(([label, value], index) => <Card key={label} className={index === 0 ? 'border-0 bg-[var(--money-deep)] text-white' : 'border-black/6 bg-white'}><CardContent className="p-5"><p className={`text-xs ${index === 0 ? 'text-white/60' : 'text-[#71807c]'}`}>{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p></CardContent></Card>)}</div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><p role="status" className="text-sm text-[#5e6c68]">{t('debtAsOf', { date: formatDate(`${data.asOf}T12:00:00`) })}</p><Button onClick={() => onNewAccount()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('newLiability')}</Button></div>
+    {error && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-3 text-sm text-[#a94f3a]">{error}</p>}
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{metriche.map(([label, value], index) => <Card key={label} className={index === 0 ? 'border-0 bg-[var(--money-deep)] text-white' : 'border-black/6 bg-white'}><CardContent className="p-5"><p className={`text-xs ${index === 0 ? 'text-white/70' : 'text-[#5e6c68]'}`}>{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p></CardContent></Card>)}</div>
     {/* L'avviso di pagina dice anche cosa farne: le schede sotto ripetono il
         numero del singolo debito, e senza questa riga l'arancione si vedeva
         senza sapere dove si spegne. */}
-    {data.summary.unclassifiedCount > 0 && <div role="status" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-3 text-sm text-[#a05f4e]">{t('debtUnclassifiedWhere', { count: data.summary.unclassifiedCount, amount: formatEuro(data.summary.unclassifiedAmount) })}</div>}
-    {!data.items.length && <Card><CardContent className="p-10 text-center"><CreditCard className="mx-auto mb-3 size-8 text-[#87918e]" /><p className="text-sm text-[#71807c]">{t('debtNoAccounts')}</p><Button className="mt-4" onClick={() => onNewAccount()}>{t('newLiability')}</Button></CardContent></Card>}
+    {data.summary.unclassifiedCount > 0 && <div role="status" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-3 text-sm text-[#a94f3a]">{t('debtUnclassifiedWhere', { count: data.summary.unclassifiedCount, amount: formatEuro(data.summary.unclassifiedAmount) })}</div>}
+    {!data.items.length && <Card><CardContent className="p-10 text-center"><CreditCard className="mx-auto mb-3 size-8 text-[#5e6c68]" /><p className="text-sm text-[#5e6c68]">{t('debtNoAccounts')}</p><Button className="mt-4" onClick={() => onNewAccount()}>{t('newLiability')}</Button></CardContent></Card>}
     {linee.length > 0 && <>
-      <p className="text-xs font-semibold uppercase tracking-wide text-[#87918e]">{t('debtCreditLines')}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-[#5e6c68]">{t('debtCreditLines')}</p>
       <div className="grid gap-4 xl:grid-cols-2">{linee.map((linea) => <CreditLineCard key={linea.accountId} item={linea} onEdit={() => edit(linea)} onEditMovement={(id) => void editMovement(id)} onDelete={() => requestDelete(linea.accountId, linea.name, linea.name)} />)}</div>
     </>}
-    {prestiti.length > 0 && linee.length > 0 && <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[#87918e]">{t('debtTermLoans')}</p>}
+    {prestiti.length > 0 && linee.length > 0 && <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[#5e6c68]">{t('debtTermLoans')}</p>}
     {prestiti.map((item) => <Card key={item.accountId} className="border-black/6 bg-white shadow-sm">
-      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3"><div><CardTitle className="text-[17px]">{item.name}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{item.profile ? `${item.profile.annualRate.toLocaleString(locale)}% · ${t(`debtType_${item.profile.debtType}` as TranslationKey)} · ${t(`debtStatus_${item.profile.status}` as TranslationKey)}` : t('debtScheduleEmpty')}</p>{item.unclassified.count > 0 && <p className="mt-1 text-xs font-medium text-[#a05f4e]">{t('debtUnclassifiedSummary', { count: item.unclassified.count, amount: formatEuro(item.unclassified.amount) })}</p>}</div><div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => { const due = item.nextPayment ? Math.abs((new Date(`${item.nextPayment.dueOn}T12:00:00`).getTime() - Date.now()) / 86400000) : Infinity; onPayment(item.name, due <= 10 && item.nextPayment ? { principal: item.nextPayment.principal, interest: item.nextPayment.interest } : undefined); }}><ArrowRightLeft className="size-4" />{t('registerDebtPayment')}</Button><Button size="sm" variant="outline" onClick={() => edit(item)}><Pencil className="size-4" />{t('configureDebt')}</Button><Button size="sm" variant="ghost" onClick={() => { const account = accounts.find((row) => row.id === item.accountId); if (account) onEditAccount(account); }}>{t('fieldAccount')}</Button><Button variant="ghost" size="icon" aria-label={`${t('delete')} ${item.name}`} onClick={() => requestDelete(item.accountId, item.name, item.name)}><Trash2 className="size-4" /></Button></div></CardHeader>
+      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3"><div><CardTitle className="text-[17px]">{item.name}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{item.profile ? `${item.profile.annualRate.toLocaleString(locale)}% · ${t(`debtType_${item.profile.debtType}` as TranslationKey)} · ${t(`debtStatus_${item.profile.status}` as TranslationKey)}` : t('debtScheduleEmpty')}</p>{item.unclassified.count > 0 && <p className="mt-1 text-xs font-medium text-[#a94f3a]">{t('debtUnclassifiedSummary', { count: item.unclassified.count, amount: formatEuro(item.unclassified.amount) })}</p>}</div><div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => { const due = item.nextPayment ? Math.abs((new Date(`${item.nextPayment.dueOn}T12:00:00`).getTime() - Date.now()) / 86400000) : Infinity; onPayment(item.name, due <= 10 && item.nextPayment ? { principal: item.nextPayment.principal, interest: item.nextPayment.interest } : undefined); }}><ArrowRightLeft className="size-4" />{t('registerDebtPayment')}</Button><Button size="sm" variant="outline" onClick={() => edit(item)}><Pencil className="size-4" />{t('configureDebt')}</Button><Button size="sm" variant="ghost" onClick={() => { const account = accounts.find((row) => row.id === item.accountId); if (account) onEditAccount(account); }}>{t('fieldAccount')}</Button><Button variant="ghost" size="icon" aria-label={`${t('delete')} ${item.name}`} onClick={() => requestDelete(item.accountId, item.name, item.name)}><Trash2 className="size-4" /></Button></div></CardHeader>
       <CardContent className="space-y-4">
       <div className="grid gap-3 lg:grid-cols-3">
         <div className="rounded-xl border border-[#bd5e46]/15 bg-[#fff9f6] p-4"><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#9b513e]">{t('debtPlanSection')}</p><div className="space-y-2">{[
           [t('plannedPrincipal'), item.profile ? formatEuro(item.profile.plannedDrawdowns.length ? item.profile.plannedDrawdowns.reduce((sum, row) => sum + row.amount, 0) : item.profile.originalPrincipal) : '—'],
           [t('theoreticalRemaining'), item.theoreticalRemaining == null ? '—' : formatEuro(item.theoreticalRemaining)],
           [t('interestDueToDate'), item.comparison ? formatEuro(item.comparison.plannedInterest) : '—'],
-        ].map(([label, value]) => <div key={label} className="flex items-baseline justify-between gap-3"><span className="text-xs text-[#71807c]">{label}</span><span className="text-sm font-semibold tabular-nums">{value}</span></div>)}</div>{!item.profile && <p className="mt-3 text-xs text-[#9b513e]">{t('unconfiguredInterest')}</p>}</div>
-        <div className="rounded-xl border border-[#2d7b65]/15 bg-[#f3faf7] p-4"><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#2d7b65]">{t('debtAccruedSection')}</p><div className="space-y-2">{[
+        ].map(([label, value]) => <div key={label} className="flex items-baseline justify-between gap-3"><span className="text-xs text-[#5e6c68]">{label}</span><span className="text-sm font-semibold tabular-nums">{value}</span></div>)}</div>{!item.profile && <p className="mt-3 text-xs text-[#9b513e]">{t('unconfiguredInterest')}</p>}</div>
+        <div className="rounded-xl border border-[#2d7b65]/15 bg-[#f3faf7] p-4"><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#237056]">{t('debtAccruedSection')}</p><div className="space-y-2">{[
           [t('drawnPrincipal'), formatEuro(item.drawnPrincipal)],
           [t('chargedInterest'), item.interestCharged == null ? '—' : formatEuro(item.interestCharged)],
-        ].map(([label, value]) => <div key={label} className="flex items-baseline justify-between gap-3"><span className="text-xs text-[#71807c]">{label}</span><span className="text-sm font-semibold tabular-nums">{value}</span></div>)}</div><p className="mt-3 text-[11px] leading-4 text-[#71807c]">{item.profile ? t('chargedInterestHint') : t('unconfiguredInterest')}</p></div>
+        ].map(([label, value]) => <div key={label} className="flex items-baseline justify-between gap-3"><span className="text-xs text-[#5e6c68]">{label}</span><span className="text-sm font-semibold tabular-nums">{value}</span></div>)}</div><p className="mt-3 text-[11px] leading-4 text-[#5e6c68]">{item.profile ? t('chargedInterestHint') : t('unconfiguredInterest')}</p></div>
         <div className="rounded-xl border border-black/8 bg-[#f7f8f5] p-4"><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#52615d]">{t('debtPaymentsSection')}</p><div className="space-y-2">{[
           [t('actualRepaid'), formatEuro(item.principalRepaid)],
           [t('interestPaid'), formatEuro(item.interestPaid)],
-        ].map(([label, value]) => <div key={label} className="flex items-baseline justify-between gap-3"><span className="text-xs text-[#71807c]">{label}</span><span className="text-sm font-semibold tabular-nums">{value}</span></div>)}</div></div>
+        ].map(([label, value]) => <div key={label} className="flex items-baseline justify-between gap-3"><span className="text-xs text-[#5e6c68]">{label}</span><span className="text-sm font-semibold tabular-nums">{value}</span></div>)}</div></div>
       </div>
-      <div className="rounded-xl bg-[var(--money-deep)] p-4 text-white"><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-white/60">{t('remainingToPay')}</p><div className="grid gap-3 sm:grid-cols-3">{[
+      <div className="rounded-xl bg-[var(--money-deep)] p-4 text-white"><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-white/70">{t('remainingToPay')}</p><div className="grid gap-3 sm:grid-cols-3">{[
         [t('remainingDebt'), formatEuro(item.outstanding)],
         [t('interestOutstanding'), item.interestOutstanding == null ? '—' : formatEuro(item.interestOutstanding)],
         [t('actualTotalDebt'), item.actualTotalDebt == null ? '—' : formatEuro(item.actualTotalDebt)],
-      ].map(([label, value], index) => <div key={label} className={index === 2 ? 'sm:border-l sm:border-white/15 sm:pl-3' : ''}><p className="text-[11px] text-white/60">{label}</p><p className={`mt-1 tabular-nums ${index === 2 ? 'text-xl font-semibold' : 'text-sm font-medium'}`}>{value}</p></div>)}</div></div>
-      {Math.abs(item.reconciliationDifference) >= 0.01 && <p role="status" className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{t('debtReconciliation', { amount: formatEuro(item.reconciliationDifference) })}</p>}
+      ].map(([label, value], index) => <div key={label} className={index === 2 ? 'sm:border-l sm:border-white/15 sm:pl-3' : ''}><p className="text-[11px] text-white/70">{label}</p><p className={`mt-1 tabular-nums ${index === 2 ? 'text-xl font-semibold' : 'text-sm font-medium'}`}>{value}</p></div>)}</div></div>
+      {Math.abs(item.reconciliationDifference) >= 0.01 && <p role="status" className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{t('debtReconciliation', { amount: formatEuro(item.reconciliationDifference) })}</p>}
       {item.nextPayment && <p className="text-xs text-[#52615d]"><span className="font-medium">{t('theoreticalNextPayment')}:</span> {formatEuro(item.nextPayment.payment)} · {formatDate(`${item.nextPayment.dueOn}T12:00:00`)}</p>}
       <Button variant="outline" size="sm" aria-expanded={expanded === item.accountId} onClick={() => setExpanded(expanded === item.accountId ? null : item.accountId)}>{expanded === item.accountId ? t('close') : t('details')}</Button>
       {expanded === item.accountId && <div className="grid gap-5 border-t border-black/6 pt-4 xl:grid-cols-2">
         <div><p className="mb-3 text-sm font-semibold">{t('debtPlanVsActual')}</p>{item.schedule.length ? <>
-          {item.comparison && <p className={`mb-4 rounded-lg px-3 py-2 text-xs font-medium ${item.difference != null && item.difference <= 0 ? 'bg-[#e5f3ed] text-[#2d7b65]' : 'bg-[#fce9e3] text-[#bd5e46]'}`}>{t((item.difference ?? 0) <= 0 ? 'debtAheadOfPlan' : 'debtBehindPlan', { amount: formatEuro(Math.abs(item.difference ?? 0)) })}</p>}
-          <p className="mb-2 text-xs font-semibold text-[#52615d]">{t('debtBalanceChart')}</p><ChartContainer config={{ plannedDebt: { label: t('theoreticalRemaining'), color: '#bd5e46' }, actualDebt: { label: t('actualTotalDebt'), color: '#2d7b65' } }} className="h-[200px] w-full"><LineChart accessibilityLayer data={item.trend}><CartesianGrid vertical={false} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} minTickGap={35} /><YAxis tickLine={false} axisLine={false} width={70} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} formatter={(value) => formatEuro(Number(value))} />} /><ChartLegend content={<ChartLegendContent />} /><Line dataKey="plannedDebt" stroke="var(--color-plannedDebt)" strokeWidth={2.5} dot={false} /><Line dataKey="actualDebt" stroke="var(--color-actualDebt)" strokeWidth={2.5} dot={false} connectNulls={false} /></LineChart></ChartContainer>
-          <p className="mb-2 mt-5 text-xs font-semibold text-[#52615d]">{t('debtCapitalFlowsChart')}</p><ChartContainer config={{ actualDrawn: { label: t('drawnPrincipal'), color: '#457b9d' }, actualRepaid: { label: t('actualRepaid'), color: '#2d7b65' } }} className="h-[200px] w-full"><LineChart accessibilityLayer data={item.trend}><CartesianGrid vertical={false} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} minTickGap={35} /><YAxis tickLine={false} axisLine={false} width={70} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} formatter={(value) => formatEuro(Number(value))} />} /><ChartLegend content={<ChartLegendContent />} /><Line dataKey="actualDrawn" stroke="var(--color-actualDrawn)" strokeWidth={2.5} dot={false} connectNulls={false} /><Line dataKey="actualRepaid" stroke="var(--color-actualRepaid)" strokeWidth={2.5} dot={false} connectNulls={false} /></LineChart></ChartContainer>
+          {item.comparison && <p className={`mb-4 rounded-lg px-3 py-2 text-xs font-medium ${item.difference != null && item.difference <= 0 ? 'bg-[#eaf5ef] text-[#237056]' : 'bg-[#fce9e3] text-[#a94f3a]'}`}>{t((item.difference ?? 0) <= 0 ? 'debtAheadOfPlan' : 'debtBehindPlan', { amount: formatEuro(Math.abs(item.difference ?? 0)) })}</p>}
+          <p className="mb-2 text-xs font-semibold text-[#52615d]">{t('debtBalanceChart')}</p><ChartContainer config={{ plannedDebt: { label: t('theoreticalRemaining'), color: '#bd5e46' }, actualDebt: { label: t('actualTotalDebt'), color: '#237056' } }} className="h-[200px] w-full"><LineChart accessibilityLayer data={item.trend}><CartesianGrid vertical={false} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} minTickGap={35} /><YAxis tickLine={false} axisLine={false} width={70} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} formatter={(value) => formatEuro(Number(value))} />} /><ChartLegend content={<ChartLegendContent />} /><Line dataKey="plannedDebt" stroke="var(--color-plannedDebt)" strokeWidth={2.5} dot={false} /><Line dataKey="actualDebt" stroke="var(--color-actualDebt)" strokeWidth={2.5} dot={false} connectNulls={false} /></LineChart></ChartContainer>
+          <p className="mb-2 mt-5 text-xs font-semibold text-[#52615d]">{t('debtCapitalFlowsChart')}</p><ChartContainer config={{ actualDrawn: { label: t('drawnPrincipal'), color: '#457b9d' }, actualRepaid: { label: t('actualRepaid'), color: '#237056' } }} className="h-[200px] w-full"><LineChart accessibilityLayer data={item.trend}><CartesianGrid vertical={false} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} minTickGap={35} /><YAxis tickLine={false} axisLine={false} width={70} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} formatter={(value) => formatEuro(Number(value))} />} /><ChartLegend content={<ChartLegendContent />} /><Line dataKey="actualDrawn" stroke="var(--color-actualDrawn)" strokeWidth={2.5} dot={false} connectNulls={false} /><Line dataKey="actualRepaid" stroke="var(--color-actualRepaid)" strokeWidth={2.5} dot={false} connectNulls={false} /></LineChart></ChartContainer>
           <p className="mb-2 mt-5 text-xs font-semibold text-[#52615d]">{t('debtInterestChart')}</p><ChartContainer config={{ plannedInterest: { label: t('plannedInterestLine'), color: '#d49a3a' }, actualInterestCharged: { label: t('actualChargedInterestLine'), color: '#bd5e46' }, actualInterestPaid: { label: t('actualInterestLine'), color: '#6473b8' } }} className="h-[200px] w-full"><LineChart accessibilityLayer data={item.trend}><CartesianGrid vertical={false} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} minTickGap={35} /><YAxis tickLine={false} axisLine={false} width={70} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} formatter={(value) => formatEuro(Number(value))} />} /><ChartLegend content={<ChartLegendContent />} /><Line dataKey="plannedInterest" stroke="var(--color-plannedInterest)" strokeWidth={2} strokeDasharray="5 4" dot={false} /><Line dataKey="actualInterestCharged" stroke="var(--color-actualInterestCharged)" strokeWidth={2.5} dot={false} connectNulls={false} /><Line dataKey="actualInterestPaid" stroke="var(--color-actualInterestPaid)" strokeWidth={2.5} dot={false} connectNulls={false} /></LineChart></ChartContainer>
           {/* Le rate passate e quelle future erano righe identiche: con un
               mutuo lungo sono centinaia di righe tutte uguali, e non si sa da
@@ -4925,32 +4925,32 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
           <div className="max-h-72 overflow-auto rounded-lg border border-black/8"><table className="w-full text-xs"><thead className="sticky top-0 bg-[#f4f5f1]"><tr><th className="px-3 py-2 text-left">#</th><th className="px-3 py-2 text-left">{t('date')}</th><th className="px-3 py-2 text-right">{t('amount')}</th><th className="px-3 py-2 text-right">{t('interestShare')}</th><th className="px-3 py-2 text-right">{t('theoreticalRemaining')}</th></tr></thead><tbody>{item.schedule.filter((row) => !soloFuture || row.dueOn >= data.asOf).map((row) => {
             const scaduta = row.dueOn < data.asOf;
             const prossima = item.nextPayment?.number === row.number;
-            return <tr key={row.number} className={`border-t border-black/5 ${prossima ? 'bg-[#fff9f6] font-medium' : scaduta ? 'text-[#a0a8a5]' : ''}`}><td className="whitespace-nowrap px-3 py-2">{row.number}{prossima && <span className="ml-2 rounded-full bg-[#fce9e3] px-1.5 py-0.5 text-[10px] font-medium text-[#a05f4e]">{t('debtInstallmentNext')}</span>}</td><td className="px-3 py-2">{formatDate(`${row.dueOn}T12:00:00`)}</td><td className="px-3 py-2 text-right">{formatEuro(row.payment)}</td><td className="px-3 py-2 text-right">{formatEuro(row.interest)}</td><td className="px-3 py-2 text-right">{formatEuro(row.remaining)}</td></tr>;
+            return <tr key={row.number} className={`border-t border-black/5 ${prossima ? 'bg-[#fff9f6] font-medium' : scaduta ? 'text-[#5e6c68]' : ''}`}><td className="whitespace-nowrap px-3 py-2">{row.number}{prossima && <span className="ml-2 rounded-full bg-[#fce9e3] px-1.5 py-0.5 text-[10px] font-medium text-[#a94f3a]">{t('debtInstallmentNext')}</span>}</td><td className="px-3 py-2">{formatDate(`${row.dueOn}T12:00:00`)}</td><td className="px-3 py-2 text-right">{formatEuro(row.payment)}</td><td className="px-3 py-2 text-right">{formatEuro(row.interest)}</td><td className="px-3 py-2 text-right">{formatEuro(row.remaining)}</td></tr>;
           })}</tbody>{/* Il totale degli interessi del piano: le celle sopra sono l'interesse della
               singola rata, e la somma non si vedeva da nessuna parte. Resta in fondo
               alla tabella mentre si scorre, cosi' non serve arrivare all'ultima rata
               per saperlo. */}
             <tfoot className="sticky bottom-0"><tr className="border-t border-black/10 bg-[#eceee9] font-semibold"><td className="px-3 py-2" colSpan={3}>{t('totalInterest')}</td><td className="px-3 py-2 text-right tabular-nums">{formatEuro(item.totalInterest)}</td><td /></tr></tfoot></table></div>
-        </> : <p className="text-sm text-[#71807c]">{item.scheduleIssue ? t(`debtIssue_${item.scheduleIssue}` as TranslationKey) : t('debtScheduleEmpty')}</p>}</div>
+        </> : <p className="text-sm text-[#5e6c68]">{item.scheduleIssue ? t(`debtIssue_${item.scheduleIssue}` as TranslationKey) : t('debtScheduleEmpty')}</p>}</div>
         <div><p className="mb-3 text-sm font-semibold">{t('debtRegister')}</p>{item.movements.length ? (() => {
           const paymentByTransaction = new Map(item.payments.flatMap((payment) => payment.transactionIds.map((id) => [id, payment] as const)));
           return <div className="max-h-[34rem] overflow-auto rounded-lg border border-black/8"><table className="w-full text-xs"><thead className="sticky top-0 bg-[#f4f5f1]"><tr><th className="px-3 py-2 text-left">{t('date')}</th><th className="px-3 py-2 text-left">{t('fieldDescription')}</th><th className="px-3 py-2 text-right">{t('principalShare')}</th><th className="px-3 py-2 text-right">{t('debtInterestCharges')}</th><th className="px-3 py-2 text-right">{t('debtEffect')}</th></tr></thead><tbody>{item.movements.map((movement) => {
             const payment = paymentByTransaction.get(movement.id);
             const label = payment ? t(payment.kind === 'drawdown' ? 'debtDrawdown' : payment.kind === 'charge' ? 'debtCharge' : 'debtRepayment') : t(({ Income: 'incomeType', Expenses: 'expensesType', Transfers: 'transfersType', Investment: 'investmentType', Debt: 'debtTypeMovement' } as Record<string, TranslationKey>)[movement.type] ?? 'relatedMovements');
             const effect = movement.effect;
-            return <tr key={movement.id} className={`border-t border-black/5 ${payment && !payment.classified ? 'bg-[#fce9e3]' : ''}`}><td className="whitespace-nowrap px-3 py-2">{formatDate(`${movement.occurredOn}T12:00:00`)}</td><td className="px-3 py-2"><p className="font-medium">{label}</p><p className="text-[#87918e]">{movement.description}</p>{payment && !payment.classified && <p className="font-medium text-[#a05f4e]">{t('debtUnclassified')}</p>}<Button type="button" size="sm" variant="ghost" className="mt-1 h-7 px-2" onClick={() => void editMovement(movement.id)}><Pencil className="size-3.5" />{t('edit')}</Button></td><td className="px-3 py-2 text-right tabular-nums">{payment ? formatEuro(payment.principal) : '—'}</td><td className="px-3 py-2 text-right tabular-nums">{payment ? formatEuro(payment.interest) : '—'}</td><td className={`px-3 py-2 text-right font-semibold tabular-nums ${effect > 0 ? 'text-[#bd5e46]' : 'text-[#2d7b65]'}`}>{effect > 0 ? '+' : ''}{formatEuro(effect)}</td></tr>;
+            return <tr key={movement.id} className={`border-t border-black/5 ${payment && !payment.classified ? 'bg-[#fce9e3]' : ''}`}><td className="whitespace-nowrap px-3 py-2">{formatDate(`${movement.occurredOn}T12:00:00`)}</td><td className="px-3 py-2"><p className="font-medium">{label}</p><p className="text-[#5e6c68]">{movement.description}</p>{payment && !payment.classified && <p className="font-medium text-[#a94f3a]">{t('debtUnclassified')}</p>}<Button type="button" size="sm" variant="ghost" className="mt-1 h-7 px-2" onClick={() => void editMovement(movement.id)}><Pencil className="size-3.5" />{t('edit')}</Button></td><td className="px-3 py-2 text-right tabular-nums">{payment ? formatEuro(payment.principal) : '—'}</td><td className="px-3 py-2 text-right tabular-nums">{payment ? formatEuro(payment.interest) : '—'}</td><td className={`px-3 py-2 text-right font-semibold tabular-nums ${effect > 0 ? 'text-[#a94f3a]' : 'text-[#237056]'}`}>{effect > 0 ? '+' : ''}{formatEuro(effect)}</td></tr>;
           })}</tbody></table></div>;
-        })() : <p className="text-sm text-[#71807c]">{t('noTransactions')}</p>}</div>
+        })() : <p className="text-sm text-[#5e6c68]">{t('noTransactions')}</p>}</div>
       </div>}
       </CardContent>
     </Card>)}
-    {data.orphaned.map((item) => <Card key={`orphan-${item.accountId}`}><CardContent className="flex items-center justify-between gap-3 p-5"><div><p className="font-medium">{t(item.kind === 'credit_line' ? 'debtKindCreditLine' : 'debtKindTermLoan')} · {item.accountId}</p><p className="text-sm text-[#71807c]">{t('debtWithoutAccount')}</p>{item.notes && <p className="text-sm">{item.notes}</p>}</div><Button variant="outline" onClick={() => requestDelete(item.accountId, t(item.kind === 'credit_line' ? 'debtKindCreditLine' : 'debtKindTermLoan'), null)}>{t('delete')}</Button></CardContent></Card>)}
+    {data.orphaned.map((item) => <Card key={`orphan-${item.accountId}`}><CardContent className="flex items-center justify-between gap-3 p-5"><div><p className="font-medium">{t(item.kind === 'credit_line' ? 'debtKindCreditLine' : 'debtKindTermLoan')} · {item.accountId}</p><p className="text-sm text-[#5e6c68]">{t('debtWithoutAccount')}</p>{item.notes && <p className="text-sm">{item.notes}</p>}</div><Button variant="outline" onClick={() => requestDelete(item.accountId, t(item.kind === 'credit_line' ? 'debtKindCreditLine' : 'debtKindTermLoan'), null)}>{t('delete')}</Button></CardContent></Card>)}
     <Dialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open && !deleteBusy) setDeleting(null); }}>
       <DialogContent>
         <DialogHeader><DialogTitle>{t('delete')} · {deleting?.name}</DialogTitle><DialogDescription>{t(deleting?.accountName != null ? 'debtDeleteLinkedDesc' : 'debtDeleteOrphanDesc')}</DialogDescription></DialogHeader>
         {deleting?.accountName != null && <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={confirmAccount} disabled={deleteBusy} onChange={(event) => setConfirmAccount(event.target.checked)} />{t('debtDeleteAlsoAccount', { name: deleting.accountName })}</label>}
         {deleteBusy && <p role="status" className="text-sm">{t('debtDeleteBusy')}</p>}
-        {deleteError && <p role="alert" className="text-sm text-[#bd5e46]">{deleteError}</p>}
+        {deleteError && <p role="alert" className="text-sm text-[#a94f3a]">{deleteError}</p>}
         <DialogFooter><Button variant="outline" disabled={deleteBusy} onClick={() => setDeleting(null)}>{t('cancel')}</Button><Button variant="destructive" disabled={deleteBusy || (deleting?.accountName != null && !confirmAccount)} onClick={() => void removeDebt()}>{t('delete')}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
@@ -4960,14 +4960,14 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
         {/* Le condizioni salvate qui riscrivono anche il confronto dei mesi
             passati: il piano non e' una fotografia, e il numero sulla card si
             muove. Meglio dirlo prima di cambiare il tasso, non dopo. */}
-        <p className="rounded-lg bg-[#f7f8f5] px-3 py-2 text-[11px] leading-4 text-[#71807c]">{t('debtPlanRecalculated')}</p>
+        <p className="rounded-lg bg-[#f7f8f5] px-3 py-2 text-[11px] leading-4 text-[#5e6c68]">{t('debtPlanRecalculated')}</p>
         {editing && <form key={editing.accountId} onSubmit={save} className="space-y-4">
           <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('debtKind')}
             <select name="kind" value={tipoProfilo} onChange={(event) => { setTipoProfilo(event.target.value as 'term_loan' | 'credit_line'); if (event.target.value === 'term_loan' && !drawdowns.length) setDrawdowns([{ occurredOn: today, amount: editing.kind === 'credit_line' ? Math.max(editing.exposure, 1) : Math.max(editing.outstanding, 1) }]); }} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring">
               <option value="term_loan">{t('debtKindTermLoan')}</option>
               <option value="credit_line">{t('debtKindCreditLine')}</option>
             </select>
-            <span className="block pt-1 font-normal leading-5 text-[#7b8784]">{t('debtKindHint')}</span>
+            <span className="block pt-1 font-normal leading-5 text-[#5e6c68]">{t('debtKindHint')}</span>
           </label>
           {tipoProfilo === 'credit_line' && <div className="grid grid-cols-2 gap-3">
             <label className="space-y-1 text-xs font-medium text-[#52615d]">{t('debtCreditLimit')}
@@ -4982,7 +4982,7 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
             <div className="rounded-lg bg-[#f7f8f5] p-3 text-xs text-[#52615d]"><p>{t(tipoProfilo === 'credit_line' ? 'debtExposure' : 'startingAmount')}</p><p className="mt-1 text-lg font-semibold text-[#17231f]">{formatEuro(tipoProfilo === 'credit_line' ? (editing.kind === 'credit_line' ? editing.exposure : editing.actualTotalDebt ?? 0) : drawdowns.reduce((sum, row) => sum + Number(row.amount || 0), 0))}</p></div>
           </div>
           {tipoProfilo === 'term_loan' && <div className="space-y-2 rounded-xl border border-black/8 p-3">
-            <div><p className="text-xs font-semibold text-[#52615d]">{t('plannedDrawdowns')}</p><p className="text-[11px] text-[#87918e]">{t('plannedDrawdownsHint')}</p></div>
+            <div><p className="text-xs font-semibold text-[#52615d]">{t('plannedDrawdowns')}</p><p className="text-[11px] text-[#5e6c68]">{t('plannedDrawdownsHint')}</p></div>
             {drawdowns.map((row, index) => <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2"><Input aria-label={t('date')} required type="date" value={row.occurredOn} onChange={(event) => setDrawdowns((values) => values.map((value, position) => position === index ? { ...value, occurredOn: event.target.value } : value))} /><Input aria-label={t('amount')} required min="0.01" step="0.01" type="number" value={row.amount} onChange={(event) => setDrawdowns((values) => values.map((value, position) => position === index ? { ...value, amount: Number(event.target.value) } : value))} /><Button aria-label={t('delete')} type="button" variant="ghost" size="icon" disabled={drawdowns.length === 1} onClick={() => setDrawdowns((values) => values.filter((_, position) => position !== index))}><Trash2 className="size-4" /></Button></div>)}
             <Button type="button" size="sm" variant="outline" onClick={() => setDrawdowns((values) => [...values, { occurredOn: values.at(-1)?.occurredOn ?? today, amount: 0 }])}><Plus className="size-4" />{t('addDrawdown')}</Button>
           </div>}
@@ -4996,7 +4996,7 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
             {/* Durante il preammortamento gli interessi si pagano ogni scadenza
                 oppure si sommano al debito. I contratti fanno entrambe le cose
                 e non si deduce da nient'altro: va scelto. */}
-            <label className="col-span-2 space-y-1 text-xs font-medium text-[#52615d]">{t('graceInterestLabel')}<select name="grace_interest" defaultValue={editing.profile?.graceInterest ?? 'paid'} className="h-10 w-full rounded-lg border border-input bg-white px-2 text-sm"><option value="paid">{t('graceInterestPaid')}</option><option value="capitalised">{t('graceInterestCapitalised')}</option></select><span className="block font-normal leading-4 text-[#87918e]">{t('graceInterestHint')}</span></label>
+            <label className="col-span-2 space-y-1 text-xs font-medium text-[#52615d]">{t('graceInterestLabel')}<select name="grace_interest" defaultValue={editing.profile?.graceInterest ?? 'paid'} className="h-10 w-full rounded-lg border border-input bg-white px-2 text-sm"><option value="paid">{t('graceInterestPaid')}</option><option value="capitalised">{t('graceInterestCapitalised')}</option></select><span className="block font-normal leading-4 text-[#5e6c68]">{t('graceInterestHint')}</span></label>
           </div>}
           <div className="grid grid-cols-2 gap-3">
             {tipoProfilo === 'term_loan' && <label className="space-y-1 text-xs font-medium text-[#52615d]">{t('repaymentStart')}<Input required type="date" name="repayment_start_date" defaultValue={editing.profile?.repaymentStartDate ?? drawdowns.at(-1)?.occurredOn ?? today} /></label>}
@@ -5004,7 +5004,7 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
           </div>
           <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('status')}<select name="status" defaultValue={editing.profile?.status ?? 'active'} className="h-10 w-full rounded-lg border border-input bg-white px-2 text-sm"><option value="active">{t('debtStatus_active')}</option><option value="paid">{t('debtStatus_paid')}</option><option value="suspended">{t('debtStatus_suspended')}</option></select></label>
           <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('note')}<Input name="notes" defaultValue={editing.profile?.notes ?? ''} /></label>
-          {error && <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{error}</p>}
+          {error && <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}
           <DialogFooter><Button type="button" variant="outline" onClick={() => setEditing(null)}>{t('cancel')}</Button><Button type="submit" disabled={busy}>{busy ? t('savingEllipsis') : t('save')}</Button></DialogFooter>
         </form>}
       </DialogContent>
@@ -5064,7 +5064,7 @@ function TargetWeightsEditor({ posizioni, onInstrumentSave }: {
       <ChevronDown className="size-4 shrink-0 text-black/45 transition group-open:rotate-180" />
     </summary>
     <div className="overflow-x-auto"><table className="w-full text-sm">
-      <thead className="text-xs text-[#87918e]"><tr>
+      <thead className="text-xs text-[#5e6c68]"><tr>
         <th className="px-5 py-2 text-left">{t('instrument')}</th>
         <th className="px-3 py-2 text-right">{t('allocTargetWeight')}</th>
       </tr></thead>
@@ -5078,14 +5078,14 @@ function TargetWeightsEditor({ posizioni, onInstrumentSave }: {
       </tr>)}</tbody>
       <tfoot><tr className="border-t border-black/10">
         <td className="px-5 py-3 text-xs font-medium text-[#52615d]">{t('allocWeightsTotal')}</td>
-        <td className={`px-3 py-3 text-right font-semibold tabular-nums ${inLinea ? 'text-[#2d7b65]' : 'text-[#bd5e46]'}`}>
+        <td className={`px-3 py-3 text-right font-semibold tabular-nums ${inLinea ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>
           {formatPercentRatio(totale / 100)}
         </td>
       </tr></tfoot>
     </table></div>
-    {errore && <p className="mx-5 mb-3 rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{errore}</p>}
+    {errore && <p className="mx-5 mb-3 rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{errore}</p>}
     <div className="flex items-center justify-end gap-3 px-5 pb-4">
-      {cambiate.length > 0 && <span className="text-xs text-[#7b8784]">{t('allocWeightsChanged', { count: cambiate.length })}</span>}
+      {cambiate.length > 0 && <span className="text-xs text-[#5e6c68]">{t('allocWeightsChanged', { count: cambiate.length })}</span>}
       <Button size="sm" disabled={salvando || cambiate.length === 0} onClick={salva}
         className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{t('save')}</Button>
     </div>
@@ -5101,23 +5101,23 @@ function RebalanceCard({ riordino, posizioni, onInstrumentSave }: {
   const percentuale = (valore: number) => formatPercentRatio(valore);
   const deriva = (valore: number) => formatPercentRatio(valore, { signDisplay: 'always' });
   return <Card className="border-black/6 bg-white shadow-sm">
-    <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('allocRebalance')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('allocRebalanceSubtitle')}</p></CardHeader>
+    <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('allocRebalance')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('allocRebalanceSubtitle')}</p></CardHeader>
     <CardContent className="p-0">
       {/* L'avviso sta sopra la tabella perche' e' l'unica cosa che puo' rendere
           sbagliati tutti i numeri sotto: se i pesi non tornano, la colpa non e'
           del calcolo. Senza pesi obiettivo, pero', non c'e' nessuna somma da
           correggere: li' l'avviso direbbe "sommano a 0%, non al 100%" sopra la
           riga che spiega che non c'e' niente da riequilibrare. */}
-      {riordino.total > 0 && riordino.warnings.includes('pesi_non_sommano_a_cento') && <p role="alert" className="mx-5 mt-3 rounded-lg border border-[#f2d7cb] bg-[#fdf1ec] px-3 py-2 text-xs text-[#a05f4e]">{t('allocTargetSum', { sum: percentuale(riordino.declaredWeight) })}</p>}
+      {riordino.total > 0 && riordino.warnings.includes('pesi_non_sommano_a_cento') && <p role="alert" className="mx-5 mt-3 rounded-lg border border-[#f2d7cb] bg-[#fdf1ec] px-3 py-2 text-xs text-[#a94f3a]">{t('allocTargetSum', { sum: percentuale(riordino.declaredWeight) })}</p>}
       {riordino.total <= 0
-        ? <p className="px-5 py-6 text-sm text-[#71807c]">{t('allocNoTargets')}</p>
+        ? <p className="px-5 py-6 text-sm text-[#5e6c68]">{t('allocNoTargets')}</p>
         : riordino.rows.length === 0
-          ? <p className="px-5 py-6 text-sm font-medium text-[#2d7b65]">{t('allocInLine')}</p>
+          ? <p className="px-5 py-6 text-sm font-medium text-[#237056]">{t('allocInLine')}</p>
           : <div className="overflow-x-auto"><table className="min-w-[640px] w-full text-sm">
             <thead className="bg-[#f4f5f1] text-xs text-[#52615d]"><tr><th className="px-5 py-3 text-left">{t('instrument')}</th><th className="px-3 py-3 text-right">{t('allocCurrentWeight')}</th><th className="px-3 py-3 text-right">{t('allocTargetWeight')}</th><th className="px-3 py-3 text-right">{t('allocDrift')}</th><th className="px-5 py-3 text-right">{t('allocAmount')}</th></tr></thead>
             <tbody className="divide-y divide-black/5">{riordino.rows.map((riga) => {
               const comprare = riga.amount < 0;
-              const tono = comprare ? 'text-[#2d7b65]' : 'text-[#9a7b2f]';
+              const tono = comprare ? 'text-[#237056]' : 'text-[#7d6119]';
               return <tr key={riga.name}>
                 <td className="px-5 py-3 font-medium">{riga.name}</td>
                 <td className="px-3 py-3 text-right tabular-nums">{percentuale(riga.currentWeight)}</td>
@@ -5151,14 +5151,14 @@ function RendimentoCard({ titolo, spiegazione, esito }: {
   const { t, formatNumber, formatPercentRatio } = useI18n();
   return <Card className="border-black/6 bg-white shadow-sm">
     <CardContent className="p-5">
-      <p className="mb-4 text-sm font-medium text-[#71807c]">{titolo}</p>
+      <p className="mb-4 text-sm font-medium text-[#5e6c68]">{titolo}</p>
       {/* Il motivo sta al posto del numero, in grigio: non un trattino e non
           uno zero, perche' "non ho guadagnato niente" e' un'altra cosa da
           "non si puo' sapere". */}
       {esito.value === null
-        ? <p className="text-base font-medium text-[#71807c]">{t(MOTIVI_RENDIMENTO[esito.reason ?? ''] ?? 'returnReasonUnknown')}</p>
-        : <p className={`text-[25px] font-semibold tracking-[-0.03em] tabular-nums ${esito.value >= 0 ? 'text-[#2d7b65]' : 'text-[#bd5e46]'}`}>{formatPercentRatio(esito.value, { signDisplay: 'always' })}</p>}
-      <p className="mt-2 text-xs text-[#618078]">{spiegazione}</p>
+        ? <p className="text-base font-medium text-[#5e6c68]">{t(MOTIVI_RENDIMENTO[esito.reason ?? ''] ?? 'returnReasonUnknown')}</p>
+        : <p className={`text-[25px] font-semibold tracking-[-0.03em] tabular-nums ${esito.value >= 0 ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>{formatPercentRatio(esito.value, { signDisplay: 'always' })}</p>}
+      <p className="mt-2 text-xs text-[#237056]">{spiegazione}</p>
     </CardContent>
   </Card>;
 }
@@ -5478,22 +5478,22 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
 
   return <div className="space-y-5">
     <div className="flex flex-wrap gap-2 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-      {([['portfolio', t('investTabPortfolio')], ['ledger', t('investTabLedger')], ['instruments', t('investTabInstruments')], ['allocation', t('investTabAllocation')], ['quotes', t('investTabQuotes')], ['metodo', t('investTabMethod')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={tab === value} onClick={() => setTab(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${tab === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
+      {([['portfolio', t('investTabPortfolio')], ['ledger', t('investTabLedger')], ['instruments', t('investTabInstruments')], ['allocation', t('investTabAllocation')], ['quotes', t('investTabQuotes')], ['metodo', t('investTabMethod')]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={tab === value} onClick={() => setTab(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${tab === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#5e6c68] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
     </div>
 
     {tab === 'portfolio' && <div className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><MetricCard title={t('portfolioValue')} value={dashboard.snapshot.marketValue} change={dashboard.snapshot.period ? t('excelHistory', { period: formatDate(`${dashboard.snapshot.period}T12:00:00`, { month: 'long', year: 'numeric' }) }) : t('noHistory')} icon={Landmark} tone="worth" /><MetricCard title={t('investedCapital')} value={dashboard.snapshot.investedCapital} change={t('netContributionsOverTime')} icon={CircleDollarSign} tone="saving" /><MetricCard title={t('gainLoss')} value={dashboard.snapshot.gain} change={t('percentOnCapital', { percent: formatPercentPoints(dashboard.snapshot.returnRate) })} icon={TrendingUp} tone={dashboard.snapshot.gain >= 0 ? 'income' : 'expense'} /><MetricCard title={t('connectedQuotes')} value={dashboard.ledger.quotedPositions} valueLabel={`${dashboard.ledger.quotedPositions}/${dashboard.ledger.activePositions}`} change={t('withLocalCache')} icon={RefreshCw} tone="worth" /><RendimentoCard titolo={t('twrReturn')} spiegazione={t('twrHint')} esito={dashboard.returns.twr} /><RendimentoCard titolo={t('xirrReturn')} spiegazione={t('xirrHint')} esito={dashboard.returns.xirr} /></div>
       {/* Il metodo si dichiara: chi legge un rendimento ha diritto di sapere su
           cosa e' calcolato, e da quando. */}
-      {dashboard.returns.since && <p className="text-xs text-[#7b8784]">{t('returnsMethod', { from: formatDate(`${dashboard.returns.since}T12:00:00`, { month: 'long', year: 'numeric' }), to: formatDate(`${dashboard.returns.asOf}T12:00:00`, { month: 'long', year: 'numeric' }) })}</p>}
-      <Card className="border-black/6 bg-white shadow-sm"><CardHeader className="flex-row items-start justify-between gap-4"><div><CardTitle className="text-[17px]">{t('valueAndInvestedCapital')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('valueAndInvestedCapitalSubtitle')}</p></div><Button type="button" variant="outline" disabled={busy} onClick={async () => { setBusy(true); setError(''); try { const outcome = await onRefresh(); if (outcome.errors.length) setError(t('quotesRefreshedWithErrors', { ok: outcome.updated, ko: outcome.errors.length })); else if (outcome.updated === 0) setError(t('noTickersConfigured')); } catch { setError(t('cannotReachQuoteSource')); } finally { setBusy(false); } }}><RefreshCw className={`size-4 ${busy ? 'animate-spin' : ''}`} />{t('refreshQuotes')}</Button></CardHeader><CardContent>
+      {dashboard.returns.since && <p className="text-xs text-[#5e6c68]">{t('returnsMethod', { from: formatDate(`${dashboard.returns.since}T12:00:00`, { month: 'long', year: 'numeric' }), to: formatDate(`${dashboard.returns.asOf}T12:00:00`, { month: 'long', year: 'numeric' }) })}</p>}
+      <Card className="border-black/6 bg-white shadow-sm"><CardHeader className="flex-row items-start justify-between gap-4"><div><CardTitle className="text-[17px]">{t('valueAndInvestedCapital')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('valueAndInvestedCapitalSubtitle')}</p></div><Button type="button" variant="outline" disabled={busy} onClick={async () => { setBusy(true); setError(''); try { const outcome = await onRefresh(); if (outcome.errors.length) setError(t('quotesRefreshedWithErrors', { ok: outcome.updated, ko: outcome.errors.length })); else if (outcome.updated === 0) setError(t('noTickersConfigured')); } catch { setError(t('cannotReachQuoteSource')); } finally { setBusy(false); } }}><RefreshCw className={`size-4 ${busy ? 'animate-spin' : ''}`} />{t('refreshQuotes')}</Button></CardHeader><CardContent>
         <div className="mb-3 flex w-fit gap-1 rounded-lg border border-black/6 bg-[#f4f5f1] p-1 text-xs">
           {/* Con l'indice configurato la seconda lettura non e' una percentuale:
               sono due curve cumulate che partono da 100. Il pulsante lo dice,
               altrimenti promette "in %" e mostra dei punti. */}
           {([['amount', t('inEuro')], ['return', indice ? t('historyCompareMode') : t('inPercent')]] as const).map(([value, label]) => (
             <button key={value} type="button" onClick={() => setHistoryMode(value)}
-              className={`rounded-md px-2.5 py-1 font-medium transition ${historyMode === value ? 'bg-white text-[#173b33] shadow-sm' : 'text-[#71807c] hover:text-[#173b33]'}`}>
+              className={`rounded-md px-2.5 py-1 font-medium transition ${historyMode === value ? 'bg-white text-[#173b33] shadow-sm' : 'text-[#5e6c68] hover:text-[#173b33]'}`}>
               {label}
             </button>
           ))}
@@ -5511,20 +5511,20 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
         )}
         {/* Il confronto parte dove le due storie si sovrappongono, e lo dice:
             altrimenti sembra che il grafico abbia perso dei mesi. */}
-        {historyMode === 'return' && indice && dashboard.benchmark.from && <p className="mt-3 text-xs text-[#7b8784]">{t('benchmarkSince', { symbol: indice, from: formatDate(`${dashboard.benchmark.from}T12:00:00`, { month: 'long', year: 'numeric' }) })}</p>}
+        {historyMode === 'return' && indice && dashboard.benchmark.from && <p className="mt-3 text-xs text-[#5e6c68]">{t('benchmarkSince', { symbol: indice, from: formatDate(`${dashboard.benchmark.from}T12:00:00`, { month: 'long', year: 'numeric' }) })}</p>}
         {/* Configurato ma senza niente da confrontare non e' la stessa cosa di
             non configurato, e tacerlo lascerebbe credere che il campo non
             serva a niente. */}
         {/* Il confronto si legge in punti, non in percentuale: l'asse non porta
             il segno e le schede sopra si', quindi senza questa riga le due
             coppie di cifre sembrano la stessa unita' di misura. */}
-        {historyMode === 'return' && indice && <p className="mt-3 text-xs text-[#7b8784]">{t('benchmarkCurveUnit')}</p>}
-        {historyMode === 'return' && dashboard.benchmark.symbol && !indice && <p className="mt-3 text-xs text-[#7b8784]">{t('benchmarkNoComparison', { symbol: dashboard.benchmark.symbol })}</p>}
-        {error && <p className="mt-3 rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{error}</p>}
+        {historyMode === 'return' && indice && <p className="mt-3 text-xs text-[#5e6c68]">{t('benchmarkCurveUnit')}</p>}
+        {historyMode === 'return' && dashboard.benchmark.symbol && !indice && <p className="mt-3 text-xs text-[#5e6c68]">{t('benchmarkNoComparison', { symbol: dashboard.benchmark.symbol })}</p>}
+        {error && <p className="mt-3 rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}
       </CardContent>
       </Card>
       <Card className="border-black/6 bg-white shadow-sm">
-        <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('monthlyContributions')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('monthlyContributionsSubtitle')}</p></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('monthlyContributions')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('monthlyContributionsSubtitle')}</p></CardHeader>
         <CardContent>
           <ChartContainer config={{ amount: { label: t('monthlyContributions'), color: '#6d8ff4' } }} className="h-[220px] w-full">
             <BarChart accessibilityLayer data={dashboard.contributions}>
@@ -5539,7 +5539,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
           </ChartContainer>
         </CardContent>
       </Card>
-      <Card className="border-black/6 bg-white shadow-sm"><CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0"><div><CardTitle className="text-[17px]">{t('positions')}</CardTitle><p className="text-xs text-[#7b8784]">{showClosedPositions ? t('positionsSubtitleAll') : t('positionsSubtitle')}</p></div><label className="flex items-center gap-2 text-xs font-medium text-[#52615d]"><input type="checkbox" checked={showClosedPositions} onChange={(event) => setShowClosedPositions(event.target.checked)} className="size-4 accent-[var(--money-primary)]" />{t('showClosedPositions', { count: dashboard.positions.filter((p) => !viva(p)).length })}</label></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1060px] w-full text-sm"><thead className="bg-[#f4f5f1] text-xs text-[#52615d]"><tr><th className="px-5 py-3 text-left">{t('instrument')}</th><th className="px-3 py-3 text-right">{t('quantity')}</th><th className="px-3 py-3 text-right">{t('cost')}</th><th className="px-3 py-3 text-right">{t('value')}</th><th className="px-3 py-3 text-right">{t('profitLoss')}</th><th className="px-3 py-3 text-right">{t('ledgerIncome')}</th><th className="px-3 py-3 text-right">{t('ledgerFees')}</th><th className="px-3 py-3 text-right">{t('priceSource')}</th><th className="px-5 py-3 text-right">{t('configure')}</th></tr></thead><tbody className="divide-y divide-black/5">{dashboard.positions.filter((position) => showClosedPositions || viva(position)).map((position) => <tr key={position.name} className={viva(position) ? undefined : 'bg-[#fafaf8] text-[#71807c]'}><td className="px-5 py-3"><p className="font-medium">{position.name}{!viva(position) && <span className="ml-2 rounded-full bg-black/6 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[#71807c]">{t('closed')}</span>}</p><p className="mt-0.5 text-xs text-[#87918e]">{position.assetClass} · {position.area}</p></td><td className="px-3 py-3 text-right tabular-nums">{position.units.toLocaleString(locale, { maximumFractionDigits: 4 })}</td><td className="px-3 py-3 text-right tabular-nums">{position.isOpen ? formatEuro(position.costBasis) : '—'}</td><td className="px-3 py-3 text-right font-semibold tabular-nums">{position.isOpen ? formatEuro(position.marketValue) : '—'}</td><td className={`px-3 py-3 text-right font-semibold tabular-nums ${position.totalGain >= 0 ? 'text-[#2d7b65]' : 'text-[#bd5e46]'}`}>{formatEuro(position.totalGain)}{!position.isOpen && <span className="ml-1 text-[10px] font-normal uppercase tracking-wide">{t('realizedResult')}</span>}{position.returnRate !== null && <span className="ml-1 text-xs">({(position.returnRate * 100).toLocaleString(locale, { maximumFractionDigits: 1 })}%)</span>}</td><td className="px-3 py-3 text-right tabular-nums text-[#2d7b65]">{position.incomeReceived !== 0 ? formatEuro(position.incomeReceived) : '—'}</td><td className="px-3 py-3 text-right tabular-nums text-[#bd5e46]">{position.feesPaid !== 0 ? formatEuro(position.feesPaid) : '—'}</td><td className="px-3 py-3 text-right text-xs">{position.isOpen ? (position.hasQuote ? t('cachedQuote') : t('lastLedgerPrice')) : '—'}</td><td className="px-5 py-3 text-right">{position.instrumentId ? <Button size="sm" variant="ghost" onClick={() => { setConfiguring(position); setError(''); }}><Pencil className="size-4" />{t('configure')}</Button> : '—'}</td></tr>)}</tbody></table></div>{/* I proventi si leggono in fondo, tutti insieme: sono la parte che il guadagno non mostra, perche' un dividendo non e' una plusvalenza. */}<div className="flex items-center justify-between border-t border-black/6 px-5 py-3"><span className="text-xs text-[#52615d]">{t('ledgerIncomeTotal')}</span><span className="font-semibold tabular-nums">{formatEuro(dashboard.positions.reduce((somma, position) => somma + position.incomeReceived, 0))}</span></div></CardContent></Card>
+      <Card className="border-black/6 bg-white shadow-sm"><CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0"><div><CardTitle className="text-[17px]">{t('positions')}</CardTitle><p className="text-xs text-[#5e6c68]">{showClosedPositions ? t('positionsSubtitleAll') : t('positionsSubtitle')}</p></div><label className="flex items-center gap-2 text-xs font-medium text-[#52615d]"><input type="checkbox" checked={showClosedPositions} onChange={(event) => setShowClosedPositions(event.target.checked)} className="size-4 accent-[var(--money-primary)]" />{t('showClosedPositions', { count: dashboard.positions.filter((p) => !viva(p)).length })}</label></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1060px] w-full text-sm"><thead className="bg-[#f4f5f1] text-xs text-[#52615d]"><tr><th className="px-5 py-3 text-left">{t('instrument')}</th><th className="px-3 py-3 text-right">{t('quantity')}</th><th className="px-3 py-3 text-right">{t('cost')}</th><th className="px-3 py-3 text-right">{t('value')}</th><th className="px-3 py-3 text-right">{t('profitLoss')}</th><th className="px-3 py-3 text-right">{t('ledgerIncome')}</th><th className="px-3 py-3 text-right">{t('ledgerFees')}</th><th className="px-3 py-3 text-right">{t('priceSource')}</th><th className="px-5 py-3 text-right">{t('configure')}</th></tr></thead><tbody className="divide-y divide-black/5">{dashboard.positions.filter((position) => showClosedPositions || viva(position)).map((position) => <tr key={position.name} className={viva(position) ? undefined : 'bg-[#fafaf8] text-[#5e6c68]'}><td className="px-5 py-3"><p className="font-medium">{position.name}{!viva(position) && <span className="ml-2 rounded-full bg-black/6 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[#5e6c68]">{t('closed')}</span>}</p><p className="mt-0.5 text-xs text-[#5e6c68]">{position.assetClass} · {position.area}</p></td><td className="px-3 py-3 text-right tabular-nums">{position.units.toLocaleString(locale, { maximumFractionDigits: 4 })}</td><td className="px-3 py-3 text-right tabular-nums">{position.isOpen ? formatEuro(position.costBasis) : '—'}</td><td className="px-3 py-3 text-right font-semibold tabular-nums">{position.isOpen ? formatEuro(position.marketValue) : '—'}</td><td className={`px-3 py-3 text-right font-semibold tabular-nums ${position.totalGain >= 0 ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>{formatEuro(position.totalGain)}{!position.isOpen && <span className="ml-1 text-[10px] font-normal uppercase tracking-wide">{t('realizedResult')}</span>}{position.returnRate !== null && <span className="ml-1 text-xs">({(position.returnRate * 100).toLocaleString(locale, { maximumFractionDigits: 1 })}%)</span>}</td><td className="px-3 py-3 text-right tabular-nums text-[#237056]">{position.incomeReceived !== 0 ? formatEuro(position.incomeReceived) : '—'}</td><td className="px-3 py-3 text-right tabular-nums text-[#a94f3a]">{position.feesPaid !== 0 ? formatEuro(position.feesPaid) : '—'}</td><td className="px-3 py-3 text-right text-xs">{position.isOpen ? (position.hasQuote ? t('cachedQuote') : t('lastLedgerPrice')) : '—'}</td><td className="px-5 py-3 text-right">{position.instrumentId ? <Button size="sm" variant="ghost" onClick={() => { setConfiguring(position); setError(''); }}><Pencil className="size-4" />{t('configure')}</Button> : '—'}</td></tr>)}</tbody></table></div>{/* I proventi si leggono in fondo, tutti insieme: sono la parte che il guadagno non mostra, perche' un dividendo non e' una plusvalenza. */}<div className="flex items-center justify-between border-t border-black/6 px-5 py-3"><span className="text-xs text-[#52615d]">{t('ledgerIncomeTotal')}</span><span className="font-semibold tabular-nums">{formatEuro(dashboard.positions.reduce((somma, position) => somma + position.incomeReceived, 0))}</span></div></CardContent></Card>
       <RebalanceCard riordino={dashboard.rebalance} posizioni={dashboard.positions} onInstrumentSave={onInstrumentSave} />
     </div>}
 
@@ -5555,7 +5555,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
           <CardHeader className="gap-4">
             <div>
               <CardTitle className="text-[17px]">{t('portfolioOperations')}</CardTitle>
-              <p className="mt-1 text-xs text-[#7b8784]">{t('resultsOfTotal', { count: filteredLedger.length, total: ledger.length })}</p>
+              <p className="mt-1 text-xs text-[#5e6c68]">{t('resultsOfTotal', { count: filteredLedger.length, total: ledger.length })}</p>
             </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(190px,1fr)_150px_180px_130px_150px]">
               <div className="relative">
@@ -5594,9 +5594,9 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
                           <td className="px-3 py-3 text-center"><input type="checkbox" aria-label={`${t('selectMovement', { description: row.name })}`} checked={ledgerSelection.has(row.id)} onChange={(event) => setLedgerSelection((current) => { const next = new Set(current); event.target.checked ? next.add(row.id) : next.delete(row.id); return next; })} className="size-4 accent-[var(--money-primary)]" /></td>
                           <td className="px-5 py-3 text-xs">{formatDate(`${row.occurredOn}T12:00:00`)}</td>
                           <td className="px-3 py-3 font-medium"><span className="flex items-center gap-1.5"><span title={row.linked ? t('ledgerLinkedHint') : t('ledgerUnlinkedHint')} aria-label={row.linked ? t('ledgerLinked') : t('ledgerUnlinked')} className="flex shrink-0">{row.linked
-                            ? <Link2 className="size-3.5 text-[#2d7b65]" />
-                            : <Unlink className="size-3.5 text-[#c3ccc8]" />}</span>{row.name}</span>{row.notes && <p className="mt-0.5 text-xs font-normal text-[#87918e]">{row.notes}</p>}</td>
-                          <td className={`px-3 py-3 text-xs font-semibold ${row.transactionType === 'Buy' ? 'text-[#2d7b65]' : row.transactionType === 'Sell' ? 'text-[#bd5e46]' : 'text-[#52615d]'}`}>{t(LEDGER_TYPE_LABEL[row.transactionType])}</td>
+                            ? <Link2 className="size-3.5 text-[#237056]" />
+                            : <Unlink className="size-3.5 text-[#c3ccc8]" />}</span>{row.name}</span>{row.notes && <p className="mt-0.5 text-xs font-normal text-[#5e6c68]">{row.notes}</p>}</td>
+                          <td className={`px-3 py-3 text-xs font-semibold ${row.transactionType === 'Buy' ? 'text-[#237056]' : row.transactionType === 'Sell' ? 'text-[#a94f3a]' : 'text-[#52615d]'}`}>{t(LEDGER_TYPE_LABEL[row.transactionType])}</td>
                           <td className="px-3 py-3 text-right tabular-nums">{formatEuro(row.amount)}</td>
                           <td className="px-3 py-3 text-right tabular-nums">{row.units.toLocaleString(locale, { maximumFractionDigits: 5 })}</td>
                           <td className="px-3 py-3 text-right tabular-nums font-semibold">{row.runningUnits.toLocaleString(locale, { maximumFractionDigits: 5 })}</td>
@@ -5605,7 +5605,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
                           <td className="px-5 py-3">
                             <div className="flex justify-end">
                               <Button size="icon" variant="ghost" aria-label={`${t('edit')} ${row.name}`} onClick={() => { setEditing(row); setError(''); }}><Pencil className="size-4" /></Button>
-                              <Button size="icon" variant="ghost" aria-label={`${t('delete')} ${row.name}`} className="text-[#bd5e46]" onClick={() => void onDelete(row)}><Trash2 className="size-4" /></Button>
+                              <Button size="icon" variant="ghost" aria-label={`${t('delete')} ${row.name}`} className="text-[#a94f3a]" onClick={() => void onDelete(row)}><Trash2 className="size-4" /></Button>
                             </div>
                           </td>
                         </tr>
@@ -5620,11 +5620,11 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
                 )}
               </>
             ) : (
-              <p className="py-12 text-center text-sm text-[#71807c]">{t('noOperationsMatchFilters')}</p>
+              <p className="py-12 text-center text-sm text-[#5e6c68]">{t('noOperationsMatchFilters')}</p>
             )}
           </CardContent>
         </Card>
-        {ledgerBulkError && <p role="alert" className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{ledgerBulkError}</p>}
+        {ledgerBulkError && <p role="alert" className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{ledgerBulkError}</p>}
         {ledgerSelection.size > 0 && <div className="sticky bottom-4 z-20 flex flex-wrap items-center gap-3 rounded-xl border bg-white p-4 shadow-lg">
           <span className="text-sm font-medium">{t('selectedCount', { count: ledgerSelection.size })}</span>
           <select aria-label={t('bulkField')} value={ledgerBulkField} onChange={(event) => { const value = event.target.value as typeof ledgerBulkField; setLedgerBulkField(value); setLedgerBulkValue(''); setLedgerBulkError(''); if (value === 'link') void loadLedgerLinkTransactions().catch(() => setLedgerBulkError(t('bulkFailed'))); }} className="h-10 rounded-lg border border-input bg-white px-2.5 text-sm">
@@ -5646,7 +5646,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
         <CardContent className="flex flex-col gap-3 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-start gap-3">
-              {allocation.coverage.coveredPercent >= 99 ? <CheckCircle2 className="mt-0.5 size-5 text-[#2d7b65]" /> : <AlertCircle className="mt-0.5 size-5 text-[#bd5e46]" />}
+              {allocation.coverage.coveredPercent >= 99 ? <CheckCircle2 className="mt-0.5 size-5 text-[#237056]" /> : <AlertCircle className="mt-0.5 size-5 text-[#a94f3a]" />}
               <div>
                 <p className="text-sm font-semibold">{t('allocationCoverage', { percent: formatPercentNumber(allocation.coverage.coveredPercent) })}</p>
                 <p className="mt-1 text-xs leading-5 text-[#52615d]">{allocation.coverage.lastFetch ? t('allocationLastFetch', { date: new Date(allocation.coverage.lastFetch).toLocaleString(locale) }) : t('allocationNeverFetched')}</p>
@@ -5656,30 +5656,30 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
               <Button type="button" variant="outline" disabled={refreshingProfiles} onClick={() => void refreshProfiles()}>
                 <RefreshCw className={`size-4 ${refreshingProfiles ? 'animate-spin' : ''}`} />{t('refreshComposition')}
               </Button>
-              {profileMessage && <span className="max-w-[320px] text-right text-xs text-[#a05f4e]">{profileMessage}</span>}
+              {profileMessage && <span className="max-w-[320px] text-right text-xs text-[#a94f3a]">{profileMessage}</span>}
             </div>
           </div>
           {allocation.coverage.missing.length > 0 && <ul className="space-y-1 text-xs">
             {allocation.coverage.missing.slice(0, 5).map((item) => <li key={item.instrument} className="flex justify-between gap-3 rounded-lg bg-white/70 px-3 py-1.5">
               <span className="font-medium">{item.instrument}</span>
-              <span className="text-[#71807c]">{formatEuro(item.value)} · {item.reason === 'no_ticker' ? t('allocationNoTicker') : sourceErrorLabel(t, item.code)}</span>
+              <span className="text-[#5e6c68]">{formatEuro(item.value)} · {item.reason === 'no_ticker' ? t('allocationNoTicker') : sourceErrorLabel(t, item.code)}</span>
             </li>)}
             {/* L'elenco si ferma a cinque: senza questa riga il totale degli
                 strumenti senza dati restava un numero da indovinare. */}
-            {allocation.coverage.missing.length > 5 && <li className="px-3 pt-1 text-[#71807c]">{t('allocationMissingMore', { count: allocation.coverage.missing.length - 5 })}</li>}
+            {allocation.coverage.missing.length > 5 && <li className="px-3 pt-1 text-[#5e6c68]">{t('allocationMissingMore', { count: allocation.coverage.missing.length - 5 })}</li>}
           </ul>}
         </CardContent>
       </Card>
       <div className="flex flex-wrap gap-2">{([['instrument', t('dimInstrument')], ['sector', t('dimSector')], ['assetType', t('dimAssetType')], ['holdings', t('dimHoldings')], ['currency', t('dimCurrency')]] as const).map(([value, label]) => <Button key={value} type="button" variant={allocationDimension === value ? 'default' : 'outline'} className={allocationDimension === value ? 'bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]' : 'bg-white'} onClick={() => setAllocationDimension(value)}>{label}</Button>)}</div>
       <Card className="border-black/6 bg-white shadow-sm">
-        <CardHeader><CardTitle className="text-[17px]">{t('allocationForDimension', { dimension: ({ instrument: t('dimInstrument'), sector: t('dimSector'), assetType: t('dimAssetType'), holdings: t('dimHoldings'), currency: t('dimCurrency') })[allocationDimension] })}</CardTitle><p className="text-xs text-[#7b8784]">{t('estimatedValueFromLedger', { amount: formatEuro(allocation.total) })}</p></CardHeader>
+        <CardHeader><CardTitle className="text-[17px]">{t('allocationForDimension', { dimension: ({ instrument: t('dimInstrument'), sector: t('dimSector'), assetType: t('dimAssetType'), holdings: t('dimHoldings'), currency: t('dimCurrency') })[allocationDimension] })}</CardTitle><p className="text-xs text-[#5e6c68]">{t('estimatedValueFromLedger', { amount: formatEuro(allocation.total) })}</p></CardHeader>
         <CardContent className="space-y-4">
           {allocation.allocations[allocationDimension].length === 0
-            ? <p className="py-6 text-center text-sm text-[#87918e]">{t('allocationNoData')}</p>
+            ? <p className="py-6 text-center text-sm text-[#5e6c68]">{t('allocationNoData')}</p>
             : allocation.allocations[allocationDimension].map((item) => <div key={item.label}>
                 <div className="mb-2 flex justify-between gap-4 text-sm"><span className="font-medium">{item.label === '__unavailable__' ? t('allocationUnavailable') : item.label}</span><span className="tabular-nums">{formatPercentNumber(item.weight)}%</span></div>
                 <div className="h-2 overflow-hidden rounded-full bg-[#edf0ed]"><div className={`h-full rounded-full ${item.label === '__unavailable__' ? 'bg-[#c9a99b]' : 'bg-[#6d8ff4]'}`} style={{ width: `${Math.min(item.weight, 100)}%` }} /></div>
-                <div className="mt-1.5 text-xs text-[#7b8784]">{formatEuro(item.value)}</div>
+                <div className="mt-1.5 text-xs text-[#5e6c68]">{formatEuro(item.value)}</div>
               </div>)}
         </CardContent>
       </Card>
@@ -5712,8 +5712,8 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
               {([['date', t('date')], ['name', t('instrument')], ['type', t('type')], ['amount', t('amount')], ['units', t('units')], ['price', t('price')], ['currency', t('currency')]] as const).map(([field, label]) => <label key={field} className="space-y-1 text-xs font-medium text-[#52615d]">{label}<select value={ledgerCsvMapping[field] ?? ''} onChange={(event) => setLedgerCsvMapping((current) => ({ ...current, [field]: event.target.value }))} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm"><option value="">{t('bulkValue')}</option>{ledgerCsvHeaders.map((header) => <option key={header} value={header}>{header}</option>)}</select></label>)}
             </div>
             {ledgerCsvSample.length > 0 && <div className="overflow-x-auto rounded-lg border border-black/8"><table className="min-w-full text-xs"><thead className="bg-[#f4f5f1]"><tr>{ledgerCsvHeaders.map((header) => <th key={header} className="whitespace-nowrap px-3 py-2 text-left">{header}</th>)}</tr></thead><tbody>{ledgerCsvSample.map((row, index) => <tr key={index} className="border-t border-black/5">{ledgerCsvHeaders.map((header) => <td key={header} className="whitespace-nowrap px-3 py-2">{row[header]}</td>)}</tr>)}</tbody></table></div>}
-          </> : <div className="overflow-x-auto rounded-lg border border-black/8"><table className="min-w-[900px] w-full text-sm"><thead className="bg-[#f4f5f1] text-xs text-[#52615d]"><tr><th className="px-3 py-3">{t('statementSelect')}</th><th className="px-3 py-3 text-left">{t('date')}</th><th className="px-3 py-3 text-left">{t('instrument')}</th><th className="px-3 py-3 text-left">{t('type')}</th><th className="px-3 py-3 text-right">{t('amount')}</th><th className="px-3 py-3 text-right">{t('units')}</th><th className="px-3 py-3 text-right">{t('price')}</th><th className="px-3 py-3 text-left">{t('currency')}</th><th className="px-3 py-3 text-left" /></tr></thead><tbody className="divide-y divide-black/5">{ledgerCsvPreview.map((item) => <tr key={item.row} className={item.duplicate || item.error ? 'bg-[#fafaf8] text-[#87918e]' : ''}><td className="px-3 py-3 text-center"><input type="checkbox" disabled={item.duplicate || Boolean(item.error)} checked={ledgerCsvSelection.has(item.row)} aria-label={t('statementSelectRow', { row: item.row })} onChange={(event) => setLedgerCsvSelection((current) => { const next = new Set(current); event.target.checked ? next.add(item.row) : next.delete(item.row); return next; })} className="size-4 accent-[var(--money-primary)]" /></td><td className="px-3 py-3">{item.occurred_on ?? '—'}</td><td className="px-3 py-3 font-medium">{item.name ?? '—'}</td><td className="px-3 py-3">{item.transaction_type ?? '—'}</td><td className="px-3 py-3 text-right tabular-nums">{item.amount == null ? '—' : formatEuro(item.amount)}</td><td className="px-3 py-3 text-right tabular-nums">{item.units ?? '—'}</td><td className="px-3 py-3 text-right tabular-nums">{item.price ?? '—'}</td><td className="px-3 py-3">{item.currency ?? '—'}</td><td className="px-3 py-3 text-xs text-[#a05f4e]">{item.duplicate ? t('statementDuplicate') : item.error ? t('statementRequiredFields') : ''}</td></tr>)}</tbody></table></div>}
-          {ledgerCsvError && <p role="alert" className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{ledgerCsvError}</p>}
+          </> : <div className="overflow-x-auto rounded-lg border border-black/8"><table className="min-w-[900px] w-full text-sm"><thead className="bg-[#f4f5f1] text-xs text-[#52615d]"><tr><th className="px-3 py-3">{t('statementSelect')}</th><th className="px-3 py-3 text-left">{t('date')}</th><th className="px-3 py-3 text-left">{t('instrument')}</th><th className="px-3 py-3 text-left">{t('type')}</th><th className="px-3 py-3 text-right">{t('amount')}</th><th className="px-3 py-3 text-right">{t('units')}</th><th className="px-3 py-3 text-right">{t('price')}</th><th className="px-3 py-3 text-left">{t('currency')}</th><th className="px-3 py-3 text-left" /></tr></thead><tbody className="divide-y divide-black/5">{ledgerCsvPreview.map((item) => <tr key={item.row} className={item.duplicate || item.error ? 'bg-[#fafaf8] text-[#5e6c68]' : ''}><td className="px-3 py-3 text-center"><input type="checkbox" disabled={item.duplicate || Boolean(item.error)} checked={ledgerCsvSelection.has(item.row)} aria-label={t('statementSelectRow', { row: item.row })} onChange={(event) => setLedgerCsvSelection((current) => { const next = new Set(current); event.target.checked ? next.add(item.row) : next.delete(item.row); return next; })} className="size-4 accent-[var(--money-primary)]" /></td><td className="px-3 py-3">{item.occurred_on ?? '—'}</td><td className="px-3 py-3 font-medium">{item.name ?? '—'}</td><td className="px-3 py-3">{item.transaction_type ?? '—'}</td><td className="px-3 py-3 text-right tabular-nums">{item.amount == null ? '—' : formatEuro(item.amount)}</td><td className="px-3 py-3 text-right tabular-nums">{item.units ?? '—'}</td><td className="px-3 py-3 text-right tabular-nums">{item.price ?? '—'}</td><td className="px-3 py-3">{item.currency ?? '—'}</td><td className="px-3 py-3 text-xs text-[#a94f3a]">{item.duplicate ? t('statementDuplicate') : item.error ? t('statementRequiredFields') : ''}</td></tr>)}</tbody></table></div>}
+          {ledgerCsvError && <p role="alert" className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{ledgerCsvError}</p>}
         </div>
         <DialogFooter><Button type="button" variant="outline" onClick={() => setLedgerCsvOpen(false)}>{t('cancel')}</Button>{ledgerCsvPreview.length ? <Button disabled={ledgerCsvBusy || !ledgerCsvSelection.size} onClick={() => void importLedgerCsv()}>{t('statementConfirm', { count: ledgerCsvSelection.size })}</Button> : <Button disabled={ledgerCsvBusy || Object.values(ledgerCsvMapping).length !== 7 || Object.values(ledgerCsvMapping).some((value) => !value) || new Set(Object.values(ledgerCsvMapping)).size !== 7} onClick={() => void previewLedgerCsv()}>{t('statementPreview')}</Button>}</DialogFooter>
       </DialogContent>
@@ -5730,13 +5730,13 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => { setInstrumentQuery(item.name); setSuggestionsOpen(false); }}
           className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs font-normal hover:bg-[#f4f5f1]">
-          <span>{item.name}</span><span className="shrink-0 text-[#87918e]">{item.providerSymbol || '—'}</span>
+          <span>{item.name}</span><span className="shrink-0 text-[#5e6c68]">{item.providerSymbol || '—'}</span>
         </button>)}
       </div>}
-      {instruments.length === 0 && <p className="mt-1 font-normal text-[#a05f4e]">{t('noInstrumentsHint')}</p>}
-      {instruments.length > 0 && suggestionsOpen && instrumentSuggestions.length === 0 && <p className="mt-1 font-normal text-[#87918e]">{t('noInstrumentMatch')}</p>}
-    </div></label><div className="grid grid-cols-3 gap-3">{tipoSplit ? <input type="hidden" name="amount" value="0" /> : <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('amount')}<Input required name="amount" min="0.01" step="0.01" type="number" value={amountInput} onChange={(event) => setAmountInput(event.target.value)} /></label>}{tipoContante ? null : <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('units')}<Input required name="units" min="0.00000001" step="0.00000001" type="number" value={unitsInput} onChange={(event) => setUnitsInput(event.target.value)} /></label>}{tipoSplit ? <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('ledgerSplitRatio')}<Input required name="units" min="0.00000001" step="0.00000001" type="number" value={unitsInput} onChange={(event) => setUnitsInput(event.target.value)} /></label> : null}{tipoContante ? null : <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('priceComputed')}<Input readOnly required name="price" type="number" value={derivedPrice} tabIndex={-1} className="bg-[#f4f5f1] text-[#52615d]" /></label>}</div>{tipoSplit && <p className="text-[11px] leading-4 text-[#87918e]">{t('ledgerSplitHint')}</p>}<div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('currency')}<select name="currency" defaultValue={editing?.currency ?? 'EUR'} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm"><option>EUR</option><option>USD</option></select></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fee')}<Input name="fee" min="0" step="0.01" type="number" defaultValue={editing?.fee ?? 0} /></label></div><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('note')}<Input name="notes" defaultValue={editing?.notes ?? ''} placeholder={t('optional')} /></label>{!editing && !tipoSplit && <><div className="space-y-2 rounded-lg border border-[#5c8f82]/20 bg-[#f6f9f7] p-3"><label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-[#3b6a5b]"><input type="checkbox" checked={linkTransactionOpen} onChange={(event) => setLinkTransactionOpen(event.target.checked)} className="size-4 accent-[var(--money-primary)]" />{t('linkToTransaction')}</label>{linkTransactionOpen && <div className="grid grid-cols-2 gap-2 pt-1"><label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldDate')}<Input name="tx_occurred_on" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className="h-8 bg-white text-xs" /></label><label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldAccount')}<select required name="tx_account_name" defaultValue="" className="h-8 w-full rounded-md border border-input bg-white px-2 text-xs"><option value="">{t('noAccount')}</option>{accounts.filter(a => a.isActive !== false).map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}</select></label><label className="space-y-1 text-[10px] font-medium text-[#52615d] col-span-2">{t('fieldCategory')}<Input name="tx_category" defaultValue="Investimenti" className="h-8 bg-white text-xs" /></label><label className="space-y-1 text-[10px] font-medium text-[#52615d] col-span-2">{t('fieldDescription')}<Input name="tx_details" defaultValue="" placeholder={t('optionalNote')} className="h-8 bg-white text-xs" /></label></div>}</div><label className="flex items-center gap-2 text-xs text-[#71807c]"><input type="checkbox" name="force_duplicate" className="size-4 accent-[var(--money-primary)]" />{t('allowLedgerDuplicate')}</label></>}{error && <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => setEditing(undefined)}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('save')}</Button></DialogFooter></form></DialogContent></Dialog>
-    <Dialog open={Boolean(configuring)} onOpenChange={(open) => { if (!open) setConfiguring(null); }}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>{t('configureQuoteAndClassification')}</DialogTitle><DialogDescription>{t('configureQuoteAndClassificationDesc')}</DialogDescription></DialogHeader>{configuring && <form key={configuring.instrumentId} onSubmit={saveInstrument} className="space-y-4"><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('sourceSymbol')}<Input name="provider_symbol" defaultValue={configuring.providerSymbol ?? ''} placeholder={t('symbolExample')} /></label><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('assetClassLabel')}<Input name="asset_class" defaultValue={configuring.assetClass} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('area')}<Input name="area" defaultValue={configuring.area} /></label></div><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('sector')}<Input name="sector" defaultValue={configuring.sector} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('currency')}<Input name="currency" defaultValue={configuring.currency} /></label></div><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('allocTargetWeightField')}<Input name="target_weight" type="number" step="0.1" min={0} max={100} defaultValue={configuring.targetWeight === null ? '' : String(Math.round(configuring.targetWeight * 1000) / 10)} placeholder={t('weightExample')} /><span className="block text-[11px] font-normal text-[#87918e]">{t('allocTargetWeightHelp')}</span></label>{error && <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => setConfiguring(null)}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{t('saveConfiguration')}</Button></DialogFooter></form>}</DialogContent></Dialog>
+      {instruments.length === 0 && <p className="mt-1 font-normal text-[#a94f3a]">{t('noInstrumentsHint')}</p>}
+      {instruments.length > 0 && suggestionsOpen && instrumentSuggestions.length === 0 && <p className="mt-1 font-normal text-[#5e6c68]">{t('noInstrumentMatch')}</p>}
+    </div></label><div className="grid grid-cols-3 gap-3">{tipoSplit ? <input type="hidden" name="amount" value="0" /> : <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('amount')}<Input required name="amount" min="0.01" step="0.01" type="number" value={amountInput} onChange={(event) => setAmountInput(event.target.value)} /></label>}{tipoContante ? null : <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('units')}<Input required name="units" min="0.00000001" step="0.00000001" type="number" value={unitsInput} onChange={(event) => setUnitsInput(event.target.value)} /></label>}{tipoSplit ? <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('ledgerSplitRatio')}<Input required name="units" min="0.00000001" step="0.00000001" type="number" value={unitsInput} onChange={(event) => setUnitsInput(event.target.value)} /></label> : null}{tipoContante ? null : <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('priceComputed')}<Input readOnly required name="price" type="number" value={derivedPrice} tabIndex={-1} className="bg-[#f4f5f1] text-[#52615d]" /></label>}</div>{tipoSplit && <p className="text-[11px] leading-4 text-[#5e6c68]">{t('ledgerSplitHint')}</p>}<div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('currency')}<select name="currency" defaultValue={editing?.currency ?? 'EUR'} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm"><option>EUR</option><option>USD</option></select></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fee')}<Input name="fee" min="0" step="0.01" type="number" defaultValue={editing?.fee ?? 0} /></label></div><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('note')}<Input name="notes" defaultValue={editing?.notes ?? ''} placeholder={t('optional')} /></label>{!editing && !tipoSplit && <><div className="space-y-2 rounded-lg border border-[#5c8f82]/20 bg-[#f6f9f7] p-3"><label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-[#3b6a5b]"><input type="checkbox" checked={linkTransactionOpen} onChange={(event) => setLinkTransactionOpen(event.target.checked)} className="size-4 accent-[var(--money-primary)]" />{t('linkToTransaction')}</label>{linkTransactionOpen && <div className="grid grid-cols-2 gap-2 pt-1"><label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldDate')}<Input name="tx_occurred_on" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className="h-8 bg-white text-xs" /></label><label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldAccount')}<select required name="tx_account_name" defaultValue="" className="h-8 w-full rounded-md border border-input bg-white px-2 text-xs"><option value="">{t('noAccount')}</option>{accounts.filter(a => a.isActive !== false).map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}</select></label><label className="space-y-1 text-[10px] font-medium text-[#52615d] col-span-2">{t('fieldCategory')}<Input name="tx_category" defaultValue="Investimenti" className="h-8 bg-white text-xs" /></label><label className="space-y-1 text-[10px] font-medium text-[#52615d] col-span-2">{t('fieldDescription')}<Input name="tx_details" defaultValue="" placeholder={t('optionalNote')} className="h-8 bg-white text-xs" /></label></div>}</div><label className="flex items-center gap-2 text-xs text-[#5e6c68]"><input type="checkbox" name="force_duplicate" className="size-4 accent-[var(--money-primary)]" />{t('allowLedgerDuplicate')}</label></>}{error && <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => setEditing(undefined)}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('save')}</Button></DialogFooter></form></DialogContent></Dialog>
+    <Dialog open={Boolean(configuring)} onOpenChange={(open) => { if (!open) setConfiguring(null); }}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>{t('configureQuoteAndClassification')}</DialogTitle><DialogDescription>{t('configureQuoteAndClassificationDesc')}</DialogDescription></DialogHeader>{configuring && <form key={configuring.instrumentId} onSubmit={saveInstrument} className="space-y-4"><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('sourceSymbol')}<Input name="provider_symbol" defaultValue={configuring.providerSymbol ?? ''} placeholder={t('symbolExample')} /></label><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('assetClassLabel')}<Input name="asset_class" defaultValue={configuring.assetClass} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('area')}<Input name="area" defaultValue={configuring.area} /></label></div><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('sector')}<Input name="sector" defaultValue={configuring.sector} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('currency')}<Input name="currency" defaultValue={configuring.currency} /></label></div><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('allocTargetWeightField')}<Input name="target_weight" type="number" step="0.1" min={0} max={100} defaultValue={configuring.targetWeight === null ? '' : String(Math.round(configuring.targetWeight * 1000) / 10)} placeholder={t('weightExample')} /><span className="block text-[11px] font-normal text-[#5e6c68]">{t('allocTargetWeightHelp')}</span></label>{error && <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => setConfiguring(null)}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{t('saveConfiguration')}</Button></DialogFooter></form>}</DialogContent></Dialog>
   </div>;
 }
 
@@ -5811,7 +5811,7 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
     <div className="flex flex-wrap gap-2 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
       {([['patrimonio', t('tabNetWorth')], ['conti', t('tabAccounts')], ['valute', t('tabCurrencies')]] as const).map(([valore, etichetta]) => (
         <button key={valore} type="button" onClick={() => setScheda(valore)}
-          className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${scheda === valore ? 'bg-[var(--money-deep)] text-white' : 'text-[#61706c] hover:bg-[#f0f2ee]'}`}>
+          className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${scheda === valore ? 'bg-[var(--money-deep)] text-white' : 'text-[#5e6c68] hover:bg-[#f0f2ee]'}`}>
           {etichetta}
         </button>
       ))}
@@ -5831,7 +5831,7 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
          [t('bsInvestments'), investimenti], [t('balanceSheetLiabilitiesOnly'), passivita]] as const)
         .map(([etichetta, valore]) => (
           <span key={etichetta} className="flex items-baseline gap-1.5">
-            <span className="text-[#87918e]">{etichetta}</span>
+            <span className="text-[#5e6c68]">{etichetta}</span>
             <b className="tabular-nums text-[13px] text-[#1f2c28]">{formatEuro(valore)}</b>
           </span>
         ))}
@@ -5841,25 +5841,25 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
       <Card className="border-black/6 bg-white shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-[17px]">{t('netWorthInCurrencies')}</CardTitle>
-          <p className="mt-1 text-xs text-[#7b8784]">{t('netWorthInCurrenciesSubtitle')}</p>
+          <p className="mt-1 text-xs text-[#5e6c68]">{t('netWorthInCurrenciesSubtitle')}</p>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {(data.currencies ?? []).map((entry) => (
             <div key={entry.code} className="rounded-xl border border-black/6 px-3 py-2.5">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#87918e]">{entry.code}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5e6c68]">{entry.code}</p>
               {entry.available && entry.total !== null ? (
                 <>
                   <p className="mt-0.5 text-lg font-semibold tabular-nums text-[#173b33]">
                     {entry.total.toLocaleString(locale, { minimumFractionDigits: entry.inverted ? 4 : 2, maximumFractionDigits: entry.inverted ? 4 : 2 })}
                   </p>
                   {entry.change !== null && (
-                    <p className={`text-xs tabular-nums ${entry.change >= 0 ? 'text-[#2d7b65]' : 'text-[#bd5e46]'}`}>
+                    <p className={`text-xs tabular-nums ${entry.change >= 0 ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>
                       {entry.change >= 0 ? '+' : ''}{entry.change.toLocaleString(locale, { maximumFractionDigits: entry.inverted ? 4 : 2 })}
                       {entry.changePercent !== null && ` (${entry.changePercent >= 0 ? '+' : ''}${entry.changePercent.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%)`}
                     </p>
                   )}
                   {entry.rate !== null && (
-                    <p className="mt-1 text-[11px] text-[#87918e]">
+                    <p className="mt-1 text-[11px] text-[#5e6c68]">
                       {entry.inverted
                         ? `1 ${entry.code} = ${entry.rate.toLocaleString(locale, { maximumFractionDigits: 2 })} EUR`
                         : `1 EUR = ${entry.rate.toLocaleString(locale, { maximumFractionDigits: 4 })} ${entry.code}`}
@@ -5905,19 +5905,19 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
       </label>
       {alPresente && <Button onClick={() => onNewAccount()} size="sm" className="ml-auto h-8 rounded-lg bg-[var(--money-primary)] px-3 text-xs text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-3.5" />{t('newAccount')}</Button>}
     </div>
-    {!alPresente && <p className="rounded-xl border border-black/7 bg-[#fafaf8] px-4 py-2.5 text-xs text-[#71807c]">{t('pastPeriodReadOnly')}</p>}
+    {!alPresente && <p className="rounded-xl border border-black/7 bg-[#fafaf8] px-4 py-2.5 text-xs text-[#5e6c68]">{t('pastPeriodReadOnly')}</p>}
 
     <div className="grid gap-5 xl:grid-cols-2">
       <div className="space-y-5">
         <div className="flex items-baseline justify-between gap-3 border-b border-black/8 pb-1.5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#87918e]">{t('balanceSheetAssets')}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#5e6c68]">{t('balanceSheetAssets')}</p>
           <p className="text-sm font-semibold tabular-nums">{formatEuro(totaleAttivo)}</p>
         </div>
         {colonnaAttivo.map(({ group, items, totalCount, total }) => <AccountGroupCard key={group} group={group} label={groupLabel[group]} items={items} totalCount={totalCount} total={total} netWorth={data.totals.netWorth} azioni={alPresente} expanded={expandedGroupOverride[group] ?? items.length <= 6} onToggleExpand={() => setExpandedGroupOverride((prev) => ({ ...prev, [group]: !(prev[group] ?? items.length <= 6) }))} onEdit={onAccountEdit} onValuations={onAccountValuations} onDelete={(account) => void onAccountDelete(account)} />)}
       </div>
       <div className="space-y-5">
         <div className="flex items-baseline justify-between gap-3 border-b border-black/8 pb-1.5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#87918e]">{t('balanceSheetLiabilitiesEquity')}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#5e6c68]">{t('balanceSheetLiabilitiesEquity')}</p>
           <p className="text-sm font-semibold tabular-nums">{formatEuro(passivita + capitaleProprio)}</p>
         </div>
         {colonnaPassivo.map(({ group, items, totalCount, total }) => <AccountGroupCard key={group} group={group} label={groupLabel[group]} items={items} totalCount={totalCount} total={total} netWorth={data.totals.netWorth} azioni={alPresente} expanded={expandedGroupOverride[group] ?? items.length <= 6} onToggleExpand={() => setExpandedGroupOverride((prev) => ({ ...prev, [group]: !(prev[group] ?? items.length <= 6) }))} onEdit={onAccountEdit} onValuations={onAccountValuations} onDelete={(account) => void onAccountDelete(account)} />)}
@@ -6063,11 +6063,11 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
   }
 
   return <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
-    <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between"><div><CardTitle className="text-[17px]">{t('monthlyBudgetEditable')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('monthlyBudgetEditableSubtitle')}</p></div><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" disabled={!canEdit || Boolean(busy)} onClick={() => void copyBudget('month')}><Copy className="size-4" />{t('priorMonthAction')}</Button><Button type="button" variant="outline" disabled={!canEdit || Boolean(busy)} onClick={() => void copyBudget('year')}><Copy className="size-4" />{t('priorYearAction')}</Button></div></CardHeader>
+    <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between"><div><CardTitle className="text-[17px]">{t('monthlyBudgetEditable')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('monthlyBudgetEditableSubtitle')}</p></div><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" disabled={!canEdit || Boolean(busy)} onClick={() => void copyBudget('month')}><Copy className="size-4" />{t('priorMonthAction')}</Button><Button type="button" variant="outline" disabled={!canEdit || Boolean(busy)} onClick={() => void copyBudget('year')}><Copy className="size-4" />{t('priorYearAction')}</Button></div></CardHeader>
     <CardContent>
-      {!canEdit && <p className="mb-4 rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{t('budgetEditRestricted', { years: editableYears.join(', ') })}</p>}
+      {!canEdit && <p className="mb-4 rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{t('budgetEditRestricted', { years: editableYears.join(', ') })}</p>}
       {error && <p className="mb-3 rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}
-      <div className="hidden gap-2 pb-2 text-[11px] font-medium uppercase tracking-wide text-[#87918e] sm:grid sm:grid-cols-[minmax(170px,1fr)_130px_120px_130px_auto]">
+      <div className="hidden gap-2 pb-2 text-[11px] font-medium uppercase tracking-wide text-[#5e6c68] sm:grid sm:grid-cols-[minmax(170px,1fr)_130px_120px_130px_auto]">
         <span>{t('category')}</span>
         <span>{t('categoryGroup')}</span>
         <span>{t('budget')}</span>
@@ -6104,19 +6104,19 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
                   || !data.items.some((altra) => altra.id !== item.id && altra.category.trim().toLowerCase() === chiave);
               }).map((nome) => <option key={nome} value={nome}>{nome}</option>)}
             </select>
-            {usefulSuggestion && <button type="button" disabled={!canEdit || Boolean(busy)} title={t('budgetSuggestionTitle', { average: formatEuro(usefulSuggestion.average), max: formatEuro(usefulSuggestion.max) })} onClick={() => void usaSuggerimento(item, draft.category, usefulSuggestion.median)} className="mt-1 text-left text-[11px] leading-4 text-[#397867] hover:underline disabled:cursor-default disabled:text-[#9aa5a2] disabled:no-underline">
+            {usefulSuggestion && <button type="button" disabled={!canEdit || Boolean(busy)} title={t('budgetSuggestionTitle', { average: formatEuro(usefulSuggestion.average), max: formatEuro(usefulSuggestion.max) })} onClick={() => void usaSuggerimento(item, draft.category, usefulSuggestion.median)} className="mt-1 text-left text-[11px] leading-4 text-[#237056] hover:underline disabled:cursor-default disabled:text-[#9aa5a2] disabled:no-underline">
               {t('budgetSuggestion', { amount: formatEuro(usefulSuggestion.median), months: usefulSuggestion.monthsWithSpending, total: usefulSuggestion.monthsConsidered })}
             </button>}
             </div>
           </div>
           <Input aria-label={`${t('budget')} ${item.categoryLabel}`} disabled={!canEdit} min="0" step="0.01" type="number" value={draft.amount} onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: { ...draft, amount: event.target.value } }))} className="h-9 bg-[#fafaf8]" />
-          <div className="text-right text-xs leading-4 text-[#71807c] sm:pt-2">
+          <div className="text-right text-xs leading-4 text-[#5e6c68] sm:pt-2">
             <span className="sm:hidden">{actualLabel}: </span>{formatEuro(item.actual)}
-            {item.previousLeftover !== 0 && <span className="block text-[#87918e]">{item.previousLeftover > 0 ? t('budgetPreviousLeft', { amount: formatEuro(item.previousLeftover) }) : t('budgetPreviousOver', { amount: formatEuro(Math.abs(item.previousLeftover)) })}</span>}
+            {item.previousLeftover !== 0 && <span className="block text-[#5e6c68]">{item.previousLeftover > 0 ? t('budgetPreviousLeft', { amount: formatEuro(item.previousLeftover) }) : t('budgetPreviousOver', { amount: formatEuro(Math.abs(item.previousLeftover)) })}</span>}
           </div>
           <div className="flex justify-end gap-1">
             <Button type="button" size="icon" variant="ghost" aria-label={`${t('save')} ${item.categoryLabel}`} disabled={!canEdit || !changed || Boolean(busy)} onClick={() => void save(item)}><Save className="size-4" /></Button>
-            <Button type="button" size="icon" variant="ghost" aria-label={`${t('delete')} ${item.categoryLabel}`} disabled={!canEdit || Boolean(busy)} onClick={() => void remove(item)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button>
+            <Button type="button" size="icon" variant="ghost" aria-label={`${t('delete')} ${item.categoryLabel}`} disabled={!canEdit || Boolean(busy)} onClick={() => void remove(item)} className="text-[#a94f3a]"><Trash2 className="size-4" /></Button>
           </div>
         </div>;
       })])}</div>
@@ -6124,8 +6124,8 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
           hanno ancora una riga. Premerne una riempie il modulo qui sotto —
           categoria e importo — e resta da premere Aggiungi. */}
       {canEdit && senzaRiga.length > 0 && <div className="mt-4 rounded-xl border border-black/6 bg-[#f9fbf9] p-3">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-[#87918e]">{t('budgetSuggestedNew')}</p>
-        <div className="mt-2 flex flex-wrap gap-2">{senzaRiga.map((voce) => <button key={voce.category} type="button" disabled={Boolean(busy)} title={t('budgetSuggestionTitle', { average: formatEuro(voce.average), max: formatEuro(voce.max) })} onClick={() => { setNewCategory(voce.category); setNewAmount(voce.median.toFixed(2)); }} className="rounded-full border border-black/10 bg-white px-3 py-1 text-xs text-[#397867] transition hover:border-[#397867] disabled:cursor-default disabled:text-[#9aa5a2]">{voce.category} · {t('budgetSuggestion', { amount: formatEuro(voce.median), months: voce.monthsWithSpending, total: voce.monthsConsidered })}</button>)}</div>
+        <p className="text-[11px] font-medium uppercase tracking-wide text-[#5e6c68]">{t('budgetSuggestedNew')}</p>
+        <div className="mt-2 flex flex-wrap gap-2">{senzaRiga.map((voce) => <button key={voce.category} type="button" disabled={Boolean(busy)} title={t('budgetSuggestionTitle', { average: formatEuro(voce.average), max: formatEuro(voce.max) })} onClick={() => { setNewCategory(voce.category); setNewAmount(voce.median.toFixed(2)); }} className="rounded-full border border-black/10 bg-white px-3 py-1 text-xs text-[#237056] transition hover:border-[#397867] disabled:cursor-default disabled:text-[#9aa5a2]">{voce.category} · {t('budgetSuggestion', { amount: formatEuro(voce.median), months: voce.monthsWithSpending, total: voce.monthsConsidered })}</button>)}</div>
       </div>}
       {canEdit && <form onSubmit={create} className="mt-4 grid gap-2 rounded-xl bg-[#f4f5f1] p-3 sm:grid-cols-[1fr_150px_auto]"><select required value={newCategory} onChange={(event) => setNewCategory(event.target.value)} className="h-10 rounded-md border border-input bg-white px-2 text-sm"><option value="">{t('budgetPickCategory')}</option>{categorieDisponibili.map((nome) => <option key={nome} value={nome}>{nome}</option>)}</select><Input required min="0" step="0.01" type="number" value={newAmount} onChange={(event) => setNewAmount(event.target.value)} placeholder={t('budgetPlaceholder')} className="h-10 bg-white" /><Button type="submit" disabled={Boolean(busy)} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('add')}</Button></form>}
     </CardContent>
@@ -6168,7 +6168,7 @@ function NotesView({ notes, onSave, onDelete }: { notes: NoteData[]; onSave: (no
     try { await onDelete(note); }
     catch { setDeleteError(t('cannotDeleteNote')); }
   }
-  return <div className="space-y-5"><Card className="border-black/6 bg-white shadow-sm"><CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle className="text-[17px]">{t('notesTitle')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('notesSubtitle', { count: filtered.length, total: notes.length })}</p></div><Button onClick={() => { setEditing(null); setCreating(true); setSaveError(''); }} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('newNote')}</Button></CardHeader><CardContent><div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-black/35" /><Input aria-label={t('searchInTitlesAndText')} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('searchInTitlesAndText')} className="h-10 bg-[#fafaf8] pl-9" /></div></CardContent></Card>{deleteError && <p role="alert" className="rounded-lg bg-[#fce9e3] px-3 py-2 text-sm text-[#a94f3a]">{deleteError}</p>}<div className="grid gap-4 lg:grid-cols-2">{filtered.map((note) => <Card key={note.id} className="border-black/6 bg-white shadow-sm"><CardContent className="p-5"><div className="flex gap-3"><StickyNote className="mt-0.5 size-4 shrink-0 text-[#4d7f70]" /><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-semibold">{note.title}</p><p className="mt-0.5 text-xs text-[#7b8784]">{sezione(note.section)}{note.status ? ` · ${note.status}` : ''}</p></div><div className="flex"><Button size="icon" variant="ghost" aria-label={`${t('edit')} ${note.title}`} onClick={() => { setEditing(note); setCreating(false); setSaveError(''); }}><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${note.title}`} onClick={() => void remove(note)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button></div></div><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#52615d]">{note.body}</p></div></div></CardContent></Card>)}</div>{!filtered.length && <Card><CardContent className="p-10 text-center text-sm text-[#71807c]">{t('noNotesFound')}</CardContent></Card>}<Dialog open={creating || editing !== null} onOpenChange={(open) => { if (!open) { setCreating(false); setEditing(null); setSaveError(''); } }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{editing ? t('editNote') : t('newNoteTitle')}</DialogTitle><DialogDescription>{t('noteDialogDesc')}</DialogDescription></DialogHeader><form key={editing?.id ?? 'new-note'} onSubmit={save} className="space-y-3"><label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('section')}<Input name="section" list="note-sections" placeholder={t('navAppunti')} defaultValue={editing && editing.section !== 'Appunti' ? editing.section : ''} className="h-10 bg-white" /></label><datalist id="note-sections">{sections.map((section) => <option key={section} value={section} />)}</datalist><label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('title')}<Input required name="title" defaultValue={editing?.title ?? ''} /></label><label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('text')}<textarea name="body" defaultValue={editing?.body ?? ''} className="min-h-28 w-full rounded-lg border border-input bg-white p-2.5 text-sm" /></label><label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('status')}<Input name="status" defaultValue={editing?.status ?? ''} placeholder={t('statusPlaceholder')} /></label>{saveError && <p role="alert" className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{saveError}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => { setCreating(false); setEditing(null); setSaveError(''); }}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('save')}</Button></DialogFooter></form></DialogContent></Dialog></div>;
+  return <div className="space-y-5"><Card className="border-black/6 bg-white shadow-sm"><CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle className="text-[17px]">{t('notesTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('notesSubtitle', { count: filtered.length, total: notes.length })}</p></div><Button onClick={() => { setEditing(null); setCreating(true); setSaveError(''); }} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('newNote')}</Button></CardHeader><CardContent><div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-black/35" /><Input aria-label={t('searchInTitlesAndText')} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('searchInTitlesAndText')} className="h-10 bg-[#fafaf8] pl-9" /></div></CardContent></Card>{deleteError && <p role="alert" className="rounded-lg bg-[#fce9e3] px-3 py-2 text-sm text-[#a94f3a]">{deleteError}</p>}<div className="grid gap-4 lg:grid-cols-2">{filtered.map((note) => <Card key={note.id} className="border-black/6 bg-white shadow-sm"><CardContent className="p-5"><div className="flex gap-3"><StickyNote className="mt-0.5 size-4 shrink-0 text-[#237056]" /><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-semibold">{note.title}</p><p className="mt-0.5 text-xs text-[#5e6c68]">{sezione(note.section)}{note.status ? ` · ${note.status}` : ''}</p></div><div className="flex"><Button size="icon" variant="ghost" aria-label={`${t('edit')} ${note.title}`} onClick={() => { setEditing(note); setCreating(false); setSaveError(''); }}><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${note.title}`} onClick={() => void remove(note)} className="text-[#a94f3a]"><Trash2 className="size-4" /></Button></div></div><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#52615d]">{note.body}</p></div></div></CardContent></Card>)}</div>{!filtered.length && <Card><CardContent className="p-10 text-center text-sm text-[#5e6c68]">{t('noNotesFound')}</CardContent></Card>}<Dialog open={creating || editing !== null} onOpenChange={(open) => { if (!open) { setCreating(false); setEditing(null); setSaveError(''); } }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{editing ? t('editNote') : t('newNoteTitle')}</DialogTitle><DialogDescription>{t('noteDialogDesc')}</DialogDescription></DialogHeader><form key={editing?.id ?? 'new-note'} onSubmit={save} className="space-y-3"><label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('section')}<Input name="section" list="note-sections" placeholder={t('navAppunti')} defaultValue={editing && editing.section !== 'Appunti' ? editing.section : ''} className="h-10 bg-white" /></label><datalist id="note-sections">{sections.map((section) => <option key={section} value={section} />)}</datalist><label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('title')}<Input required name="title" defaultValue={editing?.title ?? ''} /></label><label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('text')}<textarea name="body" defaultValue={editing?.body ?? ''} className="min-h-28 w-full rounded-lg border border-input bg-white p-2.5 text-sm" /></label><label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('status')}<Input name="status" defaultValue={editing?.status ?? ''} placeholder={t('statusPlaceholder')} /></label>{saveError && <p role="alert" className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{saveError}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => { setCreating(false); setEditing(null); setSaveError(''); }}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('save')}</Button></DialogFooter></form></DialogContent></Dialog></div>;
 }
 
 
@@ -6215,7 +6215,7 @@ function BackupsCard({ apiUrl, onRestored }: { apiUrl: string; onRestored: () =>
     <Card className="border-black/6 bg-white shadow-sm">
       <CardHeader>
         <CardTitle className="text-[17px]">{t('backups')}</CardTitle>
-        <p className="mt-1 text-xs text-[#7b8784]">{t('backupsHint')} {t('backupGlobalScope')}</p>
+        <p className="mt-1 text-xs text-[#5e6c68]">{t('backupsHint')} {t('backupGlobalScope')}</p>
       </CardHeader>
       <CardContent className="space-y-3">
         <Button
@@ -6228,7 +6228,7 @@ function BackupsCard({ apiUrl, onRestored }: { apiUrl: string; onRestored: () =>
         >
           <Database className={`size-4 ${busy ? 'animate-pulse' : ''}`} />{t('backupCreate')}
         </Button>
-        {items.length === 0 && <p className="text-xs text-[#71807c]">{t('backupNone')}</p>}
+        {items.length === 0 && <p className="text-xs text-[#5e6c68]">{t('backupNone')}</p>}
         {items.length > 0 && (
           <ul className="divide-y divide-black/5 rounded-xl border border-black/6">
             {items.map((item) => (
@@ -6252,12 +6252,12 @@ function BackupsCard({ apiUrl, onRestored }: { apiUrl: string; onRestored: () =>
                           () => fetch(`${apiUrl}/api/backups/${encodeURIComponent(item.filename)}/restore`, { method: 'POST' }),
                           () => t('backupRestored', { date: when(item.created_at) }),
                         ).then(ok => { if (ok) void onRestored(); }))}
-                    className="bg-[#bd5e46] text-white hover:bg-[#a24f3b]"
+                    className="bg-[#a94f3a] text-white hover:bg-[#8f4530]"
                   >
                     {confirming.azione === 'delete' ? t('backupDeleteConfirm') : t('backupRestoreConfirm')}
                   </Button>
                   <Button variant="outline" disabled={busy} onClick={() => setConfirming(null)}>{t('cancel')}</Button>
-                  <p className="w-full text-xs text-[#a65b49]">{confirming.azione === 'delete'
+                  <p className="w-full text-xs text-[#a94f3a]">{confirming.azione === 'delete'
                     ? t('backupDeleteWarning', { date: when(item.created_at) })
                     : t('backupGlobalConfirm', { date: when(item.created_at) })}</p>
                   </>
@@ -6265,7 +6265,7 @@ function BackupsCard({ apiUrl, onRestored }: { apiUrl: string; onRestored: () =>
                   <span className="flex items-center gap-3">
                     <button
                       onClick={() => { setConfirming({ filename: item.filename, azione: 'restore' }); setOutcome(null); }}
-                      className="text-xs font-medium text-[#397867] hover:underline"
+                      className="text-xs font-medium text-[#237056] hover:underline"
                     >
                       {t('backupRestore')}
                     </button>
@@ -6275,7 +6275,7 @@ function BackupsCard({ apiUrl, onRestored }: { apiUrl: string; onRestored: () =>
                     <button
                       aria-label={`${t('delete')} ${when(item.created_at)}`}
                       onClick={() => { setConfirming({ filename: item.filename, azione: 'delete' }); setOutcome(null); }}
-                      className="text-xs font-medium text-[#bd5e46] hover:underline"
+                      className="text-xs font-medium text-[#a94f3a] hover:underline"
                     >
                       {t('delete')}
                     </button>
@@ -6285,7 +6285,7 @@ function BackupsCard({ apiUrl, onRestored }: { apiUrl: string; onRestored: () =>
             ))}
           </ul>
         )}
-        {outcome && <p className={`text-xs ${outcome.ok ? 'text-[#2d7b65]' : 'text-[#a65b49]'}`}>{outcome.message}</p>}
+        {outcome && <p className={`text-xs ${outcome.ok ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>{outcome.message}</p>}
       </CardContent>
     </Card>
   );
@@ -6300,10 +6300,10 @@ function ImportDataCard({ onImportData, importing }: { onImportData: (file: File
     <Card className="border-black/6 bg-white shadow-sm">
       <CardHeader>
         <CardTitle className="text-[17px]">{t('importData')}</CardTitle>
-        <p className="mt-1 text-xs text-[#7b8784]">{t('importDataHint')}</p>
+        <p className="mt-1 text-xs text-[#5e6c68]">{t('importDataHint')}</p>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a65b49]">{t('importDataReplace')}</p>
+        <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{t('importDataReplace')}</p>
         <div className="flex flex-wrap items-center gap-3">
           <label className="cursor-pointer rounded-lg border border-black/10 px-3 py-2 text-xs font-medium text-[#52615d] hover:bg-black/[0.03]">
             {file ? file.name : t('importDataChoose')}
@@ -6334,7 +6334,7 @@ function ImportDataCard({ onImportData, importing }: { onImportData: (file: File
             {importing ? t('importingEllipsis') : t('importDataConfirm')}
           </Button>
         </div>
-        {outcome && <p className={`text-xs ${outcome.ok ? 'text-[#2d7b65]' : 'text-[#a65b49]'}`}>{outcome.message}</p>}
+        {outcome && <p className={`text-xs ${outcome.ok ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>{outcome.message}</p>}
       </CardContent>
     </Card>
   );
@@ -6342,7 +6342,7 @@ function ImportDataCard({ onImportData, importing }: { onImportData: (file: File
 
 function ReportsView({ year, month, downloadBusy, downloadError, canManageBackups, onDownload, onDownloadData, onImportData, importing, apiUrl, onReload }: { year: number; month: number; downloadBusy: boolean; downloadError: string; canManageBackups: boolean; onDownloadData: () => void; onImportData: (file: File) => Promise<string>; importing: boolean; apiUrl: string; onReload: () => Promise<void>; onDownload: (kind: 'excel' | 'pdf') => void }) {
   const { t, monthNames } = useI18n();
-  return <div className="space-y-5">{downloadBusy && <p role="status">{t('downloadPreparing')}</p>}{downloadError && <p role="alert" className="text-sm text-[#a65b49]">{downloadError}</p>}<Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('exportReport')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('exportReportForPeriod', { period: formatPeriodRef(monthNames, year, month) })} · {t('exportReportSubtitle')}</p></CardHeader><CardContent className="flex flex-wrap gap-3"><Button disabled={downloadBusy} onClick={() => onDownload('excel')} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileSpreadsheet className="size-4" />{t('downloadExcel')}</Button><Button disabled={downloadBusy} variant="outline" onClick={() => onDownload('pdf')}><Download className="size-4" />{t('downloadPdf')}</Button></CardContent></Card><Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('dataExchangeTitle')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('downloadDataHint')}</p></CardHeader><CardContent><Button disabled={downloadBusy} variant="outline" onClick={onDownloadData}><Download className="size-4" />{t('downloadData')}</Button></CardContent></Card><ImportDataCard onImportData={onImportData} importing={importing} />{canManageBackups && <BackupsCard apiUrl={apiUrl} onRestored={onReload} />}</div>;
+  return <div className="space-y-5">{downloadBusy && <p role="status">{t('downloadPreparing')}</p>}{downloadError && <p role="alert" className="text-sm text-[#a94f3a]">{downloadError}</p>}<Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('exportReport')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('exportReportForPeriod', { period: formatPeriodRef(monthNames, year, month) })} · {t('exportReportSubtitle')}</p></CardHeader><CardContent className="flex flex-wrap gap-3"><Button disabled={downloadBusy} onClick={() => onDownload('excel')} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileSpreadsheet className="size-4" />{t('downloadExcel')}</Button><Button disabled={downloadBusy} variant="outline" onClick={() => onDownload('pdf')}><Download className="size-4" />{t('downloadPdf')}</Button></CardContent></Card><Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('dataExchangeTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('downloadDataHint')}</p></CardHeader><CardContent><Button disabled={downloadBusy} variant="outline" onClick={onDownloadData}><Download className="size-4" />{t('downloadData')}</Button></CardContent></Card><ImportDataCard onImportData={onImportData} importing={importing} />{canManageBackups && <BackupsCard apiUrl={apiUrl} onRestored={onReload} />}</div>;
 }
 
 // Quello che il modulo del movimento ha letto dai campi mentre li si compila.
@@ -6373,7 +6373,7 @@ type ImpostazioniDellaPagina = {
 
 /** La scheda che tiene le impostazioni di una pagina: titolo e righe. */
 function CardImpostazioni({ titolo, sottotitolo, errore, children }: { titolo: string; sottotitolo?: string; errore?: string; children: ReactNode }) {
-  return <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{titolo}</CardTitle>{sottotitolo && <p className="mt-1 text-xs leading-5 text-[#7b8784]">{sottotitolo}</p>}</CardHeader><CardContent className="space-y-4">{children}{errore && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#bd5e46]">{errore}</p>}</CardContent></Card>;
+  return <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{titolo}</CardTitle>{sottotitolo && <p className="mt-1 text-xs leading-5 text-[#5e6c68]">{sottotitolo}</p>}</CardHeader><CardContent className="space-y-4">{children}{errore && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#a94f3a]">{errore}</p>}</CardContent></Card>;
 }
 
 // Valute in cui rileggere il patrimonio. Non e' un elenco chiuso: qualunque
@@ -6391,7 +6391,7 @@ function SettingCurrencies({ label, value, saving, onChange }: {
     <div className="space-y-1.5 text-xs font-medium text-[#52615d]">
       <span className="flex items-center justify-between">
         <span>{label}</span>
-        {saving && <span className="font-normal text-[#87918e]">{t('savingEllipsis')}</span>}
+        {saving && <span className="font-normal text-[#5e6c68]">{t('savingEllipsis')}</span>}
       </span>
       <div className="flex flex-wrap items-center gap-2">
         {codes.map((code) => (
@@ -6435,7 +6435,7 @@ function SettingSelect({ label, value, options, saving, onChange, disabled, hint
   // prima voce dell'elenco dice una cosa che nel database non c'e'.
   const voci = unset === undefined ? uniqueOptions(value, options) : ['', ...uniqueOptions(value, options)];
   const etichette = unset === undefined ? labels : { '': unset, ...labels };
-  return <label className="block space-y-1.5 text-xs font-medium text-[#52615d]"><span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[#71807c]">{t('savingEllipsis')}</span>}</span><select value={value} onChange={(event) => onChange(event.target.value)} disabled={saving || disabled} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm text-[#17211f] outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-[#f4f5f1] disabled:opacity-60">{voci.map((option) => <option key={option} value={option}>{etichette?.[option] ?? option}</option>)}</select>{hint && <p className="font-normal leading-4 text-[#87918e]">{hint}</p>}</label>;
+  return <label className="block space-y-1.5 text-xs font-medium text-[#52615d]"><span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[#5e6c68]">{t('savingEllipsis')}</span>}</span><select value={value} onChange={(event) => onChange(event.target.value)} disabled={saving || disabled} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm text-[#17211f] outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-[#f4f5f1] disabled:opacity-60">{voci.map((option) => <option key={option} value={option}>{etichette?.[option] ?? option}</option>)}</select>{hint && <p className="font-normal leading-4 text-[#5e6c68]">{hint}</p>}</label>;
 }
 
 // Il paese dove sono tassati gli investimenti. Serve a mostrare la nota che
@@ -6489,15 +6489,15 @@ function SettingBenchmark({ label, value, saving, onChange, hint, apiUrl }: { la
   }
 
   return <div className="space-y-1.5 text-xs font-medium text-[#52615d]">
-    <span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[#71807c]">{t('savingEllipsis')}</span>}</span>
+    <span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[#5e6c68]">{t('savingEllipsis')}</span>}</span>
     {/* Senza valore la riga dice una frase intera, e una frase non si taglia:
         si manda a capo. `h-10` fisso la costringerebbe a stare su una riga
         sola, e a 390 px e' la riga che allarga la scheda oltre lo schermo. */}
     <div className="flex min-h-10 items-center justify-between gap-2 rounded-lg border border-input bg-[#fafaf8] px-2.5 py-1.5 text-sm text-[#17211f]">
-      <span className="min-w-0 flex-1 break-words">{value ? <>{value}<span className="text-[#71807c]">{scelto ? ` · ${scelto.name}` : ''}</span></> : t('benchmarkNone')}</span>
-      {value && <button type="button" disabled={saving} onClick={() => void scegli('')} className="shrink-0 font-normal text-[#71807c] hover:text-[#17211f]">{t('benchmarkClear')}</button>}
+      <span className="min-w-0 flex-1 break-words">{value ? <>{value}<span className="text-[#5e6c68]">{scelto ? ` · ${scelto.name}` : ''}</span></> : t('benchmarkNone')}</span>
+      {value && <button type="button" disabled={saving} onClick={() => void scegli('')} className="shrink-0 font-normal text-[#5e6c68] hover:text-[#17211f]">{t('benchmarkClear')}</button>}
     </div>
-    <p className="pt-1 font-normal leading-4 text-[#87918e]">{t('benchmarkSuggestions')}</p>
+    <p className="pt-1 font-normal leading-4 text-[#5e6c68]">{t('benchmarkSuggestions')}</p>
     <div className="flex flex-wrap gap-1.5 pt-1">
       {BENCHMARKS.map((indice) => <button key={indice.symbol} type="button" disabled={saving} onClick={() => void scegli(indice.symbol)}
         className={`rounded-full border px-2.5 py-1 text-[11px] font-normal ${indice.symbol === value ? 'border-[var(--money-deep)] bg-[var(--money-deep)] text-white' : 'border-black/10 bg-white text-[#52615d] hover:bg-[#f4f5f1]'}`}>{indice.name}</button>)}
@@ -6508,7 +6508,7 @@ function SettingBenchmark({ label, value, saving, onChange, hint, apiUrl }: { la
       <Button type="button" size="sm" variant="outline" disabled={searching} onClick={() => void cerca()}>{searching ? t('searchingEllipsis') : t('tickerSearch')}</Button>
     </div>
     <TickerResults items={results} onPick={(symbol) => void scegli(symbol)} />
-    {!searching && results.length === 0 && <p className="font-normal leading-4 text-[#87918e]">{hint}</p>}
+    {!searching && results.length === 0 && <p className="font-normal leading-4 text-[#5e6c68]">{hint}</p>}
   </div>;
 }
 
@@ -6548,7 +6548,7 @@ function EquityCard({ versati, rivalutazione, resto, passivita, haPortafoglio }:
       <CardHeader className="flex-row items-center justify-between">
         <div>
           <CardTitle className="text-[17px]">{t('equityTitle')}</CardTitle>
-          <p className="mt-1 text-xs text-[#7b8784]">{t('equityFormula')}</p>
+          <p className="mt-1 text-xs text-[#5e6c68]">{t('equityFormula')}</p>
         </div>
         <p className="font-semibold tabular-nums">{formatEuro(totale)}</p>
       </CardHeader>
@@ -6557,9 +6557,9 @@ function EquityCard({ versati, rivalutazione, resto, passivita, haPortafoglio }:
           <div key={etichetta} className="flex items-start justify-between gap-3 py-3">
             <div className="min-w-0">
               <p className="text-sm font-medium">{etichetta}</p>
-              {spiegazione && <p className="mt-0.5 text-xs leading-5 text-[#87918e]">{spiegazione}</p>}
+              {spiegazione && <p className="mt-0.5 text-xs leading-5 text-[#5e6c68]">{spiegazione}</p>}
             </div>
-            <p className={`shrink-0 text-sm font-semibold tabular-nums ${valore < 0 ? 'text-[#bd5e46]' : ''}`}>{valore > 0 && etichetta === t('equityRevaluation') ? '+' : ''}{formatEuro(valore)}</p>
+            <p className={`shrink-0 text-sm font-semibold tabular-nums ${valore < 0 ? 'text-[#a94f3a]' : ''}`}>{valore > 0 && etichetta === t('equityRevaluation') ? '+' : ''}{formatEuro(valore)}</p>
           </div>
         ))}
       </CardContent>
@@ -6592,7 +6592,7 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
       <CardHeader onClick={onToggleExpand} className="flex-row cursor-pointer items-center justify-between select-none">
         <div>
           <CardTitle className="text-[17px]">{label}</CardTitle>
-          <p className="mt-1 text-xs text-[#7b8784]">{hiddenCount > 0 ? t('accountsVisibleOfTotal', { visible: items.length, total: totalCount }) : t('accountsCount', { count: totalCount })}</p>
+          <p className="mt-1 text-xs text-[#5e6c68]">{hiddenCount > 0 ? t('accountsVisibleOfTotal', { visible: items.length, total: totalCount }) : t('accountsCount', { count: totalCount })}</p>
         </div>
         <div className="flex items-center gap-2">
           <p className="mr-1 font-semibold tabular-nums">{formatEuro(total)}</p>
@@ -6600,10 +6600,10 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
         </div>
       </CardHeader>
       {expanded && (items.length === 0 ? (
-        <p className="border-t border-black/5 px-5 pt-3 text-xs text-[#87918e]">{t('accountsAllHiddenZero')}</p>
+        <p className="border-t border-black/5 px-5 pt-3 text-xs text-[#5e6c68]">{t('accountsAllHiddenZero')}</p>
       ) : (
-        <CardContent className="divide-y divide-black/5 border-t border-black/5 pt-2">{items.map((account) => { const valore = account.value; const share = account.countsInNetWorth === false || !netWorth ? null : Math.abs(valore) / Math.abs(netWorth) * 100; return <div key={account.id} className="py-3.5"><div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-[#edf0ed] text-[#4e6c64]"><Landmark className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{account.name}</p>{account.notes && <p className="mt-0.5 line-clamp-2 text-xs text-[#71807c]">{account.notes}</p>}</div><div className="text-right"><p className="text-sm font-semibold tabular-nums">{formatEuro(valore)}</p><p title={t('netWorthShareExplanation')} className="text-[11px] text-[#87918e]">{share !== null ? t('netWorthShare', { percent: formatPercentNumber(share) })
-                    : account.countsInNetWorth === false ? t('accountOutsideNetWorth') : '—'}</p></div>{azioni && <>{account.needsManualValuation && <Button size="icon" variant="ghost" aria-label={`${t('valuationsTitle')} ${account.name}`} onClick={() => onValuations(account)} className="text-[#52615d] hover:text-[#173b33]"><Gauge className="size-4" /></Button>}<Button size="icon" variant="ghost" aria-label={`${t('edit')} ${account.name}`} onClick={() => onEdit(account)} className="text-[#52615d] hover:text-[#173b33]"><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${account.name}`} onClick={() => onDelete(account)} className="text-[#bd5e46] hover:text-[#a04f3a]"><Trash2 className="size-4" /></Button></>}</div>{/* Costo e rivalutazione non compaiono qui: sono le prime due voci della card
+        <CardContent className="divide-y divide-black/5 border-t border-black/5 pt-2">{items.map((account) => { const valore = account.value; const share = account.countsInNetWorth === false || !netWorth ? null : Math.abs(valore) / Math.abs(netWorth) * 100; return <div key={account.id} className="py-3.5"><div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-[#edf0ed] text-[#4e6c64]"><Landmark className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{account.name}</p>{account.notes && <p className="mt-0.5 line-clamp-2 text-xs text-[#5e6c68]">{account.notes}</p>}</div><div className="text-right"><p className="text-sm font-semibold tabular-nums">{formatEuro(valore)}</p><p title={t('netWorthShareExplanation')} className="text-[11px] text-[#5e6c68]">{share !== null ? t('netWorthShare', { percent: formatPercentNumber(share) })
+                    : account.countsInNetWorth === false ? t('accountOutsideNetWorth') : '—'}</p></div>{azioni && <>{account.needsManualValuation && <Button size="icon" variant="ghost" aria-label={`${t('valuationsTitle')} ${account.name}`} onClick={() => onValuations(account)} className="text-[#52615d] hover:text-[#173b33]"><Gauge className="size-4" /></Button>}<Button size="icon" variant="ghost" aria-label={`${t('edit')} ${account.name}`} onClick={() => onEdit(account)} className="text-[#52615d] hover:text-[#173b33]"><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${account.name}`} onClick={() => onDelete(account)} className="text-[#a94f3a] hover:text-[#a04f3a]"><Trash2 className="size-4" /></Button></>}</div>{/* Costo e rivalutazione non compaiono qui: sono le prime due voci della card
     del capitale proprio, dove hanno anche la spiegazione. La riconciliazione
     invece riguarda solo questo conto e vale per tutti, broker compresi: il
     saldo iniziale e la differenza col dichiarato sono la sua storia, non il
@@ -6616,13 +6616,13 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
     dicono un'altra cosa: senza questa riga la cifra in alto sembra sbagliata a
     chi ha in mente i soldi versati. Le stesse due parole del cruscotto
     investimenti ("capitale versato"), cosi' il numero si riconosce. */}
-{account.valuedByLedger && <p className="ml-12 mt-1.5 text-[11px] text-[#87918e]">{t('accountsMarketValue', { sum: formatEuro(account.calculatedBalance) })}</p>}
-{azioni && Math.abs(account.startingBalance) > 0.005 && <p className="ml-12 mt-1.5 text-[11px] text-[#87918e]">{t('initial')} <b className="font-medium text-[#52615d]">{formatEuro(account.group === 'liability' ? Math.abs(account.startingBalance) : account.startingBalance)}</b></p>}
+{account.valuedByLedger && <p className="ml-12 mt-1.5 text-[11px] text-[#5e6c68]">{t('accountsMarketValue', { sum: formatEuro(account.calculatedBalance) })}</p>}
+{azioni && Math.abs(account.startingBalance) > 0.005 && <p className="ml-12 mt-1.5 text-[11px] text-[#5e6c68]">{t('initial')} <b className="font-medium text-[#52615d]">{formatEuro(account.group === 'liability' ? Math.abs(account.startingBalance) : account.startingBalance)}</b></p>}
 {/* Il valore di una casa e' fermo a quando l'hai stimato: senza questa riga
     l'unico modo di accorgersene era aprire le valutazioni una per una. Il
     numero c'e' solo quando c'e' una stima da datare - l'eta' la calcola il
     backend, perche' la soglia e' la stessa dell'avviso in cima alla pagina. */}
-{account.valuationNotice && <p className="ml-12 mt-1.5 text-[11px] text-[#87918e]">{account.valuationNotice.code === 'valuationStale'
+{account.valuationNotice && <p className="ml-12 mt-1.5 text-[11px] text-[#5e6c68]">{account.valuationNotice.code === 'valuationStale'
   ? t('accountsValuationStale', { days: account.valuationNotice.days })
   : t('valuationsEmpty')}</p>}</div>; })}</CardContent>
       ))}
@@ -6638,7 +6638,7 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
    quello che hai appena visto, e cambiargli sotto l'asse x lo renderebbe un
    altro grafico. */
 const BALANCE_SHEET_RANGES = [6, 12, 36, 60, 0] as const;
-const BALANCE_SHEET_COLORS = ['#3f7d68', '#9479d1', '#d8964a', '#4f8fce', '#c4677f', '#6aa06f',
+const BALANCE_SHEET_COLORS = ['#237056', '#9479d1', '#d8964a', '#4f8fce', '#c4677f', '#6aa06f',
                               '#a8794c', '#7b6bb5', '#4aa3a3', '#cf7f4f', '#8c8f4a', '#b06a9c'];
 
 function meseISO(scostamento: number): string {
@@ -6715,10 +6715,10 @@ function BalanceSheetChart({ apiUrl, primoAnno }: { apiUrl: string; primoAnno: n
             <CardTitle className="text-[17px]">{t('bsChartTitle')}</CardTitle>
             {/* La briciola nasce dai click che hai gia' fatto: un menu' ti
                 chiederebbe di scegliere fra livelli che non sai se ti interessano. */}
-            <nav aria-label={t('bsBreadcrumb')} className="mt-1 flex flex-wrap items-center gap-1 text-xs text-[#7b8784]">
+            <nav aria-label={t('bsBreadcrumb')} className="mt-1 flex flex-wrap items-center gap-1 text-xs text-[#5e6c68]">
               {(dati?.breadcrumb ?? []).map((passo) => (
                 <span key={`${passo.level}-${passo.side ?? ''}`} className="flex items-center gap-1">
-                  <button type="button" onClick={() => risali(passo.level, passo.side)} className="rounded font-medium text-[#3f7d68] underline-offset-2 hover:underline">
+                  <button type="button" onClick={() => risali(passo.level, passo.side)} className="rounded font-medium text-[#237056] underline-offset-2 hover:underline">
                     {passo.label === 'networth' ? t('bsLevelNetWorth') : passo.label === 'assets' ? t('balanceSheetAssets') : t('balanceSheetLiabilitiesOnly')}
                   </button>
                   <ChevronRight className="size-3 text-[#b3bcb8]" />
@@ -6731,11 +6731,11 @@ function BalanceSheetChart({ apiUrl, primoAnno }: { apiUrl: string; primoAnno: n
               la riga sopra i pulsanti lo dice, perche' due periodi nella stessa
               schermata senza una scritta sono due numeri che non tornano. */}
           <div className="flex flex-col items-end gap-1">
-            <span className="text-[11px] font-medium text-[#7b8784]">{t('sharedRangeSelector')}</span>
+            <span className="text-[11px] font-medium text-[#5e6c68]">{t('sharedRangeSelector')}</span>
             <div role="group" aria-label={t('sharedRangeSelector')} className="flex gap-1 rounded-lg border border-black/6 bg-[#f4f5f1] p-1 text-xs">
               {BALANCE_SHEET_RANGES.map((valore) => (
                 <button key={valore} type="button" onClick={() => setMesi(valore)}
-                  className={`rounded-md px-2.5 py-1 font-medium transition ${mesi === valore ? 'bg-white text-[#173b33] shadow-sm' : 'text-[#66736f] hover:text-[#173b33]'}`}>
+                  className={`rounded-md px-2.5 py-1 font-medium transition ${mesi === valore ? 'bg-white text-[#173b33] shadow-sm' : 'text-[#5e6c68] hover:text-[#173b33]'}`}>
                   {valore === 0 ? t('bsRangeAll') : t('bsRangeMonths', { count: valore })}
                 </button>
               ))}
@@ -6744,8 +6744,8 @@ function BalanceSheetChart({ apiUrl, primoAnno }: { apiUrl: string; primoAnno: n
         </div>
       </CardHeader>
       <CardContent>
-        {errore ? <p role="alert" className="py-12 text-center text-sm text-[#bd5e46]">{t('bsChartFailed')}</p>
-          : righe.length === 0 ? <p className="py-12 text-center text-sm text-[#71807c]">{caricamento ? t('updating') : t('bsChartEmpty')}</p>
+        {errore ? <p role="alert" className="py-12 text-center text-sm text-[#a94f3a]">{t('bsChartFailed')}</p>
+          : righe.length === 0 ? <p className="py-12 text-center text-sm text-[#5e6c68]">{caricamento ? t('updating') : t('bsChartEmpty')}</p>
           : <>
             <div className="mb-3 flex flex-wrap gap-1.5">
               {chiavi.map((chiave, indice) => (
@@ -6786,7 +6786,7 @@ function BalanceSheetChart({ apiUrl, primoAnno }: { apiUrl: string; primoAnno: n
                 </>}
               </ComposedChart>
             </ChartContainer>
-            {dati && dati.hidden > 0 && <p className="mt-2 text-xs text-[#87918e]">{t('accountHistoryHidden', { count: dati.hidden })}</p>}
+            {dati && dati.hidden > 0 && <p className="mt-2 text-xs text-[#5e6c68]">{t('accountHistoryHidden', { count: dati.hidden })}</p>}
           </>}
       </CardContent>
     </Card>
@@ -6795,17 +6795,17 @@ function BalanceSheetChart({ apiUrl, primoAnno }: { apiUrl: string; primoAnno: n
 
 function MetricCard({ title, titleHint, value, valueLabel, change, delta, icon: Icon, tone, featured = false }: { title: string; titleHint?: string; value: number; valueLabel?: string; change: string; delta?: number; icon: typeof ArrowDownRight; tone: 'income' | 'expense' | 'saving' | 'worth'; featured?: boolean }) {
   const { formatEuro } = useI18n();
-  const styles = { income: 'bg-[#e5f3ed] text-[#2d7b65]', expense: 'bg-[#fce9e3] text-[#c75f44]', saving: 'bg-[#edf0ff] text-[#536fc1]', worth: 'bg-[#f2efdb] text-[#7d7135]' };
+  const styles = { income: 'bg-[#eaf5ef] text-[#237056]', expense: 'bg-[#fce9e3] text-[#a94f3a]', saving: 'bg-[#edf0ff] text-[#4a63b4]', worth: 'bg-[#f2efdb] text-[#7d6119]' };
   // Sulle spese un delta negativo e' una buona notizia; sulle altre voci il
   // delta positivo. Senza `delta` (es. card di Budget/Investimenti dove `change`
   // e' un'etichetta, non un confronto) si cade sul default storico: rosso per
   // le spese, verde-neutro per il resto.
   const changeColor = delta !== undefined
     ? (tone === 'expense'
-        ? (delta <= 0 ? 'text-[#2d7b65]' : 'text-[#bd6c58]')
-        : (delta >= 0 ? 'text-[#2d7b65]' : 'text-[#bd6c58]'))
-    : (tone === 'expense' ? 'text-[#bd6c58]' : 'text-[#618078]');
-  return <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]"><CardContent className={featured ? 'p-6' : 'p-5'}><div className="mb-4 flex items-center justify-between"><span title={titleHint} className={`${featured ? 'text-base' : 'text-sm'} font-medium text-[#71807c]`}>{title}</span><span className={`grid ${featured ? 'size-10' : 'size-8'} place-items-center rounded-lg ${styles[tone]}`}><Icon className={featured ? 'size-5' : 'size-4'} /></span></div><p className={`${featured ? 'text-[32px] sm:text-[36px]' : 'text-[25px]'} font-semibold tracking-[-0.03em] tabular-nums`}>{valueLabel ?? formatEuro(value)}</p><p className={`mt-2 text-xs ${changeColor}`}>{change}</p></CardContent></Card>;
+        ? (delta <= 0 ? 'text-[#237056]' : 'text-[#a94f3a]')
+        : (delta >= 0 ? 'text-[#237056]' : 'text-[#a94f3a]'))
+    : (tone === 'expense' ? 'text-[#a94f3a]' : 'text-[#237056]');
+  return <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]"><CardContent className={featured ? 'p-6' : 'p-5'}><div className="mb-4 flex items-center justify-between"><span title={titleHint} className={`${featured ? 'text-base' : 'text-sm'} font-medium text-[#5e6c68]`}>{title}</span><span className={`grid ${featured ? 'size-10' : 'size-8'} place-items-center rounded-lg ${styles[tone]}`}><Icon className={featured ? 'size-5' : 'size-4'} /></span></div><p className={`${featured ? 'text-[32px] sm:text-[36px]' : 'text-[25px]'} font-semibold tracking-[-0.03em] tabular-nums`}>{valueLabel ?? formatEuro(value)}</p><p className={`mt-2 text-xs ${changeColor}`}>{change}</p></CardContent></Card>;
 }
 
 function NetWorthCard({ detail, comparison }: { detail: Summary['netWorthDetail']; comparison: Summary['netWorthComparison'] }) {
@@ -6815,30 +6815,30 @@ function NetWorthCard({ detail, comparison }: { detail: Summary['netWorthDetail'
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
       <CardContent className="flex flex-col gap-5 p-5 lg:flex-row lg:items-center">
         <div className="flex flex-1 items-start gap-4">
-          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-[#f2efdb] text-[#7d7135]"><Landmark className="size-5" /></span>
+          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-[#f2efdb] text-[#7d6119]"><Landmark className="size-5" /></span>
           <div>
-            <p className="text-sm font-medium text-[#71807c]">{t('netWorth')}</p>
+            <p className="text-sm font-medium text-[#5e6c68]">{t('netWorth')}</p>
             <p className="mt-1 text-[25px] font-semibold tracking-[-0.03em] tabular-nums">{formatEuro(detail.total)}</p>
-            <p className="mt-1 text-xs text-[#618078]">{formatComparisonChange(t, formatEuro, monthNames, comparison?.totalDelta, comparison)}</p>
+            <p className="mt-1 text-xs text-[#237056]">{formatComparisonChange(t, formatEuro, monthNames, comparison?.totalDelta, comparison)}</p>
           </div>
         </div>
         <div className="flex flex-col gap-2 border-t border-black/6 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-[#87918e]">{t('investmentPortfolioLabel')}</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-[#5e6c68]">{t('investmentPortfolioLabel')}</p>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <div>
-              <p className="text-[11px] text-[#87918e]">{t('marketValue')}</p>
+              <p className="text-[11px] text-[#5e6c68]">{t('marketValue')}</p>
               <p className="text-sm font-semibold">{formatEuro(detail.marketValue)}</p>
             </div>
             <div>
-              <p className="text-[11px] text-[#87918e]">{t('investedCapital')}</p>
+              <p className="text-[11px] text-[#5e6c68]">{t('investedCapital')}</p>
               <p className="text-sm font-semibold">{formatEuro(detail.investedCapital)}</p>
             </div>
             <div>
-              <p className="text-[11px] text-[#87918e]">{t('gainLoss')}</p>
-              <p className={`flex items-center gap-1 text-sm font-semibold ${gainPositive ? 'text-[#2d7b65]' : 'text-[#bd6c58]'}`}>
+              <p className="text-[11px] text-[#5e6c68]">{t('gainLoss')}</p>
+              <p className={`flex items-center gap-1 text-sm font-semibold ${gainPositive ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>
                 {gainPositive ? <TrendingUp className="size-3.5" /> : <TrendingDown className="size-3.5" />}
                 {gainPositive ? '+' : '−'}{formatEuro(Math.abs(detail.gain))}
-                {detail.gainPercent !== null && <span className="text-xs font-normal text-[#87918e]">{t('percentOnCapital', { percent: formatPercentNumber(detail.gainPercent) })}</span>}
+                {detail.gainPercent !== null && <span className="text-xs font-normal text-[#5e6c68]">{t('percentOnCapital', { percent: formatPercentNumber(detail.gainPercent) })}</span>}
               </p>
             </div>
           </div>
@@ -6897,28 +6897,28 @@ function DebitCard({ apiUrl, version, onOpen }: { apiUrl: string; version: numbe
   return (
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
       <CardContent className="flex items-start gap-4 p-5">
-        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-[#f2efdb] text-[#7d7135]"><CreditCard className="size-5" /></span>
+        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-[#f2efdb] text-[#7d6119]"><CreditCard className="size-5" /></span>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
-            <p className="text-sm font-medium text-[#71807c]">{t('debitCard')}</p>
-            {data && <p className="text-[11px] text-[#a0a8a5]">{t('debtAsOf', { date: formatDate(`${data.asOf}T12:00:00`) })}</p>}
+            <p className="text-sm font-medium text-[#5e6c68]">{t('debitCard')}</p>
+            {data && <p className="text-[11px] text-[#5e6c68]">{t('debtAsOf', { date: formatDate(`${data.asOf}T12:00:00`) })}</p>}
           </div>
-          {errore || !summary ? <p className="mt-2 text-sm text-[#87918e]">{t('debitCardError')}</p>
-            : summary.total === 0 ? <p className="mt-2 text-sm text-[#87918e]">{t('debitCardNone')}</p>
+          {errore || !summary ? <p className="mt-2 text-sm text-[#5e6c68]">{t('debitCardError')}</p>
+            : summary.total === 0 ? <p className="mt-2 text-sm text-[#5e6c68]">{t('debitCardNone')}</p>
             : <>
               <p className="mt-1 text-2xl font-semibold tabular-nums">{formatEuro(summary.totalDebt)}</p>
-              <p className="mt-1 text-xs text-[#87918e]">
+              <p className="mt-1 text-xs text-[#5e6c68]">
                 {t('debtMonthlyService')}: {formatEuro(summary.monthlyService)}
                 {summary.weightedRate != null && ` · ${t('debtAverageRate')}: ${formatPercentNumber(summary.weightedRate)}%`}
               </p>
               {prossima && <p className="mt-2 text-xs text-[#52615d]">
                 {t('theoreticalNextPayment')}: <b className="font-semibold tabular-nums">{formatEuro(prossima.payment)}</b> · {formatDate(`${prossima.dueOn}T12:00:00`)} · {prossima.name}
               </p>}
-              {summary.unclassifiedCount > 0 && <p className="mt-1 text-xs text-[#bd5e46]">
+              {summary.unclassifiedCount > 0 && <p className="mt-1 text-xs text-[#a94f3a]">
                 {t('debtUnclassifiedSummary', { count: summary.unclassifiedCount, amount: formatEuro(summary.unclassifiedAmount) })}
               </p>}
             </>}
-          <button type="button" onClick={onOpen} className="mt-2 text-xs font-medium text-[#2d7b65] hover:underline">{t('debitCardOpen')}</button>
+          <button type="button" onClick={onOpen} className="mt-2 text-xs font-medium text-[#237056] hover:underline">{t('debitCardOpen')}</button>
         </div>
       </CardContent>
     </Card>
@@ -6958,12 +6958,12 @@ function PeriodBreakdownCard({ breakdown, isWholeYear }: { breakdown: SummaryBre
   return (
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
       <CardHeader className="flex-row items-start justify-between pb-2">
-        <div><CardTitle className="text-[17px]">{t('categoryBreakdown')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{isWholeYear ? t('categoryBreakdownWholeYear') : t('categoryBreakdownPeriod')}</p></div>
-        <div className="flex gap-1.5">{BREAKDOWN_TABS.map(([value, label]) => <button key={value} type="button" onClick={() => setTab(value)} className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${tab === value ? 'bg-[var(--money-primary)] text-white' : 'bg-[#f4f5f1] text-[#66736f] hover:bg-[#eceee8]'}`}>{label}</button>)}</div>
+        <div><CardTitle className="text-[17px]">{t('categoryBreakdown')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{isWholeYear ? t('categoryBreakdownWholeYear') : t('categoryBreakdownPeriod')}</p></div>
+        <div className="flex gap-1.5">{BREAKDOWN_TABS.map(([value, label]) => <button key={value} type="button" onClick={() => setTab(value)} className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${tab === value ? 'bg-[var(--money-primary)] text-white' : 'bg-[#f4f5f1] text-[#5e6c68] hover:bg-[#eceee8]'}`}>{label}</button>)}</div>
       </CardHeader>
       <CardContent>
         {!pie || pie.items.length === 0 ? (
-          <div className="flex h-[260px] items-center justify-center text-sm text-[#87918e]">{t('noMovementsInPeriod')}</div>
+          <div className="flex h-[260px] items-center justify-center text-sm text-[#5e6c68]">{t('noMovementsInPeriod')}</div>
         ) : (
           <div className={isWholeYear ? 'grid gap-6 lg:grid-cols-[280px_1fr]' : 'grid gap-6 sm:grid-cols-[280px_1fr]'}>
             <ChartContainer config={pieConfig} className="mx-auto aspect-square h-[220px]">
@@ -6975,7 +6975,7 @@ function PeriodBreakdownCard({ breakdown, isWholeYear }: { breakdown: SummaryBre
               </PieChart>
             </ChartContainer>
             <div className="space-y-2.5 self-center">
-              {pie.items.map((item) => <div key={item.name} className="flex items-center justify-between gap-3 text-sm"><span className="flex min-w-0 items-center gap-2 text-[#52615d]"><i className="size-2.5 shrink-0 rounded-full" style={{ background: item.color }} /><span className="truncate">{item.name}</span></span><span className="flex shrink-0 items-baseline gap-2 tabular-nums"><span className="font-medium">{formatCompactEuro(item.value)}</span><span className="font-normal text-[#87918e]">{formatPercentNumber(pie.total ? (item.value / pie.total) * 100 : 0)}%</span></span></div>)}
+              {pie.items.map((item) => <div key={item.name} className="flex items-center justify-between gap-3 text-sm"><span className="flex min-w-0 items-center gap-2 text-[#52615d]"><i className="size-2.5 shrink-0 rounded-full" style={{ background: item.color }} /><span className="truncate">{item.name}</span></span><span className="flex shrink-0 items-baseline gap-2 tabular-nums"><span className="font-medium">{formatCompactEuro(item.value)}</span><span className="font-normal text-[#5e6c68]">{formatPercentNumber(pie.total ? (item.value / pie.total) * 100 : 0)}%</span></span></div>)}
               <div className="flex items-center justify-between border-t border-black/8 pt-2.5 text-sm font-semibold"><span>{t('total')}</span><span className="tabular-nums">{formatCompactEuro(pie.total)}</span></div>
             </div>
           </div>
@@ -7002,16 +7002,16 @@ function PeriodBreakdownTable({ breakdown }: { breakdown: SummaryBreakdown | nul
   // nelle icone dei movimenti: qui servono a far leggere le tre tabelle come
   // tre blocchi distinti invece che come un unico elenco lungo.
   const stiliSezione = {
-    income: { accento: '#2d7b65', tinta: '#e5f3ed', bordo: '#cfe6dc', icona: BadgeEuro },
-    expenses: { accento: '#c75f44', tinta: '#fce9e3', bordo: '#f4d8ce', icona: CreditCard },
-    savings: { accento: '#536fc1', tinta: '#edf0ff', bordo: '#d9dff7', icona: PiggyBank },
+    income: { accento: '#237056', tinta: '#eaf5ef', bordo: '#cfe6dc', icona: BadgeEuro },
+    expenses: { accento: '#a94f3a', tinta: '#fce9e3', bordo: '#f4d8ce', icona: CreditCard },
+    savings: { accento: '#4a63b4', tinta: '#edf0ff', bordo: '#d9dff7', icona: PiggyBank },
   } as const;
   // overflow-visible sulla Card: la sua classe base ha overflow-hidden, che
   // annulla la testata appiccicata delle sezioni. Qui non deve clippare niente,
   // i blocchi hanno i loro bordi arrotondati.
   return (
     <Card className="overflow-visible border-black/6 bg-white shadow-sm shadow-black/[0.025]">
-      <CardHeader className="pb-3"><CardTitle className="text-[17px]">{t('categoryDetail')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('categoryDetailSubtitle')}</p></CardHeader>
+      <CardHeader className="pb-3"><CardTitle className="text-[17px]">{t('categoryDetail')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('categoryDetailSubtitle')}</p></CardHeader>
       <CardContent className="space-y-4">
         {sections.map(({ key, label }) => {
           const section = breakdown.sections[key];
@@ -7027,7 +7027,7 @@ function PeriodBreakdownTable({ breakdown }: { breakdown: SummaryBreakdown | nul
               <div className="overflow-x-auto px-4 pb-1">
                 <table className="w-full min-w-[640px] table-fixed text-sm">
                   <colgroup><col className="w-[26%]" /><col className="w-[15%]" /><col className="w-[15%]" /><col className="w-[22%]" /><col className="w-[11%]" /><col className="w-[11%]" /></colgroup>
-                  <thead className="text-xs text-[#87918e]"><tr><th className="py-1.5 text-left font-medium">{t('category')}</th><th className="py-1.5 text-right font-medium">{t('tracked')}</th><th className="py-1.5 text-right font-medium">{t('budget')}</th><th className="py-1.5 text-left font-medium pl-4">{t('completion')}</th><th className="py-1.5 text-right font-medium">{t('remaining')}</th><th className="py-1.5 text-right font-medium">{t('excess')}</th></tr></thead>
+                  <thead className="text-xs text-[#5e6c68]"><tr><th className="py-1.5 text-left font-medium">{t('category')}</th><th className="py-1.5 text-right font-medium">{t('tracked')}</th><th className="py-1.5 text-right font-medium">{t('budget')}</th><th className="py-1.5 text-left font-medium pl-4">{t('completion')}</th><th className="py-1.5 text-right font-medium">{t('remaining')}</th><th className="py-1.5 text-right font-medium">{t('excess')}</th></tr></thead>
                   <tbody className="divide-y divide-black/5">
                     {(() => {
                       const idPresenti = new Set(section.categories.map((riga) => riga.categoryId));
@@ -7067,32 +7067,32 @@ function PeriodBreakdownTable({ breakdown }: { breakdown: SummaryBreakdown | nul
                             ? <span className="pl-5 text-[#52615d]">{category.name}</span>
                             : figli.length
                               ? <button type="button" onClick={() => setChiuse((precedenti) => ({ ...precedenti, [`${key}:${category.categoryId ?? category.name}`]: !precedenti[`${key}:${category.categoryId ?? category.name}`] }))} className="flex items-center gap-1.5 text-left">
-                                  <ChevronRight className={`size-3.5 shrink-0 text-[#87918e] transition-transform ${chiusa ? '' : 'rotate-90'}`} />
+                                  <ChevronRight className={`size-3.5 shrink-0 text-[#5e6c68] transition-transform ${chiusa ? '' : 'rotate-90'}`} />
                                   {category.name}
                                 </button>
                               : category.name}</span>
-                            {avanzo !== 0 && <span className={`block truncate text-[11px] font-normal text-[#87918e] ${profondita > 0 ? 'pl-5' : ''}`}>
+                            {avanzo !== 0 && <span className={`block truncate text-[11px] font-normal text-[#5e6c68] ${profondita > 0 ? 'pl-5' : ''}`}>
                               {avanzo > 0 ? t('budgetPreviousLeft', { amount: formatCompactEuro(avanzo) })
                                 : t('budgetPreviousOver', { amount: formatCompactEuro(Math.abs(avanzo)) })}
                             </span>}
                           </td>
                           <td className="py-2.5 text-right tabular-nums">{formatCompactEuro(tracked)}</td>
-                          <td className="py-2.5 text-right tabular-nums text-[#71807c]">{formatCompactEuro(budget)}</td>
+                          <td className="py-2.5 text-right tabular-nums text-[#5e6c68]">{formatCompactEuro(budget)}</td>
                           <td className="py-2.5 pl-4">
                             {completion !== null ? (
                               <div className="flex items-center gap-2">
                                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#eef0ec]"><div className="h-full rounded-full" style={{ width: `${percentage}%`, background: coloreBarra }} /></div>
-                                <span className="w-9 shrink-0 text-right text-xs tabular-nums text-[#71807c]">{formatPercentNumber(completion * 100)}%</span>
+                                <span className="w-9 shrink-0 text-right text-xs tabular-nums text-[#5e6c68]">{formatPercentNumber(completion * 100)}%</span>
                               </div>
-                            ) : <span className="text-xs text-[#87918e]">—</span>}
+                            ) : <span className="text-xs text-[#5e6c68]">—</span>}
                           </td>
                           {/* Verde e rosso hanno un senso solo sulle uscite: li'
                               "rimanente" e' margine e "eccedenza" e' uno sforamento.
                               Su entrate e risparmi i due significati si invertono,
                               quindi l'eccedenza prende il colore della sezione e il
                               rimanente resta neutro. */}
-                          <td className="py-2.5 text-right tabular-nums" style={{ color: key === 'expenses' ? '#397867' : '#71807c' }}>{remaining ? formatCompactEuro(remaining) : '—'}</td>
-                          <td className="py-2.5 text-right tabular-nums" style={{ color: key === 'expenses' ? '#bd5e46' : stile.accento }}>{excess ? formatCompactEuro(excess) : '—'}</td>
+                          <td className="py-2.5 text-right tabular-nums" style={{ color: key === 'expenses' ? '#237056' : '#5e6c68' }}>{remaining ? formatCompactEuro(remaining) : '—'}</td>
+                          <td className="py-2.5 text-right tabular-nums" style={{ color: key === 'expenses' ? '#a94f3a' : stile.accento }}>{excess ? formatCompactEuro(excess) : '—'}</td>
                         </tr>;
                       };
                       return section.categories.flatMap((category) => eRadice(category)
@@ -7126,7 +7126,7 @@ function MonthlyStackedBarChart({ data, budgetType }: { data: MonthlyBudgetPoint
   const config = {
     inBudget: { label: t('inBudget'), color: '#47a889' },
     remaining: { label: superareEBene ? t('belowTarget') : t('remaining'), color: '#c9c9c9' },
-    excess: { label: superareEBene ? t('targetExceeded') : t('excess'), color: superareEBene ? '#2d7b65' : '#bd5e46' },
+    excess: { label: superareEBene ? t('targetExceeded') : t('excess'), color: superareEBene ? '#237056' : '#a94f3a' },
   } satisfies ChartConfig;
   return (
     <ChartContainer config={config} className="h-[220px] w-full">
@@ -7162,9 +7162,9 @@ function MonthlyStackedBarChart({ data, budgetType }: { data: MonthlyBudgetPoint
    inventato si legge come un dato. */
 function Differenza({ voce, verso }: { voce: ComparisonAmounts; verso: 'income' | 'expense' | null }) {
   const { formatCompactEuro, formatNumber } = useI18n();
-  if (voce.difference === null) return <span className="block text-xs text-[#87918e]">—</span>;
+  if (voce.difference === null) return <span className="block text-xs text-[#5e6c68]">—</span>;
   const bene = verso !== null && budgetVarianceIsGood(verso === 'income' ? 'Income' : 'Expenses', -voce.difference);
-  return <span className="block text-xs tabular-nums" style={{ color: verso === null ? '#71807c' : bene ? '#397867' : '#bd5e46' }}>
+  return <span className="block text-xs tabular-nums" style={{ color: verso === null ? '#5e6c68' : bene ? '#237056' : '#a94f3a' }}>
     {voce.difference > 0 ? '+' : ''}{formatCompactEuro(voce.difference)}
     {voce.percent !== null && <span className="ml-1.5">({voce.percent > 0 ? '+' : ''}{formatNumber(voce.percent, { maximumFractionDigits: 1 })}%)</span>}
   </span>;
@@ -7206,17 +7206,17 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
       {/* Il selettore e la riga che dichiara il periodo stanno insieme: un
           report che non dice su cosa e' calcolato costringe a fidarsi. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-[#71807c]">{data ? t('analysisPeriodSince', { from: formatDate(`${data.period.from}T12:00:00`), to: formatDate(`${data.period.to}T12:00:00`) }) : t('loading')}</p>
+        <p className="text-xs text-[#5e6c68]">{data ? t('analysisPeriodSince', { from: formatDate(`${data.period.from}T12:00:00`), to: formatDate(`${data.period.to}T12:00:00`) }) : t('loading')}</p>
         <PeriodSelector value={{ ...period, scope }} years={years} onChange={onPeriodChange} allowMonth={false} allowLast12 />
       </div>
 
       {data && <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
-        <CardHeader className="pb-3"><CardTitle className="text-[17px]">{t('analysisFlowTitle')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('analysisFlowSubtitle')}</p></CardHeader>
+        <CardHeader className="pb-3"><CardTitle className="text-[17px]">{t('analysisFlowTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('analysisFlowSubtitle')}</p></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
             {([['analysisFlowIn', data.flow.income, 'income'], ['analysisFlowOut', data.flow.expenses, 'expense'], ['analysisFlowLeft', data.flow.net, null]] as const).map(([chiave, voce, verso]) => (
               <div key={chiave} className="rounded-xl border border-black/6 bg-[#fbfcfa] px-4 py-3">
-                <p className="text-xs font-medium text-[#71807c]">{t(chiave)}</p>
+                <p className="text-xs font-medium text-[#5e6c68]">{t(chiave)}</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">{formatEuro(voce.amount)}</p>
                 <Differenza voce={voce} verso={verso} />
               </div>
@@ -7224,13 +7224,13 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
           </div>
           {data.flow.movers.length > 0 && (
             <div>
-              <p className="text-xs font-medium text-[#71807c]">{t('analysisFlowMovers')}</p>
+              <p className="text-xs font-medium text-[#5e6c68]">{t('analysisFlowMovers')}</p>
               <ul className="mt-1 divide-y divide-black/5">
                 {data.flow.movers.map((voce) => (
                   <li key={voce.categoryId} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2">
                     <span className="min-w-0 truncate text-sm font-medium">{voce.name}</span>
                     <span className="flex items-baseline gap-3">
-                      <span className="text-sm tabular-nums text-[#87918e]">{formatCompactEuro(voce.amount)}</span>
+                      <span className="text-sm tabular-nums text-[#5e6c68]">{formatCompactEuro(voce.amount)}</span>
                       <Differenza voce={voce} verso={voce.scope === 'income' ? 'income' : 'expense'} />
                     </span>
                   </li>
@@ -7244,17 +7244,17 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
       {data && <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
         <CardHeader className="pb-3">
           <CardTitle className="text-[17px]">{t('analysisComparisonTitle')}</CardTitle>
-          <p className="mt-1 text-xs text-[#7b8784]">{t('analysisComparisonSubtitle')}</p>
+          <p className="mt-1 text-xs text-[#5e6c68]">{t('analysisComparisonSubtitle')}</p>
           {/* Quando il periodo prima non c'e', si dice: confrontare un mese di
               storia con il vuoto direbbe che ogni spesa e' cresciuta di tutto. */}
-          {!data.comparison.available && <p className="mt-1 text-xs text-[#a2703a]">{t('analysisComparisonNoHistory', { date: data.comparison.since ? formatDate(`${data.comparison.since}T12:00:00`) : '—' })}</p>}
+          {!data.comparison.available && <p className="mt-1 text-xs text-[#7d6119]">{t('analysisComparisonNoHistory', { date: data.comparison.since ? formatDate(`${data.comparison.since}T12:00:00`) : '—' })}</p>}
         </CardHeader>
         <CardContent>
-          {!data.categoryComparison.length ? <p className="py-6 text-center text-sm text-[#87918e]">{t('noData')}</p> : (
+          {!data.categoryComparison.length ? <p className="py-6 text-center text-sm text-[#5e6c68]">{t('noData')}</p> : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[620px] table-fixed text-sm">
                 <colgroup><col className="w-[28%]" /><col className="w-[17%]" /><col className="w-[17%]" /><col className="w-[19%]" /><col className="w-[19%]" /></colgroup>
-                <thead className="text-xs text-[#87918e]"><tr>
+                <thead className="text-xs text-[#5e6c68]"><tr>
                   <th className="py-1.5 text-left font-medium">{t('category')}</th>
                   <th className="py-1.5 text-right font-medium">{t('analysisComparisonThisPeriod')}</th>
                   <th className="py-1.5 text-right font-medium">{t('previousPeriod')}</th>
@@ -7277,11 +7277,11 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
                           ? <span className="pl-5 text-[#52615d]">{voce.name}</span>
                           : figli.length
                             ? <button type="button" onClick={() => setChiuseConfronto((precedenti) => ({ ...precedenti, [voce.categoryId]: !precedenti[voce.categoryId] }))} className="flex items-center gap-1.5 text-left">
-                                <ChevronRight className={`size-3.5 shrink-0 text-[#87918e] transition-transform ${chiusa ? '' : 'rotate-90'}`} />{voce.name}
+                                <ChevronRight className={`size-3.5 shrink-0 text-[#5e6c68] transition-transform ${chiusa ? '' : 'rotate-90'}`} />{voce.name}
                               </button>
                             : voce.name}</td>
                         <td className="py-2.5 text-right tabular-nums">{formatCompactEuro(voce.amount)}</td>
-                        <td className="py-2.5 text-right tabular-nums text-[#71807c]">{voce.previous === null ? '—' : formatCompactEuro(voce.previous)}</td>
+                        <td className="py-2.5 text-right tabular-nums text-[#5e6c68]">{voce.previous === null ? '—' : formatCompactEuro(voce.previous)}</td>
                         <td className="py-2.5 text-right"><Differenza voce={voce} verso={voce.scope === 'income' ? 'income' : 'expense'} /></td>
                         {/* La mediana dice come sono i mesi normali, ma su
                             quanti mesi e' calcolata decide quanto vale: scritto
@@ -7289,7 +7289,7 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
                             zero con un mese solo dietro sembra un errore. */}
                         <td className="py-2.5 text-right">
                           <span className="block tabular-nums text-[#52615d]">{voce.median === null ? '—' : formatCompactEuro(voce.median)}</span>
-                          {voce.median !== null && <span className="block text-[11px] text-[#87918e]">{t('analysisComparisonMonths', { months: voce.monthsWithMovements, total: voce.monthsConsidered })}</span>}
+                          {voce.median !== null && <span className="block text-[11px] text-[#5e6c68]">{t('analysisComparisonMonths', { months: voce.monthsWithMovements, total: voce.monthsConsidered })}</span>}
                         </td>
                       </tr>;
                     };
@@ -7306,17 +7306,17 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
 
       <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
         <CardHeader className="flex-row items-start justify-between pb-2">
-          <div><CardTitle className="text-[17px]">{t('monthlyBudgetVsTracked')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('monthlyBudgetVsTrackedSubtitle')}</p></div>
-          <div className="flex gap-1.5">{ANALYSIS_TYPE_TABS.map(([value, labelKey]) => <button key={value} type="button" onClick={() => setBudgetTab(value)} className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${budgetTab === value ? 'bg-[var(--money-primary)] text-white' : 'bg-[#f4f5f1] text-[#66736f] hover:bg-[#eceee8]'}`}>{t(labelKey)}</button>)}</div>
+          <div><CardTitle className="text-[17px]">{t('monthlyBudgetVsTracked')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('monthlyBudgetVsTrackedSubtitle')}</p></div>
+          <div className="flex gap-1.5">{ANALYSIS_TYPE_TABS.map(([value, labelKey]) => <button key={value} type="button" onClick={() => setBudgetTab(value)} className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${budgetTab === value ? 'bg-[var(--money-primary)] text-white' : 'bg-[#f4f5f1] text-[#5e6c68] hover:bg-[#eceee8]'}`}>{t(labelKey)}</button>)}</div>
         </CardHeader>
         <CardContent>
-          {data ? <MonthlyStackedBarChart data={data.monthlyBudget[budgetTab]} budgetType={budgetTab === 'expenses' ? 'Expenses' : budgetTab === 'income' ? 'Income' : 'Savings'} /> : <div className="flex h-[220px] items-center justify-center text-sm text-[#87918e]">{t('loading')}</div>}
+          {data ? <MonthlyStackedBarChart data={data.monthlyBudget[budgetTab]} budgetType={budgetTab === 'expenses' ? 'Expenses' : budgetTab === 'income' ? 'Income' : 'Savings'} /> : <div className="flex h-[220px] items-center justify-center text-sm text-[#5e6c68]">{t('loading')}</div>}
         </CardContent>
       </Card>
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
-          <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('topExpenseCategoriesTitle')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('topExpenseCategoriesSubtitle')}</p></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('topExpenseCategoriesTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('topExpenseCategoriesSubtitle')}</p></CardHeader>
           <CardContent>
             {data && treemapData.length ? (
               <ChartContainer config={{}} className="h-[280px] w-full">
@@ -7332,12 +7332,12 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
                   )} />} />
                 </Treemap>
               </ChartContainer>
-            ) : <div className="flex h-[280px] items-center justify-center text-sm text-[#87918e]">{t('noExpensesInYear')}</div>}
+            ) : <div className="flex h-[280px] items-center justify-center text-sm text-[#5e6c68]">{t('noExpensesInYear')}</div>}
           </CardContent>
         </Card>
 
         <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
-          <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('savingsByMonthTitle')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('savingsByMonthSubtitle')}</p></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('savingsByMonthTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('savingsByMonthSubtitle')}</p></CardHeader>
           <CardContent>
             {data ? (
               <ChartContainer config={savingsConfig} className="h-[280px] w-full">
@@ -7356,7 +7356,7 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
                   <ChartLegend content={<ChartLegendContent />} />
                 </ComposedChart>
               </ChartContainer>
-            ) : <div className="flex h-[280px] items-center justify-center text-sm text-[#87918e]">{t('loading')}</div>}
+            ) : <div className="flex h-[280px] items-center justify-center text-sm text-[#5e6c68]">{t('loading')}</div>}
           </CardContent>
         </Card>
       </div>
@@ -7364,7 +7364,7 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
       <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
         <CardHeader className="pb-3">
           <CardTitle className="text-[17px]">{t('categoryAnalysisTitle')}</CardTitle>
-          <p className="mt-1 text-xs text-[#7b8784]">{t('categoryAnalysisSubtitle')}</p>
+          <p className="mt-1 text-xs text-[#5e6c68]">{t('categoryAnalysisSubtitle')}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <label className="relative">
               <span className="sr-only">{t('type')}</span>
@@ -7386,17 +7386,17 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
         </CardHeader>
         <CardContent>
           {!category ? (
-            <p className="py-8 text-center text-sm text-[#87918e]">{t('selectCategoryPrompt')}</p>
+            <p className="py-8 text-center text-sm text-[#5e6c68]">{t('selectCategoryPrompt')}</p>
           ) : !data || data.categoryTransactions.length === 0 ? (
-            <p className="py-8 text-center text-sm text-[#87918e]">{t('noTransactionsForCategory')}</p>
+            <p className="py-8 text-center text-sm text-[#5e6c68]">{t('noTransactionsForCategory')}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[420px] table-fixed text-sm">
                 <colgroup><col className="w-[20%]" /><col className="w-[55%]" /><col className="w-[25%]" /></colgroup>
-                <thead className="text-xs text-[#87918e]"><tr><th className="py-1.5 text-left font-medium">{t('date')}</th><th className="py-1.5 text-left font-medium">{t('description')}</th><th className="py-1.5 text-right font-medium">{t('amount')}</th></tr></thead>
+                <thead className="text-xs text-[#5e6c68]"><tr><th className="py-1.5 text-left font-medium">{t('date')}</th><th className="py-1.5 text-left font-medium">{t('description')}</th><th className="py-1.5 text-right font-medium">{t('amount')}</th></tr></thead>
                 <tbody className="divide-y divide-black/5">
                   {data.categoryTransactions.map((tx, index) => <tr key={`${tx.date}-${index}`}>
-                    <td className="py-2 text-[#71807c]">{formatDate(`${tx.date}T12:00:00`)}</td>
+                    <td className="py-2 text-[#5e6c68]">{formatDate(`${tx.date}T12:00:00`)}</td>
                     <td className="py-2 truncate font-medium">{tx.description}</td>
                     <td className="py-2 text-right tabular-nums">{formatEuro(tx.amount)}</td>
                   </tr>)}
@@ -7430,11 +7430,11 @@ function CategoryTreemapCell(props: { x?: number; y?: number; width?: number; he
 }
 
 const TRANSACTION_ICON_STYLES = {
-  Income: { icon: BadgeEuro, className: 'bg-[#e5f3ed] text-[#2d7b65]' },
-  Expenses: { icon: CreditCard, className: 'bg-[#fce9e3] text-[#c75f44]' },
-  Transfers: { icon: Landmark, className: 'bg-[#edf0ed] text-[#5d716b]' },
+  Income: { icon: BadgeEuro, className: 'bg-[#eaf5ef] text-[#237056]' },
+  Expenses: { icon: CreditCard, className: 'bg-[#fce9e3] text-[#a94f3a]' },
+  Transfers: { icon: Landmark, className: 'bg-[#edf0ed] text-[#5e6c68]' },
   Investment: { icon: LineChartIcon, className: 'bg-[#efeaf9] text-[#6b57a8]' },
-  Debt: { icon: CreditCard, className: 'bg-[#fff0e8] text-[#a95e3f]' },
+  Debt: { icon: CreditCard, className: 'bg-[#fff0e8] text-[#a94f3a]' },
 };
 
 // Le callback ricevono il movimento invece di chiuderci sopra: cosi' il
@@ -7493,7 +7493,7 @@ function SplitTransactionDialog({ transaction, accounts, apiUrl, categoriesByTyp
         <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('splitNewPart')}
           <Input type="number" inputMode="decimal" min="0.01" step="0.01" required value={parte.amount}
             onChange={(e) => setParte((p) => ({ ...p, amount: e.target.value }))} />
-          <span className={`block text-[11px] font-normal ${resta > 0 ? 'text-[#71807c]' : 'text-[#a94f3a]'}`}>{resta > 0 ? t('splitRemaining', { amount: formatEuro(resta) }) : t('splitInvalidAmount')}</span>
+          <span className={`block text-[11px] font-normal ${resta > 0 ? 'text-[#5e6c68]' : 'text-[#a94f3a]'}`}>{resta > 0 ? t('splitRemaining', { amount: formatEuro(resta) }) : t('splitInvalidAmount')}</span>
         </label>
         <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('fieldType')}
           <select className={campo} value={parte.type} onChange={(e) => setParte((p) => ({ ...p, type: e.target.value, category: '' }))}>
@@ -7539,7 +7539,7 @@ const TransactionRow = memo(function TransactionRow({ transaction, onEdit, onDup
     : linkedCount === 1
       ? `${transaction.linkedLedger?.[0]?.name ?? ''} (${transaction.linkedLedger?.[0]?.transactionType ?? ''})`
       : transaction.linkedLedger?.map((item) => `${item.name} (${item.transactionType})`).join(', ');
-  return <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3.5 sm:flex-nowrap"><span className={`grid size-9 shrink-0 place-items-center rounded-xl ${style.className}`}><Icon className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{transaction.description}</p><div className="flex gap-2 text-[11px]">{transaction.incomplete && <span className="text-[#a05f4e]">{t('incompleteMovements')}</span>}{transaction.countsInBudget === false && !['Transfers', 'Investment', 'Debt'].includes(transaction.transactionType) && <span className="text-[#87918e]">{t('excludeBudget')}</span>}{transaction.refundedById && <button type="button" className="text-[#2d7b65] underline" onClick={() => onRefund?.(transaction)}>{t('refunded')}</button>}{transaction.event && <span className="rounded-full bg-[#eef1ec] px-1.5 text-[#52615d]">{transaction.event.name}</span>}{transaction.liabilitySplit && <span className={transaction.liabilitySplit.classified ? 'text-[#8a5a46]' : 'text-[#a05f4e]'}>{transaction.liabilitySplit.classified ? t('debtSplitSummary', { principal: formatEuro(transaction.liabilitySplit.principal), interest: formatEuro(transaction.liabilitySplit.interest) }) : t('debtUnclassified')}</span>}</div><p className="mt-0.5 truncate text-xs text-[#87918e]">{transaction.category}{transaction.accountName ? ` · ${transaction.accountName}` : ''}{transaction.destinationName ? ` → ${transaction.destinationName}` : ''}</p></div><div className="hidden text-right text-xs text-[#87918e] sm:block"><p>{formatDate(`${transaction.effectiveOn}T12:00:00`, { day: 'numeric', month: 'short' })}</p>{transaction.effectiveOn !== transaction.occurredOn && <p className="mt-0.5 text-[11px] text-[#a0a8a5]">{t('occurredOnNote', { date: formatDate(`${transaction.occurredOn}T12:00:00`, { day: 'numeric', month: 'short' }) })}</p>}</div><p className={`w-24 text-right text-sm font-semibold tabular-nums ${!spostamento && transaction.amount > 0 ? 'text-[#2d7b65]' : 'text-[#28312f]'}`}>{spostamento ? '' : transaction.amount > 0 ? '+' : '−'}{formatEuro(Math.abs(transaction.amount))}</p>{linkedCount > 0 && <span title={linkedTooltip} aria-label={linkedCount === 1 ? t('ledgerLinkedCount_one') : t('ledgerLinkedCount_other', { count: linkedCount })} className="grid size-7 shrink-0 place-items-center rounded-full bg-[#e5f3ed] text-[#2d7b65]"><LineChartIcon className="size-3.5" /></span>}{onEdit && onDuplicate && onDelete && <div className="flex shrink-0 basis-full justify-end sm:basis-auto"><Button type="button" size="icon" variant="ghost" title={t('edit')} aria-label={`${t('edit')} ${transaction.description}`} onClick={() => onEdit(transaction)}><Pencil className="size-4" /></Button><Button type="button" size="icon" variant="ghost" title={t('duplicate')} aria-label={`${t('duplicate')} ${transaction.description}`} onClick={() => onDuplicate(transaction)}><Copy className="size-4" /></Button>{onSplit && divisibile(transaction) && <Button type="button" size="icon" variant="ghost" title={t('splitRow')} aria-label={`${t('splitRow')} ${transaction.description}`} onClick={() => onSplit(transaction)}><Split className="size-4" /></Button>}<Button type="button" size="icon" variant="ghost" title={t('delete')} aria-label={`${t('delete')} ${transaction.description}`} onClick={() => onDelete(transaction)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button></div>}</div>;
+  return <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3.5 sm:flex-nowrap"><span className={`grid size-9 shrink-0 place-items-center rounded-xl ${style.className}`}><Icon className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{transaction.description}</p><div className="flex gap-2 text-[11px]">{transaction.incomplete && <span className="text-[#a94f3a]">{t('incompleteMovements')}</span>}{transaction.countsInBudget === false && !['Transfers', 'Investment', 'Debt'].includes(transaction.transactionType) && <span className="text-[#5e6c68]">{t('excludeBudget')}</span>}{transaction.refundedById && <button type="button" className="text-[#237056] underline" onClick={() => onRefund?.(transaction)}>{t('refunded')}</button>}{transaction.event && <span className="rounded-full bg-[#eef1ec] px-1.5 text-[#52615d]">{transaction.event.name}</span>}{transaction.liabilitySplit && <span className={transaction.liabilitySplit.classified ? 'text-[#8a5a46]' : 'text-[#a94f3a]'}>{transaction.liabilitySplit.classified ? t('debtSplitSummary', { principal: formatEuro(transaction.liabilitySplit.principal), interest: formatEuro(transaction.liabilitySplit.interest) }) : t('debtUnclassified')}</span>}</div><p className="mt-0.5 truncate text-xs text-[#5e6c68]">{transaction.category}{transaction.accountName ? ` · ${transaction.accountName}` : ''}{transaction.destinationName ? ` → ${transaction.destinationName}` : ''}</p></div><div className="hidden text-right text-xs text-[#5e6c68] sm:block"><p>{formatDate(`${transaction.effectiveOn}T12:00:00`, { day: 'numeric', month: 'short' })}</p>{transaction.effectiveOn !== transaction.occurredOn && <p className="mt-0.5 text-[11px] text-[#5e6c68]">{t('occurredOnNote', { date: formatDate(`${transaction.occurredOn}T12:00:00`, { day: 'numeric', month: 'short' }) })}</p>}</div><p className={`w-24 text-right text-sm font-semibold tabular-nums ${!spostamento && transaction.amount > 0 ? 'text-[#237056]' : 'text-[#28312f]'}`}>{spostamento ? '' : transaction.amount > 0 ? '+' : '−'}{formatEuro(Math.abs(transaction.amount))}</p>{linkedCount > 0 && <span title={linkedTooltip} aria-label={linkedCount === 1 ? t('ledgerLinkedCount_one') : t('ledgerLinkedCount_other', { count: linkedCount })} className="grid size-7 shrink-0 place-items-center rounded-full bg-[#eaf5ef] text-[#237056]"><LineChartIcon className="size-3.5" /></span>}{onEdit && onDuplicate && onDelete && <div className="flex shrink-0 basis-full justify-end sm:basis-auto"><Button type="button" size="icon" variant="ghost" title={t('edit')} aria-label={`${t('edit')} ${transaction.description}`} onClick={() => onEdit(transaction)}><Pencil className="size-4" /></Button><Button type="button" size="icon" variant="ghost" title={t('duplicate')} aria-label={`${t('duplicate')} ${transaction.description}`} onClick={() => onDuplicate(transaction)}><Copy className="size-4" /></Button>{onSplit && divisibile(transaction) && <Button type="button" size="icon" variant="ghost" title={t('splitRow')} aria-label={`${t('splitRow')} ${transaction.description}`} onClick={() => onSplit(transaction)}><Split className="size-4" /></Button>}<Button type="button" size="icon" variant="ghost" title={t('delete')} aria-label={`${t('delete')} ${transaction.description}`} onClick={() => onDelete(transaction)} className="text-[#a94f3a]"><Trash2 className="size-4" /></Button></div>}</div>;
 })
 /* Gli eventi, in fondo alla pagina Movimenti: una riga per evento con i suoi
    numeri, e aprendola i movimenti e la ripartizione per categoria. Una card e
@@ -7570,27 +7570,27 @@ function EventsCard({ events, apiUrl }: { events: EventData[]; apiUrl: string })
   };
   return (
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
-      <CardHeader><CardTitle className="text-[17px]">{t('eventTitle')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('eventHint')}</p></CardHeader>
+      <CardHeader><CardTitle className="text-[17px]">{t('eventTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('eventHint')}</p></CardHeader>
       <CardContent className="px-3 sm:px-6">
-        {!events.length ? <p className="py-8 text-center text-sm text-[#71807c]">{t('eventEmpty')}</p>
+        {!events.length ? <p className="py-8 text-center text-sm text-[#5e6c68]">{t('eventEmpty')}</p>
           : <div className="divide-y divide-black/5">{events.map((evento) => <div key={evento.id}>
             <button type="button" aria-expanded={aperto === evento.id} onClick={() => setAperto((corrente) => corrente === evento.id ? null : evento.id)} className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 py-3.5 text-left">
               <ChevronDown className={`size-4 shrink-0 text-black/35 transition ${aperto === evento.id ? 'rotate-180' : ''}`} />
               <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2 text-sm font-medium">{evento.name}{evento.closed && <span className="rounded-full bg-[#f4f5f1] px-1.5 text-[10px] font-normal text-[#7b8784]">{t('eventClosedBadge')}</span>}</span>
-                <span className="block truncate text-xs text-[#87918e]">{periodo(evento)} · {evento.movimenti === 1 ? t('eventMovementCount_one') : t('eventMovementCount_other', { count: evento.movimenti })}</span>
+                <span className="flex items-center gap-2 text-sm font-medium">{evento.name}{evento.closed && <span className="rounded-full bg-[#f4f5f1] px-1.5 text-[10px] font-normal text-[#5e6c68]">{t('eventClosedBadge')}</span>}</span>
+                <span className="block truncate text-xs text-[#5e6c68]">{periodo(evento)} · {evento.movimenti === 1 ? t('eventMovementCount_one') : t('eventMovementCount_other', { count: evento.movimenti })}</span>
               </span>
               {/* Speso e incassato restano due numeri separati: un rimborso non
                   e' un introito, e un totale solo nasconderebbe meta' della
                   storia. Il netto e' la differenza, come lo calcola il server. */}
-              <span className="text-right text-[11px] text-[#87918e]">{t('eventSpent')}<span className="block text-sm font-semibold tabular-nums text-[#28312f]">{formatEuro(evento.spese)}</span></span>
-              <span className="text-right text-[11px] text-[#87918e]">{t('eventReceived')}<span className="block text-sm font-semibold tabular-nums text-[#2d7b65]">{formatEuro(evento.entrate)}</span></span>
-              <span className="w-24 text-right text-[11px] text-[#87918e]">{t('eventNet')}<span className="block text-sm font-semibold tabular-nums text-[#28312f]">{formatEuro(evento.netto)}</span></span>
+              <span className="text-right text-[11px] text-[#5e6c68]">{t('eventSpent')}<span className="block text-sm font-semibold tabular-nums text-[#28312f]">{formatEuro(evento.spese)}</span></span>
+              <span className="text-right text-[11px] text-[#5e6c68]">{t('eventReceived')}<span className="block text-sm font-semibold tabular-nums text-[#237056]">{formatEuro(evento.entrate)}</span></span>
+              <span className="w-24 text-right text-[11px] text-[#5e6c68]">{t('eventNet')}<span className="block text-sm font-semibold tabular-nums text-[#28312f]">{formatEuro(evento.netto)}</span></span>
             </button>
             {aperto === evento.id && <div className="pb-4 pl-8">
-              {!dettagli[evento.id] ? <p className="py-3 text-center text-xs text-[#7b8784]">{t('updating')}</p> : <>
+              {!dettagli[evento.id] ? <p className="py-3 text-center text-xs text-[#5e6c68]">{t('updating')}</p> : <>
                 <p className="mb-1.5 text-xs font-medium text-[#52615d]">{t('eventByCategory')}</p>
-                <div className="mb-3 divide-y divide-black/5 rounded-xl bg-[#fafaf8] px-3">{dettagli[evento.id].categories.map((voce) => <div key={voce.name} className="flex items-center gap-3 py-1.5 text-xs"><span className="min-w-0 flex-1 truncate">{voce.name || t('eventNoCategory')}</span><span className="tabular-nums text-[#87918e]">{formatEuro(voce.spese)}</span><span className="tabular-nums text-[#2d7b65]">{formatEuro(voce.entrate)}</span></div>)}</div>
+                <div className="mb-3 divide-y divide-black/5 rounded-xl bg-[#fafaf8] px-3">{dettagli[evento.id].categories.map((voce) => <div key={voce.name} className="flex items-center gap-3 py-1.5 text-xs"><span className="min-w-0 flex-1 truncate">{voce.name || t('eventNoCategory')}</span><span className="tabular-nums text-[#5e6c68]">{formatEuro(voce.spese)}</span><span className="tabular-nums text-[#237056]">{formatEuro(voce.entrate)}</span></div>)}</div>
                 <div className="divide-y divide-black/5">{dettagli[evento.id].movements.map((movimento) => <TransactionRow key={movimento.id} transaction={movimento} />)}</div>
               </>}
             </div>}
@@ -7692,14 +7692,14 @@ function CategoryRulesCard({ rules, categories, categoryTree, apiUrl, onChanged 
   return <Card className="border-black/6 bg-white shadow-sm">
     <CardHeader className="gap-3">
       <div><CardTitle className="text-[17px]">{t('categoryRules')}</CardTitle>
-        <p className="mt-1 text-xs text-[#7b8784]">{t('categoryRulesHint')}</p></div>
+        <p className="mt-1 text-xs text-[#5e6c68]">{t('categoryRulesHint')}</p></div>
       <div><Button type="button" variant="outline" className="h-10 bg-white" disabled={busy} onClick={impara}>{t('learnFromHistory')}</Button></div>
     </CardHeader>
     <CardContent className="space-y-4">
       {rules.length === 0
-        ? <p className="text-sm text-[#71807c]">{t('ruleEmpty')}</p>
+        ? <p className="text-sm text-[#5e6c68]">{t('ruleEmpty')}</p>
         : <div className="overflow-x-auto"><table className="w-full text-left text-sm">
-          <thead className="text-xs text-[#71807c]"><tr>
+          <thead className="text-xs text-[#5e6c68]"><tr>
             <th className="py-2 pr-2 font-medium">{t('rulePattern')}</th>
             <th className="py-2 pr-2 font-medium">{t('category')}</th>
             <th className="py-2 pr-2 font-medium">{t('type')}</th>
@@ -7717,7 +7717,7 @@ function CategoryRulesCard({ rules, categories, categoryTree, apiUrl, onChanged 
               <Button type="button" size="icon" variant="ghost" disabled={busy || indice === 0} title={t('ruleMoveUp')} aria-label={t('ruleMoveUp')} onClick={() => sposta(indice, -1)}><ChevronUp className="size-4" /></Button>
               <Button type="button" size="icon" variant="ghost" disabled={busy || indice === rules.length - 1} title={t('ruleMoveDown')} aria-label={t('ruleMoveDown')} onClick={() => sposta(indice, 1)}><ChevronDown className="size-4" /></Button>
               <Button type="button" size="icon" variant="ghost" title={t('edit')} aria-label={`${t('edit')} ${riga.pattern}`} onClick={() => modifica(riga)}><Pencil className="size-4" /></Button>
-              <Button type="button" size="icon" variant="ghost" title={t('delete')} aria-label={`${t('delete')} ${riga.pattern}`} className="text-[#bd5e46]" disabled={busy} onClick={() => void esegui(() => chiama(`/${riga.id}`, 'DELETE'))}><Trash2 className="size-4" /></Button>
+              <Button type="button" size="icon" variant="ghost" title={t('delete')} aria-label={`${t('delete')} ${riga.pattern}`} className="text-[#a94f3a]" disabled={busy} onClick={() => void esegui(() => chiama(`/${riga.id}`, 'DELETE'))}><Trash2 className="size-4" /></Button>
             </div></td>
           </tr>)}</tbody>
         </table></div>}
@@ -7748,7 +7748,7 @@ function CategoryRulesCard({ rules, categories, categoryTree, apiUrl, onChanged 
           {editId !== null && <Button type="button" variant="outline" className="h-10" disabled={busy} onClick={() => { setEditId(null); setForm(vuoto); setErrore(''); }}>{t('cancel')}</Button>}
         </div>
       </form>
-      {errore && <p role="alert" className="text-xs text-[#bd5e46]">{errore}</p>}
+      {errore && <p role="alert" className="text-xs text-[#a94f3a]">{errore}</p>}
     </CardContent>
     {/* Le proposte non si applicano da sole: la spunta e' il passaggio in cui
         si decide, e chi non spunta niente non scrive niente. */}
@@ -7759,7 +7759,7 @@ function CategoryRulesCard({ rules, categories, categoryTree, apiUrl, onChanged 
           <DialogDescription>{t('categoryRulesHint')}</DialogDescription>
         </DialogHeader>
         {proposte.proposte.length === 0
-          ? <p className="text-sm text-[#71807c]">{t('ruleNoneFound')}</p>
+          ? <p className="text-sm text-[#5e6c68]">{t('ruleNoneFound')}</p>
           : <div className="max-h-80 space-y-1 overflow-y-auto">
             {proposte.proposte.map((proposta) => <label key={proposta.pattern}
               className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-2 hover:bg-[#f7f8f5]">
@@ -7772,9 +7772,9 @@ function CategoryRulesCard({ rules, categories, categoryTree, apiUrl, onChanged 
                 })} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{proposta.pattern}</span>
-                <span className="block text-xs text-[#7b8784]">{dettaglio(proposta)}</span>
+                <span className="block text-xs text-[#5e6c68]">{dettaglio(proposta)}</span>
               </span>
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${proposta.fiducia === 'sicura' ? 'bg-[#e5f3ed] text-[#2d7b65]' : 'bg-[#f4f5f1] text-[#61706c]'}`}>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${proposta.fiducia === 'sicura' ? 'bg-[#eaf5ef] text-[#237056]' : 'bg-[#f4f5f1] text-[#5e6c68]'}`}>
                 {t(proposta.fiducia === 'sicura' ? 'ruleConfidenceSure' : 'ruleConfidenceUnsure')}</span>
             </label>)}
           </div>}
@@ -7783,7 +7783,7 @@ function CategoryRulesCard({ rules, categories, categoryTree, apiUrl, onChanged 
         {proposte.incoerenti.length > 0 && <details className="border-t border-black/5 pt-3">
           <summary className="cursor-pointer text-xs font-medium text-[#52615d]">{t('ruleInconsistent')}</summary>
           <ul className="mt-2 space-y-1">
-            {proposte.incoerenti.map((riga) => <li key={riga.pattern} className="text-xs text-[#7b8784]">
+            {proposte.incoerenti.map((riga) => <li key={riga.pattern} className="text-xs text-[#5e6c68]">
               <span className="text-[#28312f]">{riga.pattern}</span>
               {` · ${t('ruleOccurrences', { count: riga.occorrenze })} · `}
               {riga.categorie.map((c) => `${c.category} ${c.count}`).join(', ')}</li>)}
@@ -7854,8 +7854,8 @@ function RecurringTransactionsView({ accounts, data, categoriesByType, categoryT
     <div className="space-y-5">
       <Card className="border-black/6 bg-white shadow-sm">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-[17px]"><Calendar className="size-5 text-[#397867]" />{t('newRecurrence')}</CardTitle>
-          <p className="mt-1 text-xs text-[#7b8784]">{t('newRecurrenceDesc')}</p>
+          <CardTitle className="flex items-center gap-2 text-[17px]"><Calendar className="size-5 text-[#237056]" />{t('newRecurrence')}</CardTitle>
+          <p className="mt-1 text-xs text-[#5e6c68]">{t('newRecurrenceDesc')}</p>
         </CardHeader>
         <CardContent>
           <form className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_1fr_auto]" onSubmit={submit}>
@@ -7885,7 +7885,7 @@ function RecurringTransactionsView({ accounts, data, categoriesByType, categoryT
               <label htmlFor="recurring-start-date" className="text-xs text-[#52615d]">{t('startDateField')}<Input id="recurring-start-date" type="date" value={form.startDate} onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))} className="mt-1 h-10 bg-white" /></label>
               <label htmlFor="recurring-end-date" className="text-xs text-[#52615d]">{t('endDateOptional')}<Input id="recurring-end-date" type="date" value={form.endDate} onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))} className="mt-1 h-10 bg-white" /></label>
             </div>
-            <p className="sm:col-span-2 text-[11px] text-[#71807c]">{t('currentRule')} <code className="rounded bg-[#f0f2ee] px-1.5 py-0.5">{form.recurrence}</code></p>
+            <p className="sm:col-span-2 text-[11px] text-[#5e6c68]">{t('currentRule')} <code className="rounded bg-[#f0f2ee] px-1.5 py-0.5">{form.recurrence}</code></p>
           </form>
         </CardContent>
       </Card>
@@ -7893,27 +7893,27 @@ function RecurringTransactionsView({ accounts, data, categoriesByType, categoryT
         <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
           <CardTitle className="text-[17px]">{t('activeRecurrences')}</CardTitle>
-          <p className="mt-1 text-xs text-[#7b8784]">{data.length === 1 ? t('ruleRegisteredCount', { count: data.length }) : t('rulesRegisteredCount', { count: data.length })}</p>
+          <p className="mt-1 text-xs text-[#5e6c68]">{data.length === 1 ? t('ruleRegisteredCount', { count: data.length }) : t('rulesRegisteredCount', { count: data.length })}</p>
           </div>
           {data.length > 0 && <div className="flex flex-wrap items-center gap-2">
             <label className="text-xs font-medium text-[#52615d]">{t('generateUpTo')}<Input type="date" value={generateUpTo} onChange={(event) => setGenerateUpTo(event.target.value)} className="mt-1 h-9 w-[160px] bg-white" /></label>
             <Button type="button" variant="outline" disabled={generating} onClick={() => void generate()} className="mt-5"><RefreshCw className={`size-4 ${generating ? 'animate-spin' : ''}`} />{generating ? t('generatingEllipsis') : t('generateOccurrences')}</Button>
           </div>}
         </CardHeader>
-        {generatedInfo !== null && <p className="px-(--card-spacing) text-xs text-[#397867]">{t('occurrencesGenerated', { count: generatedInfo })}</p>}
+        {generatedInfo !== null && <p className="px-(--card-spacing) text-xs text-[#237056]">{t('occurrencesGenerated', { count: generatedInfo })}</p>}
         {errore && <p role="alert" className="mx-(--card-spacing) mt-2 rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{errore}</p>}
         <CardContent className="divide-y divide-black/5">
-          {data.length === 0 ? <p className="py-6 text-center text-sm text-[#71807c]">{t('noRecurrences')}</p> :
+          {data.length === 0 ? <p className="py-6 text-center text-sm text-[#5e6c68]">{t('noRecurrences')}</p> :
             data.map((rule) => (
               <div key={rule.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{rule.description}</p>
-                  <p className="mt-0.5 text-xs text-[#87918e]">{rule.category} · {rule.recurrence_rule ?? t('withoutRule')}{rule.next_occurrence ? ` · ${t('nextOccurrence', { date: formatDate(`${rule.next_occurrence}T12:00:00`, { day: 'numeric', month: 'short', year: 'numeric' }) })}` : ''}</p>
+                  <p className="mt-0.5 text-xs text-[#5e6c68]">{rule.category} · {rule.recurrence_rule ?? t('withoutRule')}{rule.next_occurrence ? ` · ${t('nextOccurrence', { date: formatDate(`${rule.next_occurrence}T12:00:00`, { day: 'numeric', month: 'short', year: 'numeric' }) })}` : ''}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="rounded-full bg-[#edf0ed] px-2.5 py-1 text-xs font-medium">{MOVIMENTO_TYPE_LABEL[rule.transactionType] ? t(MOVIMENTO_TYPE_LABEL[rule.transactionType]) : rule.transactionType}</span>
                   <span className="text-sm font-semibold tabular-nums">{formatEuro(rule.amount)}</span>
-                  <Button type="button" size="icon" variant="ghost" aria-label={t('deleteRecurrence')} onClick={() => void rimuovi(rule)} className="text-[#bd5e46]"><Trash2 className="size-4" /></Button>
+                  <Button type="button" size="icon" variant="ghost" aria-label={t('deleteRecurrence')} onClick={() => void rimuovi(rule)} className="text-[#a94f3a]"><Trash2 className="size-4" /></Button>
                 </div>
               </div>
             ))}

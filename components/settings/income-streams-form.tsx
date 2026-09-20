@@ -111,24 +111,24 @@ export function IncomeStreamsForm({ apiUrl }: { apiUrl: string }) {
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
       <CardHeader>
         <CardTitle className="text-[17px]">{t('fireStreamsTitle')}</CardTitle>
-        <p className="mt-1 text-xs text-[#7b8784]">{t('fireStreamsSubtitle')}</p>
+        <p className="mt-1 text-xs text-[#5e6c68]">{t('fireStreamsSubtitle')}</p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {error && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#bd5e46]">{error}</p>}
+        {error && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#a94f3a]">{error}</p>}
         {outcome && (
-          <p role="status" className={`rounded-xl border px-4 py-2 text-sm ${outcome.ok ? 'border-[#cfe6dc] bg-[#e5f3ed] text-[#2d7b65]' : 'border-[#f4d8ce] bg-[#fce9e3] text-[#bd5e46]'}`}>
+          <p role="status" className={`rounded-xl border px-4 py-2 text-sm ${outcome.ok ? 'border-[#cfe6dc] bg-[#e5f3ed] text-[#237056]' : 'border-[#f4d8ce] bg-[#fce9e3] text-[#a94f3a]'}`}>
             {outcome.message}
           </p>
         )}
         {streams.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-black/10 bg-[#fafaf8] px-4 py-6 text-center text-sm text-[#7b8784]">{t('fireStreamsEmpty')}</p>
+          <p className="rounded-xl border border-dashed border-black/10 bg-[#fafaf8] px-4 py-6 text-center text-sm text-[#5e6c68]">{t('fireStreamsEmpty')}</p>
         ) : (
           <ul className="divide-y divide-black/5 rounded-xl border border-black/6 bg-white">
             {streams.map((s) => (
               <li key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{s.name}</p>
-                  <p className="mt-0.5 text-xs text-[#7b8784]">
+                  <p className="mt-0.5 text-xs text-[#5e6c68]">
                     {s.kind === 'annuity' ? t('fireStreamsKindAnnuity') : t('fireStreamsKindCapital')} ·
                     {/* L'unita' accanto al numero: senza, una rendita letta
                         "a vita · 2.000,00 €" sembra duemila al mese. */}
@@ -144,7 +144,7 @@ export function IncomeStreamsForm({ apiUrl }: { apiUrl: string }) {
                 <Button size="sm" variant="outline" disabled={busy} onClick={() => { setEditing(s); setCreating(false); }}>
                   {t('fireStreamsEdit')}
                 </Button>
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => void cancella(s)} className="text-[#bd5e46]">
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => void cancella(s)} className="text-[#a94f3a]">
                   {t('fireStreamsDelete')}
                 </Button>
               </li>
@@ -203,7 +203,7 @@ function StreamEditor({ t, lang, initial, busy, onCancel, onSave }: {
             <Input type="number" min={0} step="0.01" value={values.amount}
               onChange={(e) => setValues({ ...values, amount: Number(e.target.value) })} className="h-10 bg-white" />
           </label>
-          <span className="block leading-4 text-[11px] text-[#87918e]">{t('fireStreamsAmountHint')}</span>
+          <span className="block leading-4 text-[11px] text-[#5e6c68]">{t('fireStreamsAmountHint')}</span>
         </div>
         <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
           {t('fireStreamsStartAge')} ({t('fireProfileYears')})

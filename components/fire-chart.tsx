@@ -56,7 +56,7 @@ export function FireChart(props: FireChartProps) {
   const { yTicks, xTicks } = scalaGrafico(rows, annoRitiro, annoPrimoFlusso, crossing?.anno ?? null);
   const config = {
     history: { label: labels.history, color: '#71807c' },
-    central: { label: labels.central, color: '#2d7b65' },
+    central: { label: labels.central, color: '#237056' },
     range: { label: labels.range, color: '#b6d9cd' },
     target: { label: labels.target, color: '#bd5e46' },
   } satisfies ChartConfig;

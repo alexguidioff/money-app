@@ -54,21 +54,21 @@ export function ImportHistoryCard({ apiUrl, versione }: { apiUrl: string; versio
             <ChevronDown className={`size-4 shrink-0 text-black/35 transition ${aperto ? 'rotate-180' : ''}`} />
             {t('importHistory')}
           </CardTitle>
-          <p className="mt-1 text-xs text-[#7b8784]">{t('importHistoryHint')}</p>
+          <p className="mt-1 text-xs text-[#5e6c68]">{t('importHistoryHint')}</p>
         </CardHeader>
       </button>
       {aperto && <CardContent className="px-3 sm:px-6">
-        {righe === null ? <p className="py-8 text-center text-sm text-[#71807c]">{t('updating')}</p>
-          : !righe.length ? <p className="py-8 text-center text-sm text-[#71807c]">{t('importHistoryEmpty')}</p>
+        {righe === null ? <p className="py-8 text-center text-sm text-[#5e6c68]">{t('updating')}</p>
+          : !righe.length ? <p className="py-8 text-center text-sm text-[#5e6c68]">{t('importHistoryEmpty')}</p>
             : <div className="divide-y divide-black/5">{righe.map((riga) => <div key={riga.id} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-3.5">
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                  <span className="rounded-full bg-[#f4f5f1] px-2 py-0.5 text-[10px] font-normal text-[#7b8784]">
+                  <span className="rounded-full bg-[#f4f5f1] px-2 py-0.5 text-[10px] font-normal text-[#5e6c68]">
                     {t(riga.kind === 'interchange' ? 'importHistoryInterchange' : 'importHistoryStatement')}
                   </span>
                   <span className="truncate">{riga.sourceName}</span>
                 </span>
-                <span className="mt-1 block text-xs text-[#87918e]">
+                <span className="mt-1 block text-xs text-[#5e6c68]">
                   {riga.importedAt ? formatDate(riga.importedAt, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
                 </span>
               </span>
@@ -80,8 +80,8 @@ export function ImportHistoryCard({ apiUrl, versione }: { apiUrl: string; versio
                 ? <span className="text-sm tabular-nums text-[#52615d]">{t('importHistoryRestored', { count: riga.transactionCount })}</span>
                 : <span className="min-w-0 flex-1 text-xs text-[#52615d]">
                   <span className="text-sm tabular-nums">{t('importHistoryAccepted', { count: riga.accepted })}</span>
-                  {riga.rejected > 0 && <span className="text-sm tabular-nums text-[#bd5e46]"> · {t('importHistoryRejected', { count: riga.rejected })}</span>}
-                  {Object.entries(riga.reasons).map(([codice, quante]) => <span key={codice} className="block text-[#87918e]">{motivo(codice)} ({quante})</span>)}
+                  {riga.rejected > 0 && <span className="text-sm tabular-nums text-[#a94f3a]"> · {t('importHistoryRejected', { count: riga.rejected })}</span>}
+                  {Object.entries(riga.reasons).map(([codice, quante]) => <span key={codice} className="block text-[#5e6c68]">{motivo(codice)} ({quante})</span>)}
                 </span>}
             </div>)}</div>}
       </CardContent>}

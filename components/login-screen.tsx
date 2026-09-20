@@ -63,7 +63,7 @@ export function LoginScreen({ users, onLogin, onCreate }: {
     <div className="flex min-h-screen items-center justify-center bg-[#f4f5f1] px-4">
       <div className="w-full max-w-sm rounded-2xl border border-black/6 bg-white p-6 shadow-sm">
         <h1 className="text-lg font-semibold text-[#173b33]">{t('appName')}</h1>
-        <p className="mt-1 text-xs text-[#7b8784]">
+        <p className="mt-1 text-xs text-[#5e6c68]">
           {users.length === 0 ? t('loginFirstAccount') : t('loginSubtitle')}
         </p>
 
@@ -84,7 +84,7 @@ export function LoginScreen({ users, onLogin, onCreate }: {
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium text-[#173b33]">{user.displayName}</span>
-                <span className="block text-[11px] text-[#87918e]">
+                <span className="block text-[11px] text-[#5e6c68]">
                   {user.hasPassword ? t('loginNeedsPassword') : t('loginNoPassword')}
                 </span>
               </span>
@@ -103,7 +103,7 @@ export function LoginScreen({ users, onLogin, onCreate }: {
               className="h-10 bg-white"
             />
           )}
-          {error && <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{error}</p>}
+          {error && <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}
           {users.length > 0 && (
             <Button
               type="submit"
@@ -118,7 +118,7 @@ export function LoginScreen({ users, onLogin, onCreate }: {
         {creazione ? (
           <form onSubmit={crea} className="mt-4 space-y-2.5 border-t border-black/6 pt-4">
             <p className="text-sm font-medium text-[#173b33]">{t('addPerson')}</p>
-            <p className="text-xs leading-5 text-[#7b8784]">{t('addPersonHint')}</p>
+            <p className="text-xs leading-5 text-[#5e6c68]">{t('addPersonHint')}</p>
             <Input value={nome} onChange={(event) => setNome(event.target.value)}
                    placeholder={t('personName')} className="h-10 bg-white" autoFocus={users.length === 0} />
             <div className="flex gap-2">
@@ -135,7 +135,7 @@ export function LoginScreen({ users, onLogin, onCreate }: {
           </form>
         ) : (
           <button type="button" onClick={() => { setCreazione(true); setError(''); }}
-                  className="mt-4 w-full text-center text-xs font-medium text-[#397867] hover:underline">
+                  className="mt-4 w-full text-center text-xs font-medium text-[#237056] hover:underline">
             {t('addPerson')}
           </button>
         )}

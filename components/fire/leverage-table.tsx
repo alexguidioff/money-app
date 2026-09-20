@@ -79,9 +79,9 @@ export function LeverageTable({ leve }: { leve: readonly Leverage[] }) {
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
       <CardHeader>
         <CardTitle className="text-[17px]">{t('fireLeverageTitle')}</CardTitle>
-        <p className="mt-1 text-xs text-[#7b8784]">{t('fireLeverageSubtitle')}</p>
+        <p className="mt-1 text-xs text-[#5e6c68]">{t('fireLeverageSubtitle')}</p>
         <div className="mt-2 flex items-center gap-2">
-          <label htmlFor="fire-lever" className="text-[11px] uppercase tracking-wide text-[#87918e]">
+          <label htmlFor="fire-lever" className="text-[11px] uppercase tracking-wide text-[#5e6c68]">
             {t('fireLeveragePick')}
           </label>
           <select id="fire-lever" value={scelta.key} onChange={(evento) => setChiave(evento.target.value as LeverageKey)}
@@ -94,12 +94,12 @@ export function LeverageTable({ leve }: { leve: readonly Leverage[] }) {
         {inutile
           ? <div>
               <p className="text-sm font-semibold text-[#173b33]">{t('fireLeverageNoEffect')}</p>
-              <p className="mt-1 text-xs leading-5 text-[#7b8784]">{t('fireLeverageNoEffectWhy')}</p>
+              <p className="mt-1 text-xs leading-5 text-[#5e6c68]">{t('fireLeverageNoEffectWhy')}</p>
             </div>
           : <>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-[11px] uppercase tracking-wide text-[#87918e]">
+                  <tr className="text-left text-[11px] uppercase tracking-wide text-[#5e6c68]">
                     <th className="pb-2 font-medium">{nome}</th>
                     {!ferme.anni && <th className="pb-2 text-right font-medium">{t('fireLeverageYears')}</th>}
                     {!ferme.capitale && <th className="pb-2 text-right font-medium">{t('fireLeverageCapital')}</th>}
@@ -110,11 +110,11 @@ export function LeverageTable({ leve }: { leve: readonly Leverage[] }) {
                   {scelta.rows.map((row) => (
                     <tr key={row.value} className={row.current ? 'bg-[#e5f3ed]' : 'border-t border-black/5'}>
                       <td className="py-2 pr-3 font-semibold tabular-nums">
-                        {scrivi(row.value)} {row.current && <span className="ml-1 text-[10px] text-[#2d7b65]">· {t('fireLeverageYourRow')}</span>}
+                        {scrivi(row.value)} {row.current && <span className="ml-1 text-[10px] text-[#237056]">· {t('fireLeverageYourRow')}</span>}
                       </td>
                       {!ferme.anni && <td className="py-2 text-right tabular-nums">{row.yearsLeft ?? '∞'}</td>}
                       {!ferme.capitale && <td className="py-2 text-right tabular-nums">{formatEuro(row.capitalNeeded)}</td>}
-                      {risparmi && <td className="py-2 text-right text-xs text-[#87918e] tabular-nums">
+                      {risparmi && <td className="py-2 text-right text-xs text-[#5e6c68] tabular-nums">
                         {row.annualSavings === null ? '' : formatEuro(row.annualSavings)}
                       </td>}
                     </tr>
@@ -125,9 +125,9 @@ export function LeverageTable({ leve }: { leve: readonly Leverage[] }) {
                   colonna dimenticata. E la riga "si muove una cosa per volta"
                   vale solo finche' c'e' qualcosa che si muove. */}
               {ferme.anni || ferme.capitale
-                ? <p className="mt-2 text-xs text-[#87918e]">{t('fireLeverageColumnFixed', {
+                ? <p className="mt-2 text-xs text-[#5e6c68]">{t('fireLeverageColumnFixed', {
                     column: t(ferme.anni ? 'fireLeverageYears' : 'fireLeverageCapital') })}</p>
-                : <p className="mt-2 text-xs text-[#87918e]">{t('fireLeverageOnlyOne')}</p>}
+                : <p className="mt-2 text-xs text-[#5e6c68]">{t('fireLeverageOnlyOne')}</p>}
             </>}
       </CardContent>
     </Card>

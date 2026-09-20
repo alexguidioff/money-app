@@ -18,7 +18,7 @@ export function FireTaxNotes({ profileCountry }: { profileCountry: string }) {
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
       <CardHeader>
         <CardTitle className="text-[17px]">{t('fireTaxNotesTitle')}</CardTitle>
-        <p className="mt-1 text-xs text-[#7b8784]">{t('fireTaxNotesSubtitle')}</p>
+        <p className="mt-1 text-xs text-[#5e6c68]">{t('fireTaxNotesSubtitle')}</p>
       </CardHeader>
       <CardContent className="space-y-3">
         <select value={country} onChange={(e) => setCountry(e.target.value)}
@@ -29,11 +29,11 @@ export function FireTaxNotes({ profileCountry }: { profileCountry: string }) {
         </select>
         {note ? (
           <div className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] p-4 text-sm text-[#3a4a46]">
-            <p className="mb-1 text-xs font-semibold text-[#bd5e46]">{countryName}</p>
+            <p className="mb-1 text-xs font-semibold text-[#a94f3a]">{countryName}</p>
             <p className="leading-relaxed">{note.body}</p>
           </div>
         ) : (
-          <p className="rounded-xl border border-dashed border-black/10 bg-[#fafaf8] px-4 py-6 text-center text-sm text-[#7b8784]">{t('fireTaxNotesEmpty')}</p>
+          <p className="rounded-xl border border-dashed border-black/10 bg-[#fafaf8] px-4 py-6 text-center text-sm text-[#5e6c68]">{t('fireTaxNotesEmpty')}</p>
         )}
       </CardContent>
     </Card>
