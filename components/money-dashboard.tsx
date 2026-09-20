@@ -3765,7 +3765,7 @@ function SectionView({
             preferenze dell'app - sono una regola del budget, e chi le cerca le
             cerca qui. Il selettore del tipo di budget sparisce (sopra) perche'
             qui non cambia niente. */}
-        {budgetView === 'entrateTardive' && <CardImpostazioni titolo={t('budgetTabLateIncome')}>
+        {budgetView === 'entrateTardive' && <CardImpostazioni titolo={t('budgetTabLateIncome')} errore={settingError}>
           <SettingSelect label={t('shiftLateIncome')} value={settingsData.settings.late_income_shift} options={uniqueOptions(settingsData.settings.late_income_shift, ['Active', 'Inactive'])} saving={settingSaving === 'late_income_shift'} hint={t('shiftLateIncomeHint')} labels={{ Active: t('toggleActive'), Inactive: t('toggleInactive') }} onChange={(value) => void onSettingChange('late_income_shift', value)} />
           <SettingSelect label={t('fromDay')} value={settingsData.settings.late_income_day} options={Array.from({ length: 28 }, (_, index) => String(index + 1))} saving={settingSaving === 'late_income_day'} disabled={settingsData.settings.late_income_shift !== 'Active'} hint={settingsData.settings.late_income_shift === 'Active' ? t('fromDayHintActive') : t('fromDayHintInactive')} onChange={(value) => void onSettingChange('late_income_day', value)} />
         </CardImpostazioni>}
@@ -3773,11 +3773,11 @@ function SectionView({
 
       {section === 'Obiettivi' && <GoalsView data={goalsData} accounts={accounts} onSave={onGoalSave} onDelete={onGoalDelete} onMilestoneAdd={onMilestoneAdd} onMilestoneDelete={onMilestoneDelete} />}
 
-      {section === 'Patrimonio' && <NetWorthView apiUrl={apiUrl} data={netWorthData} primoAnno={Number(years[0]) || selectedYear} accounts={accounts} alPresente={alPresente} onNewAccount={onNewAccount} onAccountEdit={onAccountEdit} onAccountValuations={onAccountValuations} onAccountDelete={onAccountDelete} impostazioni={{ valori: settingsData.settings, inCorso: settingSaving, onCambia: onSettingChange }} />}
+      {section === 'Patrimonio' && <NetWorthView apiUrl={apiUrl} data={netWorthData} primoAnno={Number(years[0]) || selectedYear} accounts={accounts} alPresente={alPresente} onNewAccount={onNewAccount} onAccountEdit={onAccountEdit} onAccountValuations={onAccountValuations} onAccountDelete={onAccountDelete} impostazioni={{ valori: settingsData.settings, inCorso: settingSaving, errore: settingError, onCambia: onSettingChange }} />}
 
       {section === 'Debiti' && <LiabilitiesView apiUrl={apiUrl} onDeleted={onReloadData} accounts={accounts} version={movimentiVersione} onPayment={onTransfer} onNewAccount={() => onNewAccount('liability')} onEditAccount={onAccountEdit} onEditTransaction={onEditTransaction} />}
 
-      {section === 'Investimenti' && <InvestmentsView apiUrl={apiUrl} onQuotesChanged={onReloadData} dashboard={investmentDashboardData} ledger={investmentLedger} allocation={investmentAllocationData} onSave={onInvestmentSave} onDelete={onInvestmentDelete} onInstrumentSave={onInstrumentSave} onRefresh={onMarketRefresh} accounts={accounts} impostazioni={{ valori: settingsData.settings, inCorso: settingSaving, onCambia: onSettingChange }} />}
+      {section === 'Investimenti' && <InvestmentsView apiUrl={apiUrl} onQuotesChanged={onReloadData} dashboard={investmentDashboardData} ledger={investmentLedger} allocation={investmentAllocationData} onSave={onInvestmentSave} onDelete={onInvestmentDelete} onInstrumentSave={onInstrumentSave} onRefresh={onMarketRefresh} accounts={accounts} impostazioni={{ valori: settingsData.settings, inCorso: settingSaving, errore: settingError, onCambia: onSettingChange }} />}
 
       {section === 'Impostazioni' && <div className="space-y-5">
         {/* Due colonne: a sinistra chi sei e cosa entra, a destra come l'app
@@ -3790,10 +3790,9 @@ function SectionView({
             {account && <AccountSettings apiUrl={apiUrl} account={account} onChanged={onAccountChanged} />}
        </div>
           <div className="min-w-0 space-y-5">
-          <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]"><CardHeader><CardTitle className="text-[17px]">{t('preferences')}</CardTitle><p className="text-xs leading-5 text-[#7b8784]">{t('preferencesSubtitle')}</p></CardHeader><CardContent className="space-y-4">
-            {settingError && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#bd5e46]">{settingError}</p>}
+          <CardImpostazioni titolo={t('preferences')} sottotitolo={t('preferencesSubtitle')} errore={settingError}>
             <SettingSelect label={t('mainColor')} value={settingsData.settings.header_color} options={settingsData.options.colors} saving={settingSaving === 'header_color'} labels={{ Blue: t('colorBlue'), Orange: t('colorOrange'), Green: t('colorGreen'), Yellow: t('colorYellow'), Purple: t('colorPurple'), 'Light Blue': t('colorLightBlue') }} onChange={(value) => void onSettingChange('header_color', value)} />
-          </CardContent></Card>
+          </CardImpostazioni>
           </div>
         </div>
       </div>}
@@ -5570,7 +5569,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
         portafoglio, come si sceglie il costo delle quote vendute, e dove sono
         tassati gli investimenti. Stanno qui e non fra le impostazioni dell'app
         perche' sono di questa pagina e si cercano qui. */}
-    {tab === 'metodo' && <CardImpostazioni titolo={t('investTabMethod')}>
+    {tab === 'metodo' && <CardImpostazioni titolo={t('investTabMethod')} errore={impostazioni.errore}>
       <SettingBenchmark label={t('benchmarkSymbol')} value={impostazioni.valori.benchmark_symbol ?? ''} saving={impostazioni.inCorso === 'benchmark_symbol'} apiUrl={apiUrl} hint={t('benchmarkSymbolHint')} onChange={(value) => void impostazioni.onCambia('benchmark_symbol', value)} />
       {/* Il metodo di carico. Raggruppato, "media", che e' quello che l'app ha
           sempre calcolato: chi non sceglie non vede un numero muoversi, e la
@@ -5760,7 +5759,7 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
     {/* In che monete si rilegge il totale: era fra le preferenze dell'app, ma
         il patrimonio e' l'unica cosa che cambia quando la si tocca, e chi si
         chiede "e in dollari quanto vale?" sta gia' guardando questa pagina. */}
-    {scheda === 'valute' && <CardImpostazioni titolo={t('tabCurrencies')}>
+    {scheda === 'valute' && <CardImpostazioni titolo={t('tabCurrencies')} errore={impostazioni.errore}>
       <SettingCurrencies label={t('netWorthCurrenciesSetting')} value={impostazioni.valori.net_worth_currencies ?? 'USD,CHF,BTC'} saving={impostazioni.inCorso === 'net_worth_currencies'} onChange={(value) => void impostazioni.onCambia('net_worth_currencies', value)} />
     </CardImpostazioni>}
 
@@ -6204,12 +6203,15 @@ function uniqueOptions(current: string, options: string[]) {
 type ImpostazioniDellaPagina = {
   valori: Record<string, string>;
   inCorso: string;
+  // L'esito dell'ultimo salvataggio. Sta nel pacchetto perche' una tendina che
+  // torna indietro da sola non dice niente: serve a chiunque la disegni.
+  errore: string;
   onCambia: (key: string, value: string) => Promise<void>;
 };
 
 /** La scheda che tiene le impostazioni di una pagina: titolo e righe. */
-function CardImpostazioni({ titolo, sottotitolo, children }: { titolo: string; sottotitolo?: string; children: ReactNode }) {
-  return <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{titolo}</CardTitle>{sottotitolo && <p className="mt-1 text-xs leading-5 text-[#7b8784]">{sottotitolo}</p>}</CardHeader><CardContent className="space-y-4">{children}</CardContent></Card>;
+function CardImpostazioni({ titolo, sottotitolo, errore, children }: { titolo: string; sottotitolo?: string; errore?: string; children: ReactNode }) {
+  return <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{titolo}</CardTitle>{sottotitolo && <p className="mt-1 text-xs leading-5 text-[#7b8784]">{sottotitolo}</p>}</CardHeader><CardContent className="space-y-4">{children}{errore && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#bd5e46]">{errore}</p>}</CardContent></Card>;
 }
 
 // Valute in cui rileggere il patrimonio. Non e' un elenco chiuso: qualunque
