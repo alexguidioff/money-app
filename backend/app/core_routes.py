@@ -2353,6 +2353,22 @@ def _ritmo_goal(corrente: float, target: float, target_date: date | None,
             "monthsLeft": mesi, "overdue": False}
 
 
+def _avanzamento_goal(corrente: float, iniziale: float, target: float) -> float:
+    """Quanta strada e' stata fatta dall'importo di partenza al traguardo.
+
+    Il punto di partenza non e' zero: un obiettivo che parte da 1.000 verso
+    10.000 non e' al 90% quando e' a 9.000, perche' quei 1.000 c'erano gia'
+    prima di iniziare. E' la misura che serve al badge "In ritardo", e la
+    percentuale accanto all'importo deve venire da qui: con l'altra formula
+    (corrente / traguardo) la stessa card diceva "90%" e "in ritardo" insieme.
+    """
+    percorso = target - iniziale
+    if percorso <= 0:
+        # Nessuna strada da fare: o il traguardo e' gia' passato o non c'e'.
+        return 1.0 if corrente >= target else 0.0
+    return min(max((corrente - iniziale) / percorso, 0.0), 1.0)
+
+
 def _stato_goal(corrente: float, iniziale: float, target: float,
                 start_date: date | None, target_date: date | None,
                 completato: bool, oggi: date) -> dict[str, Any]:
@@ -2363,7 +2379,7 @@ def _stato_goal(corrente: float, iniziale: float, target: float,
         # Senza due date e un traguardo piu' in la' del punto di partenza non
         # c'e' niente da confrontare: meglio nessuno stato che uno inventato.
         return {"status": None, "timeProgress": None, "gap": None}
-    avanzamento = (corrente - iniziale) / (target - iniziale)
+    avanzamento = _avanzamento_goal(corrente, iniziale, target)
     tempo = (oggi - start_date).days / (target_date - start_date).days
     tempo = min(max(tempo, 0.0), 1.0)
     scarto = avanzamento - tempo
@@ -2443,6 +2459,39 @@ def _valore_corrente_goal(session: Session, goal: Goal, linked: float, oggi: dat
     return num(num(goal.starting_amount) + linked)
 
 
+def _somme_obiettivi(items: list[dict[str, Any]]) -> dict[str, float]:
+    """Il totale degli obiettivi, contando una volta sola ogni somma di denaro.
+
+    Un obiettivo per contributi ha un gruzzolo suo: due di quelli sono due
+    somme diverse. Un obiettivo sul portafoglio e uno sul patrimonio no: il
+    portafoglio sta dentro il patrimonio, e piu' obiettivi sullo stesso tipo
+    guardano perfino lo stesso identico numero. Sommarli come se fossero vasi
+    separati faceva leggere "accantonato" su cifre che non erano state messe da
+    parte per niente, e la stessa casa contata due volte.
+
+    Della stessa somma si prende il traguardo piu' esigente: guardata da due
+    obiettivi diversi, la somma e' arrivata quando lo e' anche il piu' difficile.
+    """
+    patrimonio = any(item["kind"] == "net_worth" for item in items)
+    somme: dict[str, dict[str, float]] = {}
+    for item in items:
+        if item["kind"] == "contributions":
+            chiave = f"contributions:{item['id']}"
+        elif item["kind"] == "portfolio":
+            if patrimonio:
+                # Il portafoglio e' dentro il patrimonio: contarlo in aggiunta
+                # sarebbe contare due volte gli stessi soldi.
+                continue
+            chiave = "portfolio"
+        else:
+            chiave = "net_worth"
+        voce = somme.setdefault(chiave, {"current": item["currentAmount"],
+                                         "target": item["targetAmount"]})
+        voce["target"] = max(voce["target"], item["targetAmount"])
+    return {"targetTotal": round(sum(v["target"] for v in somme.values()), 2),
+            "currentTotal": round(sum(v["current"] for v in somme.values()), 2)}
+
+
 @router.get("/api/goals")
 def goals(session: Session = Depends(get_session)) -> dict[str, Any]:
     items = []
@@ -2471,7 +2520,7 @@ def goals(session: Session = Depends(get_session)) -> dict[str, Any]:
                       "completedAt": goal.completed_at.isoformat() if goal.completed_at else None,
                       "linkedAmount": linked, "linkedMovements": quanti, "currentAmount": current,
                       "remainingAmount": round(max(target - current, 0), 2),
-                      "progress": round(min(current / target, 1) * 100, 1) if target else 0,
+                      "progress": round(_avanzamento_goal(current, iniziale, target) * 100, 1),
                       "completed": completato, "history": history,
                       "milestones": [_tappa_json(tappa, current, iniziale, goal.start_date, today)
                                      for tappa in tappe.get(goal.id, [])],
@@ -2484,8 +2533,7 @@ def goals(session: Session = Depends(get_session)) -> dict[str, Any]:
     return {"items": items,
             "active": sum(not item["completed"] for item in items),
             "completed": sum(item["completed"] for item in items),
-            "targetTotal": sum(item["targetAmount"] for item in items),
-            "currentTotal": sum(item["currentAmount"] for item in items),
+            **_somme_obiettivi(items),
             "monthlyNeededTotal": richiesto,
             "plannedSavings": piano["savings"],
             # Senza entrate pianificate nel mese corrente il confronto non si

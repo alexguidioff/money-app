@@ -16,7 +16,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app import core_routes
-from app.core_routes import _ritmo_goal, _stato_goal, goals
+from app.core_routes import _avanzamento_goal, _ritmo_goal, _somme_obiettivi, _stato_goal, goals
 from app.database import Base
 from app.models import Goal, Transaction
 from tests.categorie_fixture import categoria
@@ -308,3 +308,71 @@ class StoricoPatrimonialeTests(unittest.TestCase):
         with mock.patch("app.core_routes.portfolio_timeline", wraps=core_routes.portfolio_timeline) as linea:
             goals(self.session)
         self.assertEqual(linea.call_count, 0, "nessun goal patrimoniale: niente da precalcolare")
+
+
+class AvanzamentoTests(unittest.TestCase):
+    """La percentuale di un obiettivo: la stessa misura del badge, non un'altra.
+
+    Con un importo di partenza diverso da zero le due formule si separano, ed e'
+    il caso in cui la card diceva due cose diverse nello stesso momento.
+    """
+
+    def test_senza_importo_iniziale_e_la_quota_del_traguardo(self) -> None:
+        self.assertEqual(_avanzamento_goal(2500.0, 0.0, 10000.0), 0.25)
+
+    def test_parte_dall_importo_iniziale_non_da_zero(self) -> None:
+        # Da 1.000 verso 10.000, con 5.500 in cassa: meta' strada, non il 55%.
+        self.assertEqual(_avanzamento_goal(5500.0, 1000.0, 10000.0), 0.5)
+
+    def test_sotto_il_punto_di_partenza_non_e_negativa(self) -> None:
+        # Un prelievo dal gruzzolo porta la percentuale a zero, non sotto.
+        self.assertEqual(_avanzamento_goal(900.0, 1000.0, 10000.0), 0.0)
+
+    def test_oltre_il_traguardo_non_supera_il_cento_per_cento(self) -> None:
+        self.assertEqual(_avanzamento_goal(12000.0, 1000.0, 10000.0), 1.0)
+
+    def test_traguardo_gia_alle_spalle(self) -> None:
+        # Nessuna strada da fare: raggiunto, o non c'e' niente da raggiungere.
+        self.assertEqual(_avanzamento_goal(5000.0, 8000.0, 5000.0), 1.0)
+        self.assertEqual(_avanzamento_goal(4000.0, 8000.0, 5000.0), 0.0)
+
+    def test_percentuale_e_badge_vengono_dalla_stessa_misura(self) -> None:
+        # Meta' tempo, meta' strada: in linea. E la percentuale dice 50, non 55.
+        oggi = date(2026, 7, 1)
+        stato = _stato_goal(5500.0, 1000.0, 10000.0, date(2026, 1, 1), date(2027, 1, 1), False, oggi)
+        self.assertEqual(stato["status"], "on_track")
+        self.assertEqual(round(_avanzamento_goal(5500.0, 1000.0, 10000.0) * 100, 1), 50.0)
+
+
+class SommeObiettiviTests(unittest.TestCase):
+    """Il totale degli obiettivi non conta due volte la stessa somma di denaro."""
+
+    @staticmethod
+    def _voce(identificativo: int, kind: str, current: float, target: float) -> dict:
+        return {"id": identificativo, "kind": kind, "currentAmount": current, "targetAmount": target}
+
+    def test_due_obiettivi_sul_patrimonio_contano_una_volta_sola(self) -> None:
+        # Il portafoglio sta dentro il patrimonio: sommarlo sarebbe contare due
+        # volte gli stessi soldi. Del patrimonio si prende il traguardo piu'
+        # esigente, perche' la somma e' arrivata quando lo e' anche quello.
+        somme = _somme_obiettivi([self._voce(1, "net_worth", 400000.0, 500000.0),
+                                  self._voce(2, "portfolio", 150000.0, 200000.0)])
+        self.assertEqual(somme, {"currentTotal": 400000.0, "targetTotal": 500000.0})
+
+    def test_due_obiettivi_sul_portafoglio_contano_una_volta_sola(self) -> None:
+        somme = _somme_obiettivi([self._voce(1, "portfolio", 150000.0, 200000.0),
+                                  self._voce(2, "portfolio", 150000.0, 300000.0)])
+        self.assertEqual(somme, {"currentTotal": 150000.0, "targetTotal": 300000.0})
+
+    def test_i_gruzzoli_dei_contributi_sono_somme_diverse_e_si_sommano(self) -> None:
+        somme = _somme_obiettivi([self._voce(1, "contributions", 1200.0, 3000.0),
+                                  self._voce(2, "contributions", 800.0, 2000.0)])
+        self.assertEqual(somme, {"currentTotal": 2000.0, "targetTotal": 5000.0})
+
+    def test_un_contributo_e_il_patrimonio_si_sommano(self) -> None:
+        somme = _somme_obiettivi([self._voce(1, "contributions", 1200.0, 3000.0),
+                                  self._voce(2, "net_worth", 400000.0, 500000.0)])
+        self.assertEqual(somme, {"currentTotal": 401200.0, "targetTotal": 503000.0})
+
+    def test_senza_obiettivi_il_totale_e_zero(self) -> None:
+        self.assertEqual(_somme_obiettivi([]), {"currentTotal": 0, "targetTotal": 0})
