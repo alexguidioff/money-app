@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Flame } from 'lucide-react';
+import { Flame, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { TabStrip } from '@/components/ui/tab-strip';
@@ -83,31 +83,79 @@ const ETICHETTE_FASE: Record<string, string> = {
   accumulo: 'firePhaseAccumulation', ponte: 'firePhaseBridge', pensione: 'firePhasePension',
 };
 
+/**
+ * L'ultimo piano calcolato, e quando.
+ *
+ * `/api/fire` non e' una lettura: il motore rifa' il piano, le quattro leve
+ * (cinque righe ciascuna) e la simulazione su 5000 percorsi - quasi un secondo
+ * di server. Uscire dalla sezione smonta questa pagina, quindi ogni rientro lo
+ * rifaceva da capo per mostrare gli stessi numeri: qui resta l'ultima risposta,
+ * e il rientro la mostra subito.
+ *
+ * Sta fuori dal componente proprio perche' il componente si smonta, e ha
+ * addosso la persona: la memoria del modulo sopravvive al cambio di account -
+ * uscire non ricarica la pagina - e senza quel nome i numeri di uno
+ * finirebbero sotto gli occhi dell'altro.
+ *
+ * Non e' una verita': e' quello che il server ha risposto. La riga "aggiornato
+ * alle" dice da quando, e il tasto rifa' il conto quando si vuole.
+ */
+let memoria: { utente: number | null; dati: FireData; quando: number } | null = null;
+
+/** Il piano in memoria, ma solo se e' di questa persona. */
+function daMemoria(utente: number | null) {
+  return memoria && memoria.utente === utente ? memoria : null;
+}
+
 /** Le due schede: il piano, e i dati che lo producono. */
 type Scheda = 'piano' | 'profilo';
 
-export function FirePage({ apiUrl }: { apiUrl: string }) {
-  const { t, formatEuro, formatCompactEuro, formatNumber } = useI18n();
-  const [dati, setDati] = useState<FireData | null>(null);
+export function FirePage({ apiUrl, utente }: { apiUrl: string; utente: number | null }) {
+  const { t, formatEuro, formatCompactEuro, formatNumber, formatDate } = useI18n();
+  const [dati, setDati] = useState<FireData | null>(() => daMemoria(utente)?.dati ?? null);
+  const [quando, setQuando] = useState<number | null>(() => daMemoria(utente)?.quando ?? null);
   const [errore, setErrore] = useState(false);
+  const [inCorso, setInCorso] = useState(false);
   const [scheda, setScheda] = useState<Scheda>('piano');
 
   const carica = useCallback(async () => {
+    setInCorso(true);
     try {
       const risposta = await fetch(`${apiUrl}/api/fire`);
       if (!risposta.ok) throw new Error('fire');
-      setDati(await risposta.json() as FireData);
+      const nuovi = await risposta.json() as FireData;
+      // La memoria si aggiorna solo con una risposta buona: un errore di rete
+      // non deve cancellare il piano che si sta guardando.
+      memoria = { utente, dati: nuovi, quando: Date.now() };
+      setDati(nuovi);
+      setQuando(memoria.quando);
       setErrore(false);
-    } catch { setErrore(true); setDati(null); }
-  }, [apiUrl]);
+    } catch { setErrore(true); } finally { setInCorso(false); }
+  }, [apiUrl, utente]);
 
-  // Il piano si rilegge quando si torna sulla sua scheda: le impostazioni sono
-  // qui accanto, e chi salva il profilo deve trovare i numeri nuovi e non
-  // quelli di prima. Prima lo faceva il cambio di sezione, che rimontava tutto.
-  useEffect(() => { if (scheda === 'piano') void carica(); }, [scheda, carica]);
+  // Si chiede al server solo quando in memoria non c'e' niente di buono: al
+  // primo ingresso della pagina, e dopo un ritorno dalle impostazioni, che
+  // azzera la memoria perche' li' si cambiano i dati che il piano usa.
+  useEffect(() => {
+    if (scheda !== 'piano') return;
+    if (daMemoria(utente)) return;
+    void carica();
+  }, [scheda, carica, utente]);
+
+  function cambiaScheda(nuova: Scheda) {
+    // Tornando dal profilo il piano in memoria non vale piu': mostrare il
+    // numero di prima accanto a un profilo appena salvato sarebbe la bugia
+    // peggiore. Si rifa', e la riga della data sotto dice quando.
+    if (nuova === 'piano' && scheda === 'profilo') memoria = null;
+    setScheda(nuova);
+  }
 
   function contenutoPiano() {
-    if (errore) return <Card className="border-[#efc4b8] bg-[#fff6f3] shadow-sm"><CardContent className="py-14 text-center"><p role="alert" className="text-sm text-[#a94f3a]">{t('fireProfileLoadError')}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void carica()}>{t('retry')}</Button></CardContent></Card>;
+    // Senza piano da mostrare l'errore prende la pagina; se invece un piano
+    // c'e' gia' (il ricalcolo non e' riuscito) resta a video, con una riga che
+    // dice che e' quello di prima: toglierlo sarebbe perdere l'unica cosa che
+    // l'utente stava guardando.
+    if (errore && !dati) return <Card className="border-[#efc4b8] bg-[#fff6f3] shadow-sm"><CardContent className="py-14 text-center"><p role="alert" className="text-sm text-[#a94f3a]">{t('fireProfileLoadError')}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void carica()}>{t('retry')}</Button></CardContent></Card>;
     if (!dati) return <p className="py-16 text-center text-sm text-[#5e6c68]">{t('loading')}</p>;
 
     // Senza profilo non si mostra un piano costruito su ipotesi che nessuno ha
@@ -147,6 +195,7 @@ export function FirePage({ apiUrl }: { apiUrl: string }) {
     const avvisi = piano.warnings.filter((c) => c in testiAvvisi).map((c) => [c, testiAvvisi[c]] as const);
 
     return <div className="space-y-5">
+      {errore && <p role="alert" className="rounded-xl border border-[#efc4b8] bg-[#fff6f3] px-4 py-2.5 text-xs text-[#a94f3a]">{t('fireRefreshFailed')}</p>}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="border-0 bg-[var(--money-deep)] text-white shadow-sm"><CardContent className="p-5">
           <p className="text-sm text-white/70">{t('fireCapitalNeeded')}</p>
@@ -220,8 +269,19 @@ export function FirePage({ apiUrl }: { apiUrl: string }) {
     {/* La striscia e' la stessa dei Movimenti e del Budget: un contorno, un
         fondo, un pulsante acceso. Il piano e i dati che lo producono sono due
         viste della stessa pagina, non due pagine. */}
-    <TabStrip id="fire-tabs" label={t('fireSection')} value={scheda} onChange={setScheda}
-      options={[['piano', t('fireTabPlan')], ['profilo', t('fireTabSettings')]] as const} />
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <TabStrip id="fire-tabs" label={t('fireSection')} value={scheda} onChange={cambiaScheda}
+        options={[['piano', t('fireTabPlan')], ['profilo', t('fireTabSettings')]] as const} />
+      {/* Da quando e' quel numero, e il tasto per rifarlo: la prima cosa che si
+          cerca quando una cifra non torna. Il tasto resta anche mentre gira,
+          spento, cosi' la riga non salta. */}
+      {scheda === 'piano' && <div className="flex items-center gap-2 text-xs text-[#5e6c68]">
+        {quando !== null && !inCorso && <span>{t('fireCalculatedAt', { time: formatDate(new Date(quando), { hour: '2-digit', minute: '2-digit' }) })}</span>}
+        <Button variant="outline" size="sm" disabled={inCorso} onClick={() => void carica()} className="h-8 gap-1.5 bg-white text-xs">
+          <RefreshCw className={`size-3.5 ${inCorso ? 'animate-spin' : ''}`} />{inCorso ? t('updating') : t('fireRecalculate')}
+        </Button>
+      </div>}
+    </div>
     {/* La scheda nascosta non si tiene montata: le impostazioni si rileggono
         ogni volta che ci si entra, e i flussi salvati prima ci sono. */}
     {scheda === 'piano' ? contenutoPiano() : <FireSettingsSection apiUrl={apiUrl} />}

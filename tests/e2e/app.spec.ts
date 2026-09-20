@@ -87,6 +87,40 @@ test('FIRE: profilo salvato, flusso aggiunto, la pagina mostra il piano', async 
   expect(errori).toEqual([]);
 });
 
+test('FIRE: il piano non si ricalcola a ogni rientro, e il tasto lo rifa', async ({ page }) => {
+  // Il piano costa quasi un secondo di server - il motore, le quattro leve e
+  // 5000 percorsi - e uscire dalla sezione per rientrarci non deve rifarlo. Il
+  // conteggio guarda solo `/api/fire` esatto: la leva dell'eta' di ritiro
+  // chiama `/api/fire/pension-shift`, che e' un'altra cosa.
+  const errori = raccogliErrori(page);
+  await avvia(page);
+  let richieste = 0;
+  page.on('request', (richiesta) => { if (richiesta.url().endsWith('/api/fire')) richieste += 1; });
+
+  await apri(page, 'Pensionamento e FIRE');
+  await expect(page.getByRole('button', { name: 'Ricalcola' })).toBeVisible();
+  expect(richieste).toBe(1);
+
+  await apri(page, 'Movimenti');
+  await apri(page, 'Pensionamento e FIRE');
+  await expect(page.getByRole('button', { name: 'Ricalcola' })).toBeVisible();
+  // Rientrata la sezione, la risposta arriva dalla memoria: nessuna richiesta.
+  expect(richieste).toBe(1);
+
+  await page.getByRole('button', { name: 'Ricalcola' }).click();
+  await expect.poll(() => richieste).toBe(2);
+
+  // Dalle impostazioni invece si torna con il conto rifatto: li' si cambiano
+  // proprio i dati che il piano usa, e il numero di prima sarebbe la bugia
+  // peggiore.
+  const schede = page.locator('#fire-tabs');
+  await schede.getByRole('button', { name: 'Profilo e flussi' }).click();
+  await schede.getByRole('button', { name: 'Piano' }).click();
+  await expect.poll(() => richieste).toBe(3);
+
+  expect(errori).toEqual([]);
+});
+
 test('Movimenti: una spesa si salva; un trasferimento al broker mostra il collegamento al ledger', async ({ page }) => {
   const errori = raccogliErrori(page);
   await avvia(page);

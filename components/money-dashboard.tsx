@@ -2806,6 +2806,7 @@ function MoneyDashboardInner() {
               onDownloadReport={downloadReport}
               onDownloadData={downloadData}
               apiUrl={apiUrl}
+              utente={auth?.user?.id ?? null}
               onReloadData={loadData}
               selectedYear={selectedYear}
               selectedMonth={selectedMonth}
@@ -3407,6 +3408,7 @@ function SectionView({
   onDownloadReport,
   onDownloadData,
   apiUrl,
+  utente,
   onReloadData,
   selectedYear,
   selectedMonth,
@@ -3504,6 +3506,10 @@ function SectionView({
   onDownloadReport: (kind: 'excel' | 'pdf') => void;
   onDownloadData: () => void;
   apiUrl: string;
+  /** Chi sta guardando: il piano FIRE calcolato resta in memoria fuori dal
+   *  componente, e i numeri di una persona non devono finire sotto gli occhi
+   *  dell'altra quando si cambia account senza ricaricare la pagina. */
+  utente: number | null;
   onReloadData: () => Promise<void>;
   selectedYear: number;
   selectedMonth: number;
@@ -3779,7 +3785,10 @@ function SectionView({
         </>}
       </div>}
 
-      {section === 'FIRE' && <FirePage apiUrl={apiUrl} />}
+      {/* La persona addosso alla pagina: il piano calcolato resta in memoria
+          fuori dal componente, e senza sapere di chi e' i numeri di uno
+          finirebbero sotto gli occhi dell'altro. */}
+      {section === 'FIRE' && <FirePage apiUrl={apiUrl} utente={utente} />}
       {section === 'Insieme' && <SharedTotalsView apiUrl={apiUrl} year={selectedYear} month={period.scope === 'month' ? selectedMonth : null} />}
       {section === 'Appunti' && <NotesView notes={notesData} onSave={onNoteSave} onDelete={onNoteDelete} />}
 
