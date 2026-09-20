@@ -130,7 +130,9 @@ export function IncomeStreamsForm({ apiUrl }: { apiUrl: string }) {
                   <p className="truncate text-sm font-medium">{s.name}</p>
                   <p className="mt-0.5 text-xs text-[#7b8784]">
                     {s.kind === 'annuity' ? t('fireStreamsKindAnnuity') : t('fireStreamsKindCapital')} ·
-                    {' '}{formatEuro(s.amount)} ·
+                    {/* L'unita' accanto al numero: senza, una rendita letta
+                        "a vita · 2.000,00 €" sembra duemila al mese. */}
+                    {' '}{s.kind === 'annuity' ? t('fireStreamsPerYear', { amount: formatEuro(s.amount) }) : formatEuro(s.amount)} ·
                     {' '}{t('fireProfileYears')}: {s.startAge}
                     {s.indexed ? ` · ${t('fireStreamsIndexed')}` : ''}
                     {s.country ? ` · ${s.country}` : ''}
@@ -187,11 +189,19 @@ function StreamEditor({ t, lang, initial, busy, onCancel, onSave }: {
             <option value="capital">{t('fireStreamsKindCapital')}</option>
           </select>
         </label>
-        <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
-          {t('fireStreamsAmount')} (€)
-          <Input type="number" min={0} step="0.01" value={values.amount}
-            onChange={(e) => setValues({ ...values, amount: Number(e.target.value) })} className="h-10 bg-white" />
-        </label>
+        {/* La nota sta fuori dal `<label>`: dentro finirebbe nel nome del campo
+            letto dallo schermo, e il campo non si chiama cosi'. Il numero che
+            l'ente previdenziale comunica e' quello mensile - e' il campo piu'
+            facile da sbagliare di tutta la pagina, e sbagliarlo per dodici non
+            si vede. */}
+        <div className="space-y-1.5">
+          <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
+            {t('fireStreamsAmount')} (€)
+            <Input type="number" min={0} step="0.01" value={values.amount}
+              onChange={(e) => setValues({ ...values, amount: Number(e.target.value) })} className="h-10 bg-white" />
+          </label>
+          <span className="block leading-4 text-[11px] text-[#87918e]">{t('fireStreamsAmountHint')}</span>
+        </div>
         <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
           {t('fireStreamsStartAge')} ({t('fireProfileYears')})
           <Input type="number" min={18} max={100} value={values.startAge}
