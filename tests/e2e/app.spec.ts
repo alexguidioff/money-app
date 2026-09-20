@@ -300,8 +300,13 @@ test('Obiettivi: una tappa si aggiunge dall\'elenco, resta dopo il ricarico e si
   const dopo = page.locator('[data-slot="card"]', { has: page.getByText('Vacanza e2e') });
   await expect(dopo.getByText('Biglietti e2e')).toBeVisible();
 
+  // La tappa si cancella dopo una conferma, e la conferma nomina la tappa:
+  // e' l'unica cosa che dice quale delle righe sta per sparire.
+  let confermaTappa = '';
+  page.once('dialog', (dialogo) => { confermaTappa = dialogo.message(); void dialogo.accept(); });
   await dopo.getByRole('button', { name: 'Elimina Biglietti e2e' }).click();
   await expect(dopo.getByText('Biglietti e2e')).toHaveCount(0);
+  expect(confermaTappa).toContain('Biglietti e2e');
   expect(errori).toEqual([]);
 
   // Una tappa piu' grande dell'obiettivo non e' una tappa: l'app dice perche'.

@@ -1688,7 +1688,9 @@ function MoneyDashboardInner() {
   const handleDeleteTransaction = useCallback(async (transaction: Transaction) => {
     if (!window.confirm(tRef.current(transaction.liabilitySplit ? 'confirmDeleteDebtPayment' : 'confirmDeleteMovement', { name: transaction.description }))) return;
     const response = await fetch(`${apiUrl}/api/transactions/${transaction.id}`, { method: 'DELETE' });
-    if (!response.ok) return;
+    // Una cancellazione che non riesce deve dirlo: la riga resta al suo posto,
+    // e senza un messaggio l'utente non sa se ha cancellato o no.
+    if (!response.ok) { setImportFeedback({ ok: false, message: tRef.current('deleteFailed') }); return; }
     await loadDataRef.current(undefined, ['ledger', 'overview', 'budget', 'goals']).catch(() => undefined);
     setMovimentiVersione((versione) => versione + 1);
   }, [apiUrl]);
@@ -1932,9 +1934,14 @@ function MoneyDashboardInner() {
     } finally { setAccountSaving(false); }
   }
 
-  async function handleValuationDelete(valuationId: number) {
+  async function handleValuationDelete(valuationId: number, observedOn: string) {
+    // Come per il conto e per l'appunto: una stima si cancella con una
+    // conferma, e se la cancellazione non riesce lo si dice invece di
+    // lasciare la riga al suo posto in silenzio.
+    if (!window.confirm(tRef.current('confirmDeleteValuation', { date: formatDate(`${observedOn}T12:00:00`, { day: 'numeric', month: 'short', year: 'numeric' }) }))) return;
     const response = await fetch(`${apiUrl}/api/accounts/${valuationForId}/valuations/${valuationId}`, { method: 'DELETE' });
-    if (response.ok) await loadData(undefined, ['ledger', 'overview', 'settings']);
+    if (!response.ok) { setAccountError(tRef.current('deleteFailed')); return; }
+    await loadData(undefined, ['ledger', 'overview', 'settings']);
   }
 
   async function handleAccountSave(event: SyntheticEvent<HTMLFormElement>) {
@@ -2223,7 +2230,10 @@ function MoneyDashboardInner() {
   }
 
   async function cancellaModello(modello: ImportTemplateRow) {
-    await fetch(`${apiUrl}/api/import/templates/${modello.id}`, { method: 'DELETE' });
+    const response = await fetch(`${apiUrl}/api/import/templates/${modello.id}`, { method: 'DELETE' });
+    // Il modello resta nella tendina se la cancellazione non riesce: senza
+    // dirlo, l'utente lo crede sparito e lo ricerca.
+    if (!response.ok) { setImportFeedback({ ok: false, message: t('deleteFailed') }); return; }
     await caricaModelli();
   }
 
@@ -2406,6 +2416,14 @@ function MoneyDashboardInner() {
   // broker valeva solo per i versamenti, e faceva sparire dalla tendina la
   // banca di arrivo di ogni vendita.
   const origineForm = effectivePreview.origine || formTransaction?.accountName || '';
+  // L'evento del movimento in modifica, quando non e' fra quelli offerti -
+  // tipicamente perche' e' chiuso, o perche' la richiesta degli eventi non e'
+  // arrivata. La sua voce va messa comunque nella tendina, come si fa per il
+  // conto: senza, la tendina mostrerebbe "Nessun evento" e salvando il
+  // movimento uscirebbe dall'evento senza che nessuno l'abbia chiesto.
+  const eventoCorrente = formTransaction?.event ?? null;
+  const eventoCorrenteOfferto = eventoCorrente !== null
+    && eventi.some((evento) => evento.id === eventoCorrente.id && !evento.closed);
   const prelievoDaBroker = accounts.some((account) => account.isBroker && account.name === origineForm);
   const origineDaDebito = accounts.find((account) => account.name === origineForm)?.group === 'liability';
   const movementCategories = settingsData.categoriesByType[movementType] ?? [];
@@ -2876,7 +2894,7 @@ function MoneyDashboardInner() {
                 categoria: sta qui accanto al goal perche' e' un'altra
                 etichetta del movimento. Gli eventi chiusi non si offrono: un
                 evento finito non e' piu' qualcosa a cui si sta lavorando. */}
-            <label htmlFor="movement-event" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('eventField')}<select id="movement-event" name="event_id" value={eventChoice} onChange={(event) => setEventChoice(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"><option value="">{t('eventNone')}</option>{eventi.filter((evento) => !evento.closed).map((evento) => <option key={evento.id} value={String(evento.id)}>{evento.name}</option>)}<option value={EVENTO_NUOVO}>{t('eventNew')}</option></select></label>
+            <label htmlFor="movement-event" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('eventField')}<select id="movement-event" name="event_id" value={eventChoice} onChange={(event) => setEventChoice(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"><option value="">{t('eventNone')}</option>{eventi.filter((evento) => !evento.closed).map((evento) => <option key={evento.id} value={String(evento.id)}>{evento.name}</option>)}{eventoCorrente && !eventoCorrenteOfferto && <option value={String(eventoCorrente.id)}>{eventoCorrente.name}</option>}<option value={EVENTO_NUOVO}>{t('eventNew')}</option></select></label>
             {eventChoice === EVENTO_NUOVO && <label htmlFor="movement-event-name" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('eventName')}<Input id="movement-event-name" name="nuovo_evento" required placeholder={t('eventNewPlaceholder')} className="h-10 bg-white" /></label>}
             <label htmlFor="movement-details" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDescription')}<Input id="movement-details" name="details" defaultValue={formTransaction?.details ?? ''} placeholder={t('optionalNote')} className="h-10 bg-white" /></label>
             {/* Solo un Investimento si collega al ledger, e conta il tipo scelto
@@ -3136,7 +3154,7 @@ function MoneyDashboardInner() {
                       <span className="w-24 shrink-0 text-xs tabular-nums text-[#71807c]">{stima.observedOn}</span>
                       <span className="flex-1 text-sm font-semibold tabular-nums">{formatEuro(stima.value)}</span>
                       {stima.notes && <span className="truncate text-xs text-[#87918e]">{stima.notes}</span>}
-                      <Button size="icon" variant="ghost" aria-label={`${t('delete')} ${stima.observedOn}`} onClick={() => void handleValuationDelete(stima.id)} className="text-[#bd5e46] hover:text-[#a04f3a]"><Trash2 className="size-4" /></Button>
+                      <Button size="icon" variant="ghost" aria-label={`${t('delete')} ${stima.observedOn}`} onClick={() => void handleValuationDelete(stima.id, stima.observedOn)} className="text-[#bd5e46] hover:text-[#a04f3a]"><Trash2 className="size-4" /></Button>
                     </li>)}
                   </ul>}
               <form className="space-y-3" onSubmit={handleValuationSave}>
@@ -4001,7 +4019,10 @@ function AnnualBudgetEditor({ data, padreDi, onApply }: { data: AnnualBudgetData
     const raw = input.value;
     const value = Number(raw);
     const formatted = previousAmount.toFixed(2);
-    if (!Number.isFinite(value) || value < 0) {
+    // Una cella svuotata non e' uno zero: `Number('')` fa 0, e la riga di
+    // budget di quel mese finirebbe a zero senza che nessuno l'abbia chiesto.
+    // Come per un numero non valido, si rimette quello che c'era.
+    if (raw.trim() === '' || !Number.isFinite(value) || value < 0) {
       input.value = formatted;
       return;
     }
@@ -4086,6 +4107,9 @@ function GoalMilestones({ goal, onAdd, onRemove }: {
   }
 
   async function togli(tappa: GoalMilestoneData) {
+    // La tappa si cancella con una conferma come tutto il resto di questa
+    // pagina: il cestino e' piccolo e la tappa accanto a lui e' solo una riga.
+    if (!window.confirm(t('confirmDeleteMilestone', { name: tappa.name }))) return;
     setErrore('');
     try { await onRemove(goal.id, tappa.id); }
     catch { setErrore(t('cannotDeleteMilestone')); }

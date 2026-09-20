@@ -144,6 +144,10 @@ function ColonneDelFile({ headers, mapping, onChange, disabled, modelli }: {
       </label>
       {sceltoOra && <Button type="button" variant="outline" size="sm" disabled={disabled || inCorso}
         onClick={async () => {
+          // Un modello salvato e' un gesto che si e' fatto una volta e non si
+          // rifa' in un secondo: si cancella con una conferma, come le altre
+          // cose che spariscono.
+          if (!window.confirm(t('confirmDeleteTemplate', { name: sceltoOra.name }))) return;
           setInCorso(true);
           try { await modelli.onCancella(sceltoOra); setScelto(''); } finally { setInCorso(false); }
         }}>{t('delete')}</Button>}

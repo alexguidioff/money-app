@@ -979,6 +979,10 @@ const it = {
   status: 'Stato',
   statusPlaceholder: 'es. Da fare, Fatto',
   confirmDeleteNote: 'Eliminare l\'appunto "{{name}}"?',
+  confirmDeleteMilestone: 'Eliminare la tappa "{{name}}"?',
+  confirmDeleteValuation: 'Eliminare la stima del {{date}}?',
+  confirmDeleteTemplate: 'Eliminare il modello "{{name}}"?',
+  deleteFailed: 'Non riesco a eliminare. Riprova.',
 
   // Archivio 2023
 
@@ -2371,6 +2375,10 @@ const en: TranslationTable = {
   status: 'Status',
   statusPlaceholder: 'e.g. To do, Done',
   confirmDeleteNote: 'Delete the note "{{name}}"?',
+  confirmDeleteMilestone: 'Delete the milestone "{{name}}"?',
+  confirmDeleteValuation: 'Delete the estimate from {{date}}?',
+  confirmDeleteTemplate: 'Delete the template "{{name}}"?',
+  deleteFailed: 'Cannot delete. Try again.',
 
 
   savingEllipsis: 'Saving…',
@@ -3747,6 +3755,10 @@ const de: TranslationTable = {
   status: 'Status',
   statusPlaceholder: 'z. B. Zu erledigen, Erledigt',
   confirmDeleteNote: 'Notiz „{{name}}“ löschen?',
+  confirmDeleteMilestone: 'Meilenstein „{{name}}“ löschen?',
+  confirmDeleteValuation: 'Schätzung vom {{date}} löschen?',
+  confirmDeleteTemplate: 'Vorlage „{{name}}“ löschen?',
+  deleteFailed: 'Löschen nicht möglich. Versuch es erneut.',
 
 
   savingEllipsis: 'Wird gespeichert…',
@@ -5123,6 +5135,10 @@ const es: TranslationTable = {
   status: 'Estado',
   statusPlaceholder: 'p. ej. Pendiente, Hecho',
   confirmDeleteNote: '¿Eliminar la nota "{{name}}"?',
+  confirmDeleteMilestone: '¿Eliminar la etapa "{{name}}"?',
+  confirmDeleteValuation: '¿Eliminar la estimación del {{date}}?',
+  confirmDeleteTemplate: '¿Eliminar la plantilla "{{name}}"?',
+  deleteFailed: 'No puedo eliminarlo. Inténtalo de nuevo.',
 
 
   savingEllipsis: 'Guardando…',
@@ -6513,6 +6529,10 @@ const fr: TranslationTable = {
   status: 'Statut',
   statusPlaceholder: 'ex. À faire, Fait',
   confirmDeleteNote: 'Supprimer la note « {{name}} » ?',
+  confirmDeleteMilestone: 'Supprimer l\'étape « {{name}} » ?',
+  confirmDeleteValuation: 'Supprimer l\'estimation du {{date}} ?',
+  confirmDeleteTemplate: 'Supprimer le modèle « {{name}} » ?',
+  deleteFailed: 'Suppression impossible. Réessaie.',
 
   // Archivio 2023
 
