@@ -6094,7 +6094,7 @@ function NotesView({ notes, onSave, onDelete }: { notes: NoteData[]; onSave: (no
 export type BackupItem = { filename: string; size_bytes: number; created_at: string };
 
 function BackupsCard({ apiUrl, onRestored }: { apiUrl: string; onRestored: () => Promise<void> }) {
-  const { t, locale } = useI18n();
+  const { t, locale, formatNumber } = useI18n();
   const [items, setItems] = useState<BackupItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState<{ filename: string; azione: 'restore' | 'delete' } | null>(null);
@@ -6153,7 +6153,10 @@ function BackupsCard({ apiUrl, onRestored }: { apiUrl: string; onRestored: () =>
             {items.map((item) => (
               <li key={item.filename} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                 <span className="text-xs text-[#52615d]">
-                  {when(item.created_at)} · {(item.size_bytes / 1024).toFixed(0)} KB
+                  {/* La dimensione col separatore delle migliaia della lingua
+                      scelta, e senza decimali inutili: un backup da 1,4 MB si
+                      legge "1.400 kB", che e' quello che serve sapere qui. */}
+                  {when(item.created_at)} · {formatNumber(item.size_bytes / 1024, { style: 'unit', unit: 'kilobyte', unitDisplay: 'short', maximumFractionDigits: 0 })}
                 </span>
                 {confirming?.filename === item.filename ? (
                   <>
