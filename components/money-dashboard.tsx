@@ -6547,7 +6547,10 @@ function BalanceSheetChart({ apiUrl, primoAnno }: { apiUrl: string; primoAnno: n
   const [mesi, setMesi] = useState<number>(12);
   const [percorso, setPercorso] = useState<{ level: BalanceSheetLevel; side?: string; component?: string }>({ level: 'networth' });
   const [dati, setDati] = useState<BalanceSheetSeries | null>(null);
-  const [caricamento, setCaricamento] = useState(false);
+  // Vero fin dalla prima pittura: con `false` il primo fotogramma diceva
+  // "Nessun dato in questo periodo" a un grafico che stava solo arrivando, e
+  // lo stesso succedeva a ogni cambio di scheda, che rimonta il componente.
+  const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState(false);
 
   // Oltre i tre anni si passa al trimestre: sessanta punti su una card larga
