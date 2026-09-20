@@ -5420,7 +5420,10 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
       {dashboard.returns.since && <p className="text-xs text-[#7b8784]">{t('returnsMethod', { from: formatDate(`${dashboard.returns.since}T12:00:00`, { month: 'long', year: 'numeric' }), to: formatDate(`${dashboard.returns.asOf}T12:00:00`, { month: 'long', year: 'numeric' }) })}</p>}
       <Card className="border-black/6 bg-white shadow-sm"><CardHeader className="flex-row items-start justify-between gap-4"><div><CardTitle className="text-[17px]">{t('valueAndInvestedCapital')}</CardTitle><p className="mt-1 text-xs text-[#7b8784]">{t('valueAndInvestedCapitalSubtitle')}</p></div><Button type="button" variant="outline" disabled={busy} onClick={async () => { setBusy(true); setError(''); try { const outcome = await onRefresh(); if (outcome.errors.length) setError(t('quotesRefreshedWithErrors', { ok: outcome.updated, ko: outcome.errors.length })); else if (outcome.updated === 0) setError(t('noTickersConfigured')); } catch { setError(t('cannotReachQuoteSource')); } finally { setBusy(false); } }}><RefreshCw className={`size-4 ${busy ? 'animate-spin' : ''}`} />{t('refreshQuotes')}</Button></CardHeader><CardContent>
         <div className="mb-3 flex w-fit gap-1 rounded-lg border border-black/6 bg-[#f4f5f1] p-1 text-xs">
-          {([['amount', t('inEuro')], ['return', t('inPercent')]] as const).map(([value, label]) => (
+          {/* Con l'indice configurato la seconda lettura non e' una percentuale:
+              sono due curve cumulate che partono da 100. Il pulsante lo dice,
+              altrimenti promette "in %" e mostra dei punti. */}
+          {([['amount', t('inEuro')], ['return', indice ? t('historyCompareMode') : t('inPercent')]] as const).map(([value, label]) => (
             <button key={value} type="button" onClick={() => setHistoryMode(value)}
               className={`rounded-md px-2.5 py-1 font-medium transition ${historyMode === value ? 'bg-white text-[#173b33] shadow-sm' : 'text-[#71807c] hover:text-[#173b33]'}`}>
               {label}
@@ -5444,6 +5447,10 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
         {/* Configurato ma senza niente da confrontare non e' la stessa cosa di
             non configurato, e tacerlo lascerebbe credere che il campo non
             serva a niente. */}
+        {/* Il confronto si legge in punti, non in percentuale: l'asse non porta
+            il segno e le schede sopra si', quindi senza questa riga le due
+            coppie di cifre sembrano la stessa unita' di misura. */}
+        {historyMode === 'return' && indice && <p className="mt-3 text-xs text-[#7b8784]">{t('benchmarkCurveUnit')}</p>}
         {historyMode === 'return' && dashboard.benchmark.symbol && !indice && <p className="mt-3 text-xs text-[#7b8784]">{t('benchmarkNoComparison', { symbol: dashboard.benchmark.symbol })}</p>}
         {error && <p className="mt-3 rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a05f4e]">{error}</p>}
       </CardContent>
