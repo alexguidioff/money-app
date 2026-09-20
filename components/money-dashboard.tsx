@@ -3730,7 +3730,22 @@ function SectionView({
             <Button type="button" variant="outline" size="sm" className="ml-auto h-9 rounded-lg bg-white" disabled={bulkBusy || totaleMovimenti === 0} onClick={() => void selectAll()}>{bulkBusy ? t('updating') : t('selectFiltered')}</Button>
           </div>
           {bulkError && <p role="alert" className="px-6 text-[#bd5e46]">{bulkError}</p>}
-          <CardContent className="px-3 sm:px-6">{movimenti.length ? <><div className={`divide-y divide-black/5 ${caricandoMovimenti ? 'opacity-60' : ''}`}>{movimenti.map((transaction) => <div key={transaction.id} className="flex items-center gap-2"><input type="checkbox" aria-label={t('selectMovement', { description: transaction.description })} checked={selection.has(String(transaction.id))} onChange={e => setSelection(old => { const next = new Set(old); e.target.checked ? next.add(String(transaction.id)) : next.delete(String(transaction.id)); return next; })} /><div className="min-w-0 flex-1"><TransactionRow transaction={transaction} onRefund={openRefundedTransaction} onEdit={onEditTransaction} onDuplicate={onDuplicateTransaction} onDelete={onDeleteTransaction} onSplit={onSplitTransaction} /></div></div>)}</div>{movimenti.length < totaleMovimenti && <div className="border-t border-black/5 py-4 text-center"><Button type="button" variant="outline" disabled={caricandoMovimenti} onClick={() => setPagina((corrente) => corrente + 1)}>{caricandoMovimenti ? t('updating') : t('showMore100')}</Button></div>}</> : <p className="py-12 text-center text-sm text-[#71807c]">{caricandoMovimenti ? t('updating') : t('noMovementsMatchFilters')}</p>}</CardContent>
+          <CardContent className="px-3 sm:px-6">{movimenti.length ? <><div className={`divide-y divide-black/5 ${caricandoMovimenti ? 'opacity-60' : ''}`}>{movimenti.map((transaction) => <div key={transaction.id} className="flex items-center gap-2"><input type="checkbox" aria-label={t('selectMovement', { description: transaction.description })} checked={selection.has(String(transaction.id))} onChange={e => setSelection(old => { const next = new Set(old); e.target.checked ? next.add(String(transaction.id)) : next.delete(String(transaction.id)); return next; })} /><div className="min-w-0 flex-1"><TransactionRow transaction={transaction} onRefund={openRefundedTransaction} onEdit={onEditTransaction} onDuplicate={onDuplicateTransaction} onDelete={onDeleteTransaction} onSplit={onSplitTransaction} /></div></div>)}</div>{movimenti.length < totaleMovimenti && <div className="border-t border-black/5 py-4 text-center"><Button type="button" variant="outline" disabled={caricandoMovimenti} onClick={() => setPagina((corrente) => corrente + 1)}>{caricandoMovimenti ? t('updating') : t('showMore100')}</Button></div>}</> : (() => {
+            // Un elenco vuoto non ha sempre un filtro da incolpare: la prima
+            // volta il vuoto e' il punto di partenza, e li' l'unica cosa utile
+            // che si puo' fare e' aggiungere il primo movimento — che il
+            // pulsante in cima alla pagina non rende ovvio.
+            const filtrato = Boolean(ricerca.trim()) || incompleteOnly
+              || [transactionTypeFilter, accountFilter, goalFilter, eventFilter, yearFilter, monthFilter].some((valore) => valore !== 'all');
+            if (caricandoMovimenti) return <p className="py-12 text-center text-sm text-[#71807c]">{t('updating')}</p>;
+            if (filtrato) return <p className="py-12 text-center text-sm text-[#71807c]">{t('noMovementsMatchFilters')}</p>;
+            return (
+              <div className="flex flex-col items-center gap-4 py-12 text-center">
+                <p className="text-sm text-[#71807c]">{t('noMovementsYet')}</p>
+                <Button onClick={onNewTransaction} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('newTransaction')}</Button>
+              </div>
+            );
+          })()}</CardContent>
         </Card>
         <EventsCard events={eventiCard} apiUrl={apiUrl} />
         <ImportHistoryCard apiUrl={apiUrl} versione={movimentiVersione} />
