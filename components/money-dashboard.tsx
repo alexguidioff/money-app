@@ -1749,8 +1749,9 @@ function MoneyDashboardInner() {
     const source = new Date(selectedYear, selectedMonth - 1, 1);
     if (mode === 'month') source.setMonth(source.getMonth() - 1);
     else source.setFullYear(source.getFullYear() - 1);
-    const anni = (settingsData?.budgetYearsByType?.[budgetType] ?? []).map(Number).filter(Number.isFinite);
-    if (anni.length && !anni.includes(source.getFullYear())) return;
+    // Il caso "il periodo di partenza non ha un budget" lo dice il server con
+    // `budgetNothingToCopy`: qui si usciva in silenzio, e il pulsante sembrava
+    // rotto. Un anno che non ha righe e' esattamente quel caso.
     const response = await fetch(`${apiUrl}/api/budgets/copy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

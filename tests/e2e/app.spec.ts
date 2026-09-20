@@ -276,6 +276,19 @@ test('Budget: la card del risparmio del mese guarda solo il mese', async ({ page
   expect(errori).toEqual([]);
 });
 
+test('Budget: i due pulsanti di copia dicono che copiano, non dove si va', async ({ page }) => {
+  // Si chiamavano "Mese precedente" e "Anno precedente", come i comandi che
+  // spostano il periodo guardato: chi li premeva si aspettava di cambiare
+  // mese, e invece il piano di quel mese veniva copiato sopra quello corrente.
+  const errori = raccogliErrori(page);
+  await avvia(page);
+  await apri(page, 'Budget');
+  await page.getByRole('button', { name: 'Piano', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Copia dal mese precedente' })).toBeVisible();
+  await expect(page.getByRole('button', { name: "Copia dall'anno precedente" })).toBeVisible();
+  expect(errori).toEqual([]);
+});
+
 test('Obiettivi: una tappa si aggiunge dall\'elenco, resta dopo il ricarico e si toglie', async ({ page }) => {
   // Il corpo del modulo e' l'unica cosa che nessun test di contratto vede: il
   // contratto costruisce il FormData da solo, quindi un campo `name` scritto
