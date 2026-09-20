@@ -140,6 +140,11 @@ export function AccountSettings({ apiUrl, account, onChanged }: {
           )}
           <Input type="password" value={next} onChange={(event) => setNext(event.target.value)}
                  placeholder={t('newPassword')} className="h-10 bg-white" autoComplete="new-password" />
+          {/* La regola sta scritta sotto il campo: il pulsante e' spento finche'
+              la password non arriva a sei caratteri, e senza questa riga non si
+              sa perche'. E' la stessa frase dell'errore, cosi' le due non
+              possono dire due numeri diversi. */}
+          <span className="block text-xs text-[#7b8784]">{t('passwordTooShort')}</span>
           <Button type="submit" disabled={busy || next.length < 6}
                   className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">
             {account.hasPassword ? t('changePassword') : t('setPassword')}
