@@ -97,6 +97,18 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // La lingua della pagina, non solo quella dei suoi testi. `app/layout.tsx`
+  // scrive `lang="it"` una volta sola, e da li' non si muove: scegliendo il
+  // tedesco, un lettore di schermo continuava a leggere il tedesco con la
+  // pronuncia italiana e il correttore del browser correggeva parole giuste.
+  // Il server non puo' saperla - la scelta sta in localStorage, che il server
+  // non legge - quindi la allinea il browser appena sa quale hai scelto. Il
+  // default scritto nel layout resta "it" ed e' quello che vede chi arriva
+  // senza JavaScript.
+  useEffect(() => {
+    document.documentElement.lang = LOCALE_MAP[lang];
+  }, [lang]);
+
   const t = useCallback((key: TranslationKey, params?: TranslateParams) => {
     const table = translations[lang] ?? translations.it;
     const template = (table[key] ?? translations.it[key] ?? key) as Resolved;

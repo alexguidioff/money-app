@@ -37,6 +37,20 @@ test('ogni pagina del menu si apre senza errori', async ({ page }) => {
   expect(errori).toEqual([]);
 });
 
+test('la lingua della pagina segue quella scelta, non resta l\'italiano del layout', async ({ page }) => {
+  // `app/layout.tsx` dichiara la pagina in italiano una volta sola, e da li' non
+  // si muoveva: scegliendo il tedesco, il lettore di schermo leggeva il tedesco
+  // con la pronuncia italiana. La lingua la allinea il browser, che e' l'unico a
+  // sapere quale hai scelto (la scelta sta in localStorage).
+  await avvia(page);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'it-IT');
+  await page.getByRole('button', { name: 'Profilo' }).click();
+  // Il testo del pulsante e' minuscolo: l'uppercase e' solo una classe CSS.
+  await page.getByRole('button', { name: 'de', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'de-DE');
+  expect(await page.getByRole('button', { name: 'Profil' }).count()).toBe(1);
+});
+
 test('FIRE: profilo salvato, flusso aggiunto, la pagina mostra il piano', async ({ page }) => {
   const errori = raccogliErrori(page);
   await avvia(page);
