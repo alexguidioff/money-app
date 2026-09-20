@@ -3057,7 +3057,8 @@ function MoneyDashboardInner() {
                       <li key={item.linkId} className="flex items-start justify-between gap-2 rounded-md border border-black/8 bg-white p-2">
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-xs font-medium">{item.name} <span className="ml-1 rounded-full bg-[#edf0ed] px-1.5 py-0.5 text-[10px] font-normal text-[#5d716b]">{item.transactionType}</span></p>
-                          <p className="mt-0.5 text-[10px] text-[#87918e]">{item.occurredOn} · <b className="font-medium tabular-nums text-[#52615d]">{formatEuro(item.transactionType === 'Sell' ? -Math.abs(item.amount) : Math.abs(item.amount))}</b>{item.units != null ? ` · ${item.units} @ ${item.price}` : ''}</p>
+                          {/* La data come la scrive il resto dell'app: qui usciva in ISO. */}
+                          <p className="mt-0.5 text-[10px] text-[#87918e]">{formatDate(`${item.occurredOn}T12:00:00`)} · <b className="font-medium tabular-nums text-[#52615d]">{formatEuro(item.transactionType === 'Sell' ? -Math.abs(item.amount) : Math.abs(item.amount))}</b>{item.units != null ? ` · ${item.units} @ ${item.price}` : ''}</p>
                         </div>
                         <Button type="button" variant="ghost" size="icon" title={t('unlinkOperation')} aria-label={`${t('unlinkOperation')} ${item.name}`} disabled={linkEditingBusy} onClick={() => void unlinkLedgerRow(item.linkId)} className="size-7 shrink-0 text-[#bd5e46]"><Unlink className="size-3.5" /></Button>
                       </li>
@@ -3096,7 +3097,7 @@ function MoneyDashboardInner() {
                           <li key={item.id}>
                             <Button type="button" variant="ghost" disabled={linkEditingBusy} onClick={() => void linkExistingLedger(item.id)} className="h-auto w-full justify-between whitespace-normal rounded-md border border-black/5 bg-white px-2 py-1.5 text-left text-xs hover:bg-[#f4f5f1]">
                               <span className="min-w-0 flex-1 truncate">{item.name} <span className="ml-1 text-[10px] text-[#87918e]">{item.transactionType}</span></span>
-                              <span className="ml-2 shrink-0 text-[10px] text-[#87918e]">{item.occurredOn} · {item.amount} {item.currency}</span>
+                              <span className="ml-2 shrink-0 text-[10px] text-[#87918e]">{formatDate(`${item.occurredOn}T12:00:00`)} · {item.amount} {item.currency}</span>
                             </Button>
                           </li>
                         ))}
@@ -3145,12 +3146,18 @@ function MoneyDashboardInner() {
               {stime.length === 0
                 ? <p className="rounded-lg bg-[#fafaf8] px-3 py-4 text-center text-xs text-[#87918e]">{t('valuationsEmpty')}</p>
                 : <ul className="divide-y divide-black/5 rounded-lg border border-black/6">
-                    {stime.map((stima) => <li key={stima.id} className="flex items-center gap-3 px-3 py-2.5">
-                      <span className="w-24 shrink-0 text-xs tabular-nums text-[#71807c]">{stima.observedOn}</span>
-                      <span className="flex-1 text-sm font-semibold tabular-nums">{formatEuro(stima.value)}</span>
-                      {stima.notes && <span className="truncate text-xs text-[#87918e]">{stima.notes}</span>}
-                      <Button size="icon" variant="ghost" aria-label={`${t('delete')} ${stima.observedOn}`} onClick={() => void handleValuationDelete(stima.id, stima.observedOn)} className="text-[#bd5e46] hover:text-[#a04f3a]"><Trash2 className="size-4" /></Button>
-                    </li>)}
+                    {stime.map((stima) => {
+                      // La stessa forma della conferma di cancellazione
+                      // (`handleValuationDelete`): due scritture dello stesso
+                      // giorno nella stessa finestra erano due date diverse.
+                      const quando = formatDate(`${stima.observedOn}T12:00:00`, { day: 'numeric', month: 'short', year: 'numeric' });
+                      return <li key={stima.id} className="flex items-center gap-3 px-3 py-2.5">
+                        <span className="w-24 shrink-0 text-xs tabular-nums text-[#71807c]">{quando}</span>
+                        <span className="flex-1 text-sm font-semibold tabular-nums">{formatEuro(stima.value)}</span>
+                        {stima.notes && <span className="truncate text-xs text-[#87918e]">{stima.notes}</span>}
+                        <Button size="icon" variant="ghost" aria-label={`${t('delete')} ${quando}`} onClick={() => void handleValuationDelete(stima.id, stima.observedOn)} className="text-[#bd5e46] hover:text-[#a04f3a]"><Trash2 className="size-4" /></Button>
+                      </li>;
+                    })}
                   </ul>}
               <form className="space-y-3" onSubmit={handleValuationSave}>
                 <div className="grid grid-cols-2 gap-3">
