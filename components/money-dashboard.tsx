@@ -4605,7 +4605,7 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
   </Card>;
 }
 
-function CreditLineCard({ item, onEdit, onDelete }: { item: CreditLineItem; onEdit: () => void; onDelete: () => void }) {
+function CreditLineCard({ item, onEdit, onEditMovement, onDelete }: { item: CreditLineItem; onEdit: () => void; onEditMovement: (id: number) => void; onDelete: () => void }) {
   const { t, locale, formatEuro, formatCompactEuro, formatDate, formatPeriodLabel, formatPercentNumber } = useI18n();
   const [aperto, setAperto] = useState(false);
   // Quattro voci, piu' limite e utilizzo se un limite esiste. Di uno scoperto
@@ -4681,7 +4681,10 @@ function CreditLineCard({ item, onEdit, onDelete }: { item: CreditLineItem; onEd
                 const effetto = movimento.effect;
                 return <tr key={movimento.id} className={`border-t border-black/5 ${dettaglio && !dettaglio.classified ? 'bg-[#fce9e3]' : ''}`}>
                   <td className="whitespace-nowrap px-3 py-2">{formatDate(`${movimento.occurredOn}T12:00:00`)}</td>
-                  <td className="px-3 py-2">{movimento.description}{dettaglio && !dettaglio.classified && <span className="ml-2 text-[11px] font-medium text-[#a05f4e]">{t('debtUnclassified')}</span>}</td>
+                  {/* La stessa modifica che ha il registro di un prestito: qui
+                      il movimento "Da classificare" si vedeva e non si poteva
+                      toccare, quindi la riga arancione restava arancione. */}
+                  <td className="px-3 py-2">{movimento.description}{dettaglio && !dettaglio.classified && <span className="ml-2 text-[11px] font-medium text-[#a05f4e]">{t('debtUnclassified')}</span>}<Button type="button" size="sm" variant="ghost" className="mt-1 h-7 px-2" onClick={() => onEditMovement(movimento.id)}><Pencil className="size-3.5" />{t('edit')}</Button></td>
                   <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${effetto >= 0 ? 'text-[#bd5e46]' : 'text-[#2d7b65]'}`}>{effetto >= 0 ? '+' : '−'}{formatEuro(Math.abs(effetto))}</td>
                 </tr>;
               })}</tbody>
@@ -4796,11 +4799,14 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
     <div className="flex flex-wrap items-center justify-between gap-3"><p role="status" className="text-sm text-[#71807c]">{t('debtAsOf', { date: formatDate(`${data.asOf}T12:00:00`) })}</p><Button onClick={() => onNewAccount()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('newLiability')}</Button></div>
     {error && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-3 text-sm text-[#bd5e46]">{error}</p>}
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{metriche.map(([label, value], index) => <Card key={label} className={index === 0 ? 'border-0 bg-[var(--money-deep)] text-white' : 'border-black/6 bg-white'}><CardContent className="p-5"><p className={`text-xs ${index === 0 ? 'text-white/60' : 'text-[#71807c]'}`}>{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p></CardContent></Card>)}</div>
-    {data.summary.unclassifiedCount > 0 && <div role="status" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-3 text-sm text-[#a05f4e]">{t('debtUnclassifiedSummary', { count: data.summary.unclassifiedCount, amount: formatEuro(data.summary.unclassifiedAmount) })}</div>}
+    {/* L'avviso di pagina dice anche cosa farne: le schede sotto ripetono il
+        numero del singolo debito, e senza questa riga l'arancione si vedeva
+        senza sapere dove si spegne. */}
+    {data.summary.unclassifiedCount > 0 && <div role="status" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-3 text-sm text-[#a05f4e]">{t('debtUnclassifiedWhere', { count: data.summary.unclassifiedCount, amount: formatEuro(data.summary.unclassifiedAmount) })}</div>}
     {!data.items.length && <Card><CardContent className="p-10 text-center"><CreditCard className="mx-auto mb-3 size-8 text-[#87918e]" /><p className="text-sm text-[#71807c]">{t('debtNoAccounts')}</p><Button className="mt-4" onClick={() => onNewAccount()}>{t('newLiability')}</Button></CardContent></Card>}
     {linee.length > 0 && <>
       <p className="text-xs font-semibold uppercase tracking-wide text-[#87918e]">{t('debtCreditLines')}</p>
-      <div className="grid gap-4 xl:grid-cols-2">{linee.map((linea) => <CreditLineCard key={linea.accountId} item={linea} onEdit={() => edit(linea)} onDelete={() => requestDelete(linea.accountId, linea.name, linea.name)} />)}</div>
+      <div className="grid gap-4 xl:grid-cols-2">{linee.map((linea) => <CreditLineCard key={linea.accountId} item={linea} onEdit={() => edit(linea)} onEditMovement={(id) => void editMovement(id)} onDelete={() => requestDelete(linea.accountId, linea.name, linea.name)} />)}</div>
     </>}
     {prestiti.length > 0 && linee.length > 0 && <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[#87918e]">{t('debtTermLoans')}</p>}
     {prestiti.map((item) => <Card key={item.accountId} className="border-black/6 bg-white shadow-sm">

@@ -141,6 +141,14 @@ test('Debiti: una linea di credito si configura e si salva', async ({ page }) =>
   // "null" e il salvataggio veniva rifiutato.
   const errori = raccogliErrori(page);
   await avvia(page);
+  // Un movimento sul conto, così la linea ha qualcosa da elencare. Numero
+  // tondo e inventato, e si cancella a fine prova: lo stack di test resta
+  // com'era.
+  const creato = await page.request.post('/api/transactions', { data: {
+    occurred_on: new Date().toISOString().slice(0, 10), transaction_type: 'Expenses',
+    amount: 120, account_name: 'Fido', details: 'Spesa sul fido e2e' } });
+  expect(creato.ok()).toBe(true);
+  const movimento = await creato.json() as { id: number };
   await apri(page, 'Debiti');
   await page.getByRole('button', { name: 'Configura debito' }).click();
   const dialogo = page.getByRole('dialog');
@@ -156,6 +164,16 @@ test('Debiti: una linea di credito si configura e si salva', async ({ page }) =>
   // porta il nome del pulsante: dice quante passivita' hanno un piano.
   await expect(page.getByRole('button', { name: 'Configura debito' })).toHaveCount(1);
   await expect(page.getByText('Debiti con un piano')).toBeVisible();
+  // Il registro di un prestito fa aprire il movimento; la linea lo elencava e
+  // basta, quindi "Da classificare" non si poteva togliere da qui.
+  await page.getByRole('button', { name: 'Mostra dettaglio' }).click();
+  await page.getByRole('button', { name: 'Modifica', exact: true }).click();
+  const modulo = page.getByRole('dialog');
+  await expect(modulo.getByText('Modifica movimento')).toBeVisible();
+  await expect(modulo.getByLabel('Descrizione', { exact: true })).toHaveValue('Spesa sul fido e2e');
+  await page.keyboard.press('Escape');
+  await expect(modulo).toBeHidden();
+  expect(await (await page.request.delete(`/api/transactions/${movimento.id}`)).ok()).toBe(true);
   expect(errori).toEqual([]);
 });
 
