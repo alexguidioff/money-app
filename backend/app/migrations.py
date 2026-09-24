@@ -36,6 +36,10 @@ def tracked_changes(engine: Engine) -> None:
             # parti: la colonna vuota vuol dire esattamente questo, quindi nessun
             # saldo gia' calcolato si muove.
             conn.execute(text("ALTER TABLE transactions ADD COLUMN destination_amount NUMERIC(16, 2)"))
+        if "currency" not in tx_cols:
+            # I movimenti che c'erano erano tutti in euro: la loro valuta e'
+            # l'euro, e i totali di quei mesi non si muovono di un centesimo.
+            conn.execute(text("ALTER TABLE transactions ADD COLUMN currency VARCHAR(3) NOT NULL DEFAULT 'EUR'"))
         if "refund_of_id" not in tx_cols:
             conn.execute(text("ALTER TABLE transactions ADD COLUMN refund_of_id INTEGER"))
             conn.execute(text("CREATE INDEX ix_transactions_refund_of_id ON transactions (refund_of_id)"))

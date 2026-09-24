@@ -34,7 +34,7 @@ from .models import (Account, AccountValuation, AppSetting, BudgetPlan, Category
                      LiabilityProfile, LiabilityTransactionDetail, LookupOption, Note, Transaction, TransactionEvent,
                      TransactionLedgerLink)
 
-FORMAT_VERSION = "1.14"
+FORMAT_VERSION = "1.15"
 
 
 def _cell(value: Any) -> Any:
@@ -76,7 +76,11 @@ SHEETS: dict[str, tuple[Any, list[str]]] = {
                                 # In fondo, e non accanto a `destination_name`: la
                                 # colonna nuova sta dove non sposta le altre, cosi'
                                 # un file scritto prima si legge ancora.
-                                "destination_amount"]),
+                                "destination_amount",
+                                # La valuta del movimento, che e' quella del suo
+                                # conto: senza, un ripristino riporterebbe in euro
+                                # i movimenti di un conto in franchi.
+                                "currency"]),
     "Budget": (BudgetPlan, ["id", "period", "budget_type", "category_id", "amount"]),
     "Obiettivi": (Goal, ["id", "name", "starting_amount", "target_amount", "start_date", "target_date", "completed_at", "kind", "target_account"]),
     # Sotto gli obiettivi, e con il loro id dentro: una tappa senza il suo

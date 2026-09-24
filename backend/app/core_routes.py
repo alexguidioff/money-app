@@ -9,11 +9,11 @@ import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any, Literal, NamedTuple
+from typing import Any, Iterable, Literal, NamedTuple
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import String, distinct, extract, func, select
+from sqlalchemy import String, case, distinct, extract, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
@@ -89,6 +89,11 @@ def transaction_json(row: Transaction, session: Session | None = None, *,
         "incompleteAccepted": row.incomplete_accepted,
         "occurredOn": row.occurred_on.isoformat(), "effectiveOn": row.effective_on.isoformat(),
         "amount": signed,
+        # La valuta in cui il movimento e' registrato: e' quella del suo conto, e
+        # la riga dell'elenco scrive la cifra con questa. `amount` resta quello
+        # che e' - la cifra del movimento - perche' e' il numero che si legge
+        # sulla riga del conto, come il saldo.
+        "currency": row.currency or BASE_CURRENCY,
         "transactionType": row.transaction_type, "accountName": row.account_name,
         "destinationName": row.destination_name, "goal": row.goal, "details": row.details,
         "linkedLedger": linked if linked is not None
@@ -151,7 +156,7 @@ def _liability_details_for_transactions(session: Session, tx_ids: list[int]) -> 
 def period_total(session: Session, year: int, month: int, tx_type: str) -> float:
     if tx_type in {"Income", "Expenses"}:
         return round(sum(budget_actual(session, year, month, tx_type).values()), 2)
-    return num(session.scalar(select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+    return num(session.scalar(select(func.coalesce(func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)), 0)).where(
         extract("year", Transaction.effective_on) == year,
         extract("month", Transaction.effective_on) == month,
         Transaction.transaction_type == tx_type,
@@ -167,7 +172,7 @@ def period_total_range(session: Session, year: int, month: int | None, tx_type: 
     conditions = [extract("year", Transaction.effective_on) == year, Transaction.transaction_type == tx_type, BUDGET_MOVEMENT]
     if month is not None:
         conditions.append(extract("month", Transaction.effective_on) == month)
-    return num(session.scalar(select(func.coalesce(func.sum(Transaction.amount), 0)).where(*conditions)))
+    return num(session.scalar(select(func.coalesce(func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)), 0)).where(*conditions)))
 
 
 def derived_savings(session: Session, year: int, month: int | None) -> float:
@@ -887,7 +892,8 @@ def _mensili_fra_date(session: Session, inizio: date, fine: date,
     solo il totale del periodo: una query sola, e i mesi sono dodici per
     categoria.
     """
-    righe = session.execute(select(Transaction.category_id, Transaction.effective_on, Transaction.amount).where(
+    righe = session.execute(select(Transaction.category_id, Transaction.effective_on,
+                                   _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)).where(
         Transaction.effective_on >= inizio, Transaction.effective_on <= fine,
         Transaction.transaction_type == tipo, BUDGET_MOVEMENT)).all()
     per_categoria: dict[int | None, dict[tuple[int, int], float]] = defaultdict(lambda: defaultdict(float))
@@ -982,7 +988,8 @@ def _totali_per_categoria(session: Session, inizio: date, fine: date, tipo: str)
     qualche decina e i periodi due, e il conto delle query si sente
     all'apertura della pagina.
     """
-    righe = session.execute(select(Transaction.category_id, func.sum(Transaction.amount)).where(
+    righe = session.execute(select(Transaction.category_id,
+                                   func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on))).where(
         Transaction.effective_on >= inizio, Transaction.effective_on <= fine,
         Transaction.transaction_type == tipo, BUDGET_MOVEMENT,
     ).group_by(Transaction.category_id)).all()
@@ -1155,14 +1162,19 @@ def analysis(
 
     category_transactions: list[dict[str, Any]] = []
     if category:
-        rows = session.scalars(select(Transaction).where(
+        # I dieci movimenti piu' pesanti della categoria: qui l'importo e' quello
+        # del movimento, quindi si converte e si ordina in euro, se no una spesa
+        # in franchi verrebbe fuori piu' pesante di una in euro piu' grande.
+        importo_euro = _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)
+        rows = session.execute(select(Transaction, importo_euro).where(
             Transaction.effective_on >= inizio, Transaction.effective_on <= fine,
             Transaction.transaction_type == category_type,
             Transaction.category_id.in_(categoria_per_nome(category)),
             BUDGET_MOVEMENT,
-        ).order_by(Transaction.amount.desc()).limit(10)).all()
-        category_transactions = [{"date": row.effective_on.isoformat(), "amount": num(row.amount),
-                                  "description": row.details or nomi.get(row.category_id, "")} for row in rows]
+        ).order_by(importo_euro.desc()).limit(10)).all()
+        category_transactions = [{"date": row.effective_on.isoformat(), "amount": num(importo),
+                                  "description": row.details or nomi.get(row.category_id, "")}
+                                 for row, importo in rows]
 
     # Le categorie da scegliere sono quelle del periodo dichiarato e del tipo
     # scelto. Il frontend le prendeva dalla Panoramica, cioe' dal mese
@@ -1414,7 +1426,8 @@ def _ripartizione_evento(session: Session, event_ids: list[int]) -> dict[int, li
         return {}
     righe = session.execute(
         select(TransactionEvent.event_id, Transaction.id, Transaction.category_id,
-               Transaction.transaction_type, Transaction.amount)
+               Transaction.transaction_type,
+               _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on))
         .join(Transaction, Transaction.id == TransactionEvent.transaction_id)
         .where(TransactionEvent.event_id.in_(event_ids), BUDGET_MOVEMENT)).all()
     # Dove sottrarre il rimborso: la categoria e la parte del movimento che
@@ -1426,10 +1439,12 @@ def _ripartizione_evento(session: Session, event_ids: list[int]) -> dict[int, li
         voci[event_id][categoria_id][chiave] += num(importo)
         originali[tx_id] = (event_id, categoria_id, chiave)
     if originali:
-        for rimborso in session.scalars(select(Transaction).where(
-                Transaction.refund_of_id.in_(list(originali)), REAL_MOVEMENT)).all():
-            event_id, categoria_id, chiave = originali[rimborso.refund_of_id]
-            voci[event_id][categoria_id][chiave] -= num(rimborso.amount)
+        for original_id, importo in session.execute(select(
+                Transaction.refund_of_id,
+                _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on))
+                .where(Transaction.refund_of_id.in_(list(originali)), REAL_MOVEMENT)).all():
+            event_id, categoria_id, chiave = originali[original_id]
+            voci[event_id][categoria_id][chiave] -= num(importo)
     nomi = nomi_categorie(session)
     return {event_id: [{"name": nomi.get(categoria_id, ""), "spese": num(valori["spese"]),
                         "entrate": num(valori["entrate"])}
@@ -1772,11 +1787,19 @@ def budget_actual(session: Session, year: int, month: int, budget_type: str = "E
         extract("month", Transaction.effective_on) == month,
         Transaction.transaction_type == budget_type, BUDGET_MOVEMENT)).all()
     totals: dict[int, float] = defaultdict(float)
+    # Le righe si sommano in Python, quindi il cambio si legge una volta per
+    # valuta e si applica in memoria: una query per movimento sarebbe una query
+    # per movimento. In euro la mappa e' vuota e non si legge niente.
+    cambi = _cambi_per_valute(session, (row.currency for row in rows))
     for row in rows:
         if row.category_id is not None:
-            totals[row.category_id] += float(row.amount)
+            importo = Decimal(str(row.amount or 0)) / _cambio_al_giorno(row.currency, row.occurred_on, cambi)
+            totals[row.category_id] += float(importo)
     if budget_type in {"Income", "Expenses"} and rows:
-        refunds = session.execute(select(Transaction.refund_of_id, Transaction.amount).where(
+        refunds = session.execute(select(
+            Transaction.refund_of_id,
+            _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on),
+        ).where(
             Transaction.refund_of_id.in_([row.id for row in rows]), REAL_MOVEMENT)).all()
         for original_id, amount in refunds:
             original = next(row for row in rows if row.id == original_id)
@@ -1919,7 +1942,9 @@ def previous_month_leftover(session: Session, year: int, month: int,
             BudgetPlan.period == precedente, BudgetPlan.budget_type == budget_type)).all():
         pianificato[piano.category_id] += num(piano.amount)
     effettivo: dict[int | None, float] = defaultdict(float)
-    for categoria, totale in session.execute(select(Transaction.category_id, func.sum(Transaction.amount)).where(
+    for categoria, totale in session.execute(select(
+            Transaction.category_id,
+            func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on))).where(
             extract("year", Transaction.effective_on) == year,
             extract("month", Transaction.effective_on) == month - 1,
             Transaction.transaction_type == budget_type,
@@ -1934,7 +1959,11 @@ def previous_month_leftover(session: Session, year: int, month: int,
     if budget_type in {"Income", "Expenses"}:
         Originale = aliased(Transaction, name="originale")
         rimborsi = session.execute(select(
-            Originale.category_id, Transaction.amount,
+            Originale.category_id,
+            # Il rimborso si converte con la sua valuta e il suo giorno, non con
+            # quelli dell'originale: sono due movimenti diversi, su due conti che
+            # possono essere in due valute.
+            _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on),
         ).join(Originale, Transaction.refund_of_id == Originale.id).where(
             REAL_MOVEMENT,
             Transaction.refund_of_id.is_not(None),
@@ -1977,7 +2006,7 @@ def _mensili_per_categoria(session: Session, year: int, month: int, budget_type:
     fine = date(ultimo_anno + 1, 1, 1) if ultimo_mese == 12 else date(ultimo_anno, ultimo_mese + 1, 1)
     righe = session.execute(select(
         extract("year", Transaction.effective_on), extract("month", Transaction.effective_on),
-        Transaction.category_id, func.sum(Transaction.amount),
+        Transaction.category_id, func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)),
     ).where(
         Transaction.effective_on >= inizio,
         Transaction.effective_on < fine,
@@ -2091,7 +2120,8 @@ def _totali_mensili(session: Session, year: int, budget_type: str) -> dict[int, 
         spese = _totali_mensili(session, year, "Expenses")
         return {mese: round(entrate.get(mese, 0.0) - spese.get(mese, 0.0), 2) for mese in range(1, 13)}
     righe = session.execute(select(
-        extract("month", Transaction.effective_on), func.sum(Transaction.amount),
+        extract("month", Transaction.effective_on),
+        func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)),
     ).where(
         extract("year", Transaction.effective_on) == year,
         Transaction.transaction_type == budget_type,
@@ -2133,7 +2163,8 @@ def budget_actual_fra_date(session: Session, inizio: date, fine: date,
     # categoria.
     righe = session.execute(select(
         extract("year", Transaction.effective_on), extract("month", Transaction.effective_on),
-        Transaction.category_id, Transaction.amount,
+        Transaction.category_id,
+        _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on),
     ).where(
         Transaction.effective_on >= inizio, Transaction.effective_on <= fine,
         Transaction.transaction_type == budget_type,
@@ -2152,7 +2183,8 @@ def budget_actual_fra_date(session: Session, inizio: date, fine: date,
         Originale = aliased(Transaction, name="originale")
         rimborsi = session.execute(select(
             extract("year", Originale.effective_on), extract("month", Originale.effective_on),
-            Originale.category_id, Transaction.amount,
+            Originale.category_id,
+            _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on),
         ).join(Originale, Transaction.refund_of_id == Originale.id).where(
             REAL_MOVEMENT,
             Transaction.refund_of_id.is_not(None),
@@ -2429,25 +2461,37 @@ def _movimenti_goal(session: Session, goal: Goal) -> list[tuple[date, Decimal]]:
     diverse darebbero un grafico che contraddice il numero sopra.
     """
     righe = session.execute(select(
-        Transaction.effective_on, Transaction.transaction_type, Transaction.account_name,
-        Transaction.destination_name, Transaction.amount, Transaction.destination_amount,
+        Transaction.effective_on, Transaction.occurred_on, Transaction.transaction_type,
+        Transaction.account_name, Transaction.destination_name,
+        Transaction.amount, Transaction.destination_amount,
     ).where(Transaction.goal == goal.name, REAL_MOVEMENT)).all()
     salvadanaio = normalized_name(goal.target_account)
+    # La valuta di un movimento e' quella del conto che lo registra, e per la
+    # gamba d'arrivo quella del conto che riceve: il movimento porta i nomi, non
+    # le valute, e i conti sono due. Il traguardo di un obiettivo e' una cifra
+    # sola in euro, quindi i versamenti si convertono come tutto il resto.
+    valute = {normalized_name(nome): codice for nome, codice in session.execute(
+        select(Account.name, Account.currency)).all()}
+    cambi = _cambi_per_valute(session, valute.values())
     firmati: list[tuple[date, Decimal]] = []
     for riga in righe:
+        conto = riga.account_name
         if salvadanaio and normalized_name(riga.account_name) == salvadanaio \
                 and normalized_name(riga.destination_name) != salvadanaio:
             # Esce dal salvadanaio: stesso verso che il movimento ha sul saldo
             # del conto, cosi' il goal non puo' raccontare l'opposto dell'estratto.
-            importo = source_effect(riga.transaction_type, riga.amount)
+            importo = Decimal(str(source_effect(riga.transaction_type, riga.amount)))
         elif salvadanaio and normalized_name(riga.destination_name) == salvadanaio \
                 and normalized_name(riga.account_name) != salvadanaio:
             # Entra nel salvadanaio: quello che ci arriva davvero, che fra due
             # valute non e' quello che e' partito.
             importo = Decimal(str(riga.destination_amount if riga.destination_amount is not None else riga.amount))
+            conto = riga.destination_name
         else:
             importo = Decimal(str(riga.amount))
-        firmati.append((riga.effective_on, importo))
+        firmati.append((riga.effective_on,
+                        importo / _cambio_al_giorno(valute.get(normalized_name(conto)),
+                                                   riga.occurred_on, cambi)))
     return firmati
 
 
@@ -2998,15 +3042,73 @@ def _rate_on(points: list[tuple[date, Decimal]], cutoff: date) -> Decimal | None
     return chosen
 
 
-def _cambi_dei_conti(session: Session, conti: list[Account]) -> dict[str, list[tuple[date, Decimal]]]:
-    """Lo storico dei cambi di ogni valuta in cui e' tenuto un conto.
+def _cambi_per_valute(session: Session, valute: Iterable[Any]) -> dict[str, list[tuple[date, Decimal]]]:
+    """Lo storico dei cambi delle valute indicate, letto una volta per valuta.
 
-    Una lettura per valuta, non una per conto per mese: i conti sono decine e i
-    mesi del trend dodici, e `fx_rates_by_month` e' una query ciascuno.
+    Una lettura per valuta, non una per conto o per movimento: i conti sono
+    decine, i movimenti migliaia, e `fx_rates_by_month` e' una query ciascuno.
+    Per chi tiene tutto in euro il dizionario torna vuoto e non si legge niente.
     """
-    valute = {(conto.currency or BASE_CURRENCY).strip().upper() for conto in conti}
+    codici = {str(valuta).strip().upper() for valuta in valute if valuta}
     return {codice: fx_rates_by_month(session, codice)[0]
-            for codice in sorted(valute) if codice != BASE_CURRENCY}
+            for codice in sorted(codici - {BASE_CURRENCY})}
+
+
+def _cambi_dei_conti(session: Session, conti: list[Account]) -> dict[str, list[tuple[date, Decimal]]]:
+    """Lo storico dei cambi di ogni valuta in cui e' tenuto un conto. Vedi
+    `_cambi_per_valute`, che e' la stessa lettura con i conti al posto delle valute."""
+    return _cambi_per_valute(session, (conto.currency or BASE_CURRENCY for conto in conti))
+
+
+def _cambio_al_giorno(valuta: Any, giorno: date | None,
+                      cambi: dict[str, list[tuple[date, Decimal]]]) -> Decimal:
+    """Quante unita' della valuta vale 1 euro a quella data: 1 per l'euro.
+
+    E' `_in_euro` letta in Python, per i pochi punti che sommano i movimenti uno
+    alla volta invece che con una query. Vale 1 anche quando il cambio manca,
+    per lo stesso motivo di la': un movimento che sparisce da un totale non si
+    vede, una conversione sbagliata si vede confrontando due mesi.
+    """
+    codice = str(valuta or BASE_CURRENCY).strip().upper()
+    if codice == BASE_CURRENCY or giorno is None:
+        return Decimal(1)
+    return _rate_on(cambi.get(codice) or [], giorno) or Decimal(1)
+
+
+def _in_euro(importo: Any, valuta: Any, giorno: Any) -> Any:
+    """L'importo di un movimento in euro, al cambio del giorno in cui vale.
+
+    I totali dell'app - riepiloghi, budget, tendenze, report - sommano movimenti
+    di conti diversi, quindi vanno in euro. Un movimento in franchi pesa quanto
+    valgono quei franchi il giorno in cui e' stato registrato: col cambio di
+    oggi il passato si riscriverebbe a ogni movimento del cambio.
+
+    Due cose la tengono in piedi. In euro il cambio e' 1 per definizione e la
+    riga non legge il listino: per chi ha conti solo in euro i numeri restano
+    esattamente quelli di prima. E un movimento in una valuta di cui non si ha
+    il cambio pesa **1**: sbagliato, ma e' il male minore - una conversione
+    sbagliata si vede confrontando due mesi, un movimento che sparisce da un
+    totale non si vede affatto.
+
+    Il listino si legge per riga. Il vincolo unico di `market_prices` (simbolo,
+    giorno, fonte) e' gia' l'indice che serve; se un giorno pescasse, la via e'
+    una tabella dei cambi per giorno da incrociare una volta sola - non prima
+    che serva.
+    """
+    if valuta is None or giorno is None:
+        return importo
+    cambio = (
+        select(MarketPrice.price)
+        .where(MarketPrice.symbol == BASE_CURRENCY + valuta + "=X",
+               MarketPrice.observed_on <= giorno)
+        .order_by(MarketPrice.observed_on.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    # L'1 e' scritto come decimale, non come intero: un `case` il cui primo ramo
+    # e' un intero si porta dietro il tipo intero, e su SQLite una divisione fra
+    # interi tronca - 90,90 euro diventerebbero 90.
+    return importo / func.coalesce(case((valuta == BASE_CURRENCY, Decimal(1)), else_=cambio), Decimal(1))
 
 
 def _saldi_in_euro(saldi: dict[str, Any], conti: list[Account],

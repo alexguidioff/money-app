@@ -361,6 +361,13 @@ class Transaction(Base):
     # movimenti. NULL vuol dire "non ne ha" - un giroconto, per esempio.
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(16, 2))
+    # In che soldi e' `amount`: la valuta del conto in cui il movimento e'
+    # registrato, scritta quando il movimento nasce. Non si ricava a ogni
+    # lettura perche' un conto puo' cambiare valuta - e' quasi sempre la
+    # correzione di una valuta dichiarata male - e la storia di quello che ci e'
+    # passato prima non si riscrive da sola. Il default tiene in euro tutto
+    # quello che c'era prima che i conti avessero una valuta.
+    currency: Mapped[str] = mapped_column(String(3), default="EUR", server_default=text("'EUR'"))
     # Quanto arriva dall'altra parte, quando i due conti non parlano la stessa
     # valuta: mille euro che escono possono essere novecentoventicinque franchi
     # che entrano, e il cambio se lo tiene la banca. NULL vuol dire "lo stesso

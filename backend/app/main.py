@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Query, UploadFile, Fi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import distinct, extract, func, or_, select
+from sqlalchemy import distinct, extract, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -27,7 +27,8 @@ from .calculation_engine import (account_balances_series, calculate_account_bala
                                  normalized_name, stato_debito_registrato)
 from .categorization import PENDING_CATEGORY, applica, carica_regole, categoria_da_nome, scartate
 from .categorie import _prossima_posizione, gruppo_di_categoria, nome_di, nomi as nomi_categorie
-from .core_routes import (BASE_CURRENCY, GOAL_KINDS, MAX_SELEZIONE_MASSA, account_currencies, benchmark_symbol,
+from .core_routes import (BASE_CURRENCY, GOAL_KINDS, MAX_SELEZIONE_MASSA, _cambi_per_valute,
+                          _cambio_al_giorno, _in_euro, account_currencies, benchmark_symbol,
                           display_currencies, fx_rates_by_month, fx_symbols, movimenti_per_saldi, num,
                           sync_savings_plan)
 from .database import Base, admin_engine, engine, get_session, set_default_user, current_user_id
@@ -766,6 +767,9 @@ def _salva_movimenti(righe: list[dict], source: str, session: Session, *,
                                           nome=tx_data.get('category'), transaction_type=transaction_type,
                                           padre=tx_data.get('categoryParent')),
                 amount=amount, account_name=account.name, account_type=account.source_group.title(),
+                # La valuta del movimento e' quella del suo conto: un file puo'
+                # portare righe di conti in valute diverse, e qui il conto c'e'.
+                currency=(account.currency or BASE_CURRENCY),
                 # Un giroconto fra valute diverse arriva con i due importi: quello
                 # che esce e quello che entra. Senza il secondo, il conto di
                 # destinazione riceverebbe una cifra che non e' la sua.
@@ -1006,6 +1010,9 @@ def _transaction_to_dict(tx: Transaction, session: Session | None = None) -> dic
         "transactionType": tx.transaction_type,
         "accountType": tx.account_type,
         "accountName": tx.account_name,
+        # La valuta in cui il movimento e' registrato: e' quella del suo conto, e
+        # l'interfaccia la usa per scrivere la cifra sulla riga del conto.
+        "currency": tx.currency or BASE_CURRENCY,
         "destinationType": tx.destination_type,
         "destinationName": tx.destination_name,
         # Quanto arriva dall'altra parte, quando e' diverso da quello che esce.
@@ -1083,6 +1090,21 @@ class TransactionPayload(BaseModel):
     debt_interest: float | None = None
 
 
+def _valuta_del_conto(session: Session, nome: str | None) -> str:
+    """La valuta del conto che registra un movimento.
+
+    Si legge quando il movimento nasce e si scrive sul movimento: quella e' la
+    valuta in cui e' stato registrato, e resta la sua anche se poi il conto
+    cambia valuta - li' e' una correzione, e li' i movimenti si riallineano
+    tutti insieme (`update_account`).
+    """
+    chiave = _chiave_conto(nome)
+    if not chiave:
+        return BASE_CURRENCY
+    conto = next((c for c in session.scalars(select(Account)).all() if _chiave_conto(c.name) == chiave), None)
+    return _valuta(conto.currency) if conto is not None else BASE_CURRENCY
+
+
 def _apply_transaction_payload(tx: Transaction, payload: TransactionPayload, session: Session) -> None:
     previous = (tx.account_name, tx.destination_name) if tx.id else ()
     occurred = _parse_iso_date(payload.occurred_on, "occurred_on")
@@ -1108,6 +1130,10 @@ def _apply_transaction_payload(tx: Transaction, payload: TransactionPayload, ses
     tx.effective_on = compute_effective_on(session, occurred, payload.transaction_type)
     tx.amount = _to_decimal(payload.amount, "amount", allow_negative=False)
     tx.account_name = (payload.account_name or None) or None
+    # La valuta segue il conto che registra il movimento, non il contrario: un
+    # movimento su un conto in franchi e' in franchi, e il totale del mese lo
+    # converte quando lo somma agli altri.
+    tx.currency = _valuta_del_conto(session, tx.account_name)
     tx.destination_name = (payload.destination_name or None) or None
     # Il secondo importo si scrive solo se e' davvero diverso da quello che esce:
     # uguale vuol dire "non c'e' nessun cambio di mezzo", ed e' la colonna vuota
@@ -1724,9 +1750,14 @@ def quadratura_gruppo(session: Session, tx_id: int) -> dict[str, Any]:
     broker = {normalized_name(a.name) for a in session.scalars(
         select(Account).where(Account.is_broker.is_(True))).all()}
     trasferito = Decimal("0")
-    for riga in session.scalars(select(Transaction).where(Transaction.id.in_(movimenti))).all():
+    righe_movimenti = session.scalars(select(Transaction).where(Transaction.id.in_(movimenti))).all()
+    # Il confronto e' fra una somma di movimenti e una di operazioni: se i conti
+    # sono in valute diverse, l'unico modo di dire se quadra e' leggerle in euro.
+    cambi = _cambi_per_valute(session, (riga.currency for riga in righe_movimenti))
+    for riga in righe_movimenti:
         verso = -1 if normalized_name(riga.account_name) in broker else 1
-        trasferito += verso * abs(Decimal(str(riga.amount or 0)))
+        trasferito += verso * abs(Decimal(str(riga.amount or 0))
+                                  / _cambio_al_giorno(riga.currency, riga.occurred_on, cambi))
     netto = Decimal("0")
     for riga in session.scalars(select(InvestmentTransaction).where(
             InvestmentTransaction.id.in_(operazioni))).all() if operazioni else []:
@@ -1884,13 +1915,26 @@ def update_account(account_id: int, payload: AccountPayload, session: Session = 
     )
     if duplicate is not None:
         raise HTTPException(status_code=409, detail="accountDuplicate")
+    nome_precedente = account.name
     account.source_group = payload.source_group
     account.name = name
     # Cambiare valuta e' quasi sempre la correzione di una valuta dichiarata
     # male subito dopo: i movimenti registrati prima hanno ancora la vecchia, e
     # finche' non vengono riallineati il saldo del conto e' la somma di due
-    # valute diverse. Il riallineamento arriva con la valuta dei movimenti.
+    # valute diverse. Si riallineano qui, nella stessa richiesta: e' quello che
+    # uno si aspetta di avere dopo aver corretto una svista, e farlo dopo
+    # vorrebbe dire lasciare il conto sbagliato finche' qualcuno non ci pensa.
+    valuta_precedente = account.currency or BASE_CURRENCY
     account.currency = _valuta(payload.currency)
+    riallineati = 0
+    if valuta_precedente != account.currency:
+        # Per nome, come sono scritti sui movimenti: quello vecchio se il conto
+        # e' stato rinominato nella stessa richiesta, quello nuovo per i
+        # movimenti che l'app ha scritto dopo la rinomina.
+        nomi = {nome_precedente, name}
+        riallineati = session.execute(
+            update(Transaction).where(Transaction.account_name.in_(nomi))
+            .values(currency=account.currency)).rowcount
     account.counts_in_net_worth = payload.counts_in_net_worth
     account.is_active = payload.is_active
     account.is_liquid = _liquidita_predefinita(payload)
@@ -1913,7 +1957,7 @@ def update_account(account_id: int, payload: AccountPayload, session: Session = 
     except Exception as exc:  # noqa: BLE001
         session.rollback()
         raise HTTPException(status_code=500, detail=f"Errore aggiornamento conto: {exc}") from exc
-    return _account_to_dict(account)
+    return {**_account_to_dict(account), "movementsRealigned": riallineati}
 
 
 class ValuationPayload(BaseModel):
@@ -4197,6 +4241,9 @@ async def create_recurring_transaction(
                                       transaction_type=data.transactionType),
             amount=Decimal(str(abs(data.amount))),
             account_name=data.accountName,
+            # Il modello ricorrente nasce con la valuta del suo conto, come il
+            # movimento che generera': le occorrenze la copiano da lui.
+            currency=_valuta_del_conto(session, data.accountName),
             destination_name=data.destinationName,
             goal=data.goal,
             details=data.details or data.description,
@@ -4305,6 +4352,9 @@ async def generate_recurring_transactions(
                         transaction_type=template.transaction_type,
                         category_id=template.category_id,
                         amount=template.amount,
+                        # La valuta e' quella del modello: l'occorrenza e' lo
+                        # stesso movimento un mese dopo, sullo stesso conto.
+                        currency=template.currency,
                         # Anche il secondo importo: una ricorrenza fra due conti
                         # in valute diverse muove le due cifre che il modello
                         # porta, non la stessa da tutte e due le parti.
@@ -4444,7 +4494,8 @@ async def get_budget_alerts(
     # stesso nome non sono due categorie, e con la chiave esterna il confronto
     # fra spesa e budget non ha piu' bisogno di abbassare le maiuscole.
     spending = session.execute(
-        select(Transaction.category_id, func.sum(Transaction.amount))
+        select(Transaction.category_id,
+               func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)))
         .where(
             Transaction.effective_on >= period_start,
             Transaction.effective_on < period_end,
@@ -4542,7 +4593,8 @@ def _report_num(value: Any) -> float:
 
 
 def _report_period_total(session: Session, year: int, month: int, tx_type: str) -> float:
-    return _report_num(session.scalar(select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+    return _report_num(session.scalar(select(func.coalesce(
+        func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)), 0)).where(
         extract("year", Transaction.effective_on) == year,
         extract("month", Transaction.effective_on) == month,
         Transaction.transaction_type == tx_type,
@@ -4560,11 +4612,19 @@ def download_report(kind: str, year: int = Query(ge=2000, le=2100), month: int =
 
     income, expenses = (_report_period_total(session, year, month, t) for t in ("Income", "Expenses"))
     savings = round(income - expenses, 2)
-    net_worth = sum(
-        (-_report_num(account.current_balance) if account.source_group == "liability" else _report_num(account.current_balance))
-        for account in session.scalars(select(Account)).all()
-        if account.counts_in_net_worth
-    )
+    conti = session.scalars(select(Account)).all()
+    # Il patrimonio, i movimenti e le loro cifre si leggono in euro come nel
+    # resto dell'app: i conti e i movimenti possono essere in valute diverse, e
+    # qui si convertono al cambio di oggi - il report e' una fotografia di adesso.
+    cambi = _cambi_per_valute(session, (account.currency for account in conti))
+    net_worth = 0.0
+    for account in conti:
+        if not account.counts_in_net_worth:
+            continue
+        valore = float(Decimal(str(account.current_balance or 0))
+                       / _cambio_al_giorno(account.currency, date.today(), cambi))
+        net_worth += -valore if account.source_group == "liability" else valore
+    net_worth = round(net_worth, 2)
 
     trend = []
     for offset in range(-6, 1):
@@ -4588,7 +4648,7 @@ def download_report(kind: str, year: int = Query(ge=2000, le=2100), month: int =
     nomi_cat = nomi_categorie(session)
     transactions = []
     for row in rows:
-        amount = _report_num(row.amount)
+        amount = _report_num(Decimal(str(row.amount or 0)) / _cambio_al_giorno(row.currency, row.occurred_on, cambi))
         signed = amount if row.transaction_type == "Income" else -amount
         transactions.append({
             "date": row.effective_on.isoformat(),
@@ -4601,8 +4661,8 @@ def download_report(kind: str, year: int = Query(ge=2000, le=2100), month: int =
         })
 
     report = {
-        # Gli importi dell'app sono in euro e il report non converte: un'altra
-        # valuta sarebbe stata solo un'etichetta sbagliata sugli stessi numeri.
+        # Gli importi del report sono in euro: i conti e i movimenti in un'altra
+        # valuta si convertono al cambio del giorno, come nel resto dell'app.
         "currency": "EUR",
         "period": f"{_REPORT_MONTHS_LONG[month - 1]} {year}",
         "income": income,

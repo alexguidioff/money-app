@@ -146,6 +146,13 @@ def _read_sheet(workbook, title: str, model, columns: list[str], version: str = 
     # Leggerlo con quel valore e' esattamente quello che il file dice.
     if title == "Movimenti" and tuple(int(parte) for parte in version.split(".")) < (1, 14):
         additions["destination_amount"] = None
+    # La valuta del movimento e' nata con la 1.15: i file scritti prima sono
+    # tutti in euro, che e' quello che erano, e leggerli con quel valore non li
+    # cambia. Vale solo per i movimenti, come per i conti: strumenti e operazioni
+    # del ledger una valuta ce l'hanno da sempre, e li' una colonna che manca e'
+    # un file rotto, non un campo nuovo.
+    if title == "Movimenti" and tuple(int(parte) for parte in version.split(".")) < (1, 15):
+        additions["currency"] = "EUR"
     # I ripieghi dipendono dall'entita': "kind" non ha lo stesso significato
     # per un obiettivo e per un debito. I file 1.6 non avevano questi campi.
     legacy_additions = {

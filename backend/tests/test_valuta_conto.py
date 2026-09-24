@@ -22,13 +22,16 @@ from sqlalchemy.orm import Session
 from app.core_routes import account_currencies
 from app.database import Base
 from app.main import AccountPayload, create_account, update_account
-from app.models import Account
+from app.models import Account, Transaction
 
 
 class ValutaDelContoTests(unittest.TestCase):
     def setUp(self) -> None:
         self.engine = create_engine("sqlite://")
-        Base.metadata.create_all(self.engine, tables=[Account.__table__])
+        # Anche i movimenti: cambiare valuta a un conto li riallinea, e un
+        # conto senza la tabella dei movimenti non e' il caso che si sta
+        # provando qui.
+        Base.metadata.create_all(self.engine, tables=[Account.__table__, Transaction.__table__])
         self.session = Session(self.engine)
 
     def tearDown(self) -> None:
@@ -66,6 +69,10 @@ class ValutaDelContoTests(unittest.TestCase):
             name="Banca", source_group="bank", starting_balance=0, currency="chf"), self.session)
         self.assertEqual("CHF", risposta["currency"])
         self.assertEqual("CHF", self._conto("Banca").currency)
+        # Nessun movimento da riallineare: il numero c'e' comunque, cosi' chi
+        # legge la risposta non deve indovinare se il campo manca per zero o
+        # perche' non e' stato calcolato.
+        self.assertEqual(0, risposta["movementsRealigned"])
 
     def test_le_valute_dei_conti_lasciano_fuori_l_euro(self) -> None:
         # L'euro e' la valuta di partenza: chiedere il suo storico di cambi
