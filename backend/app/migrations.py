@@ -31,6 +31,11 @@ def tracked_changes(engine: Engine) -> None:
         if "incomplete_accepted" not in tx_cols:
             conn.execute(text(
                 "ALTER TABLE transactions ADD COLUMN incomplete_accepted BOOLEAN NOT NULL DEFAULT false"))
+        if "destination_amount" not in tx_cols:
+            # I movimenti che c'erano muovono lo stesso importo da tutte e due le
+            # parti: la colonna vuota vuol dire esattamente questo, quindi nessun
+            # saldo gia' calcolato si muove.
+            conn.execute(text("ALTER TABLE transactions ADD COLUMN destination_amount NUMERIC(16, 2)"))
         if "refund_of_id" not in tx_cols:
             conn.execute(text("ALTER TABLE transactions ADD COLUMN refund_of_id INTEGER"))
             conn.execute(text("CREATE INDEX ix_transactions_refund_of_id ON transactions (refund_of_id)"))

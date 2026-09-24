@@ -262,6 +262,10 @@ export type Transaction = {
   effectiveOn: string;
   accountName: string | null;
   destinationName: string | null;
+  // Quanto arriva sul conto di destinazione, quando la valuta e' un'altra.
+  // Assente vuol dire "lo stesso importo che e' partito", che e' il caso
+  // normale: la colonna si scrive solo quando le due cifre sono diverse.
+  destinationAmount?: number | null;
   goal: string | null;
   details: string | null;
   event?: EventSummary | null;
@@ -1022,6 +1026,10 @@ function MoneyDashboardInner() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [newTransactionOpen, setNewTransactionOpen] = useState(false);
   const [movementAccount, setMovementAccount] = useState('');
+  const [movementDestination, setMovementDestination] = useState('');
+  // Quanto arriva dall'altra parte, mentre lo si scrive: serve solo a mostrare
+  // il cambio che ne risulta, prima di salvare.
+  const [arrivo, setArrivo] = useState('');
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [duplicatingTransaction, setDuplicatingTransaction] = useState<Transaction | null>(null);
   // Gli eventi della tendina del modulo e la voce scelta: un id, oppure la
@@ -2411,6 +2419,17 @@ function MoneyDashboardInner() {
   useEffect(() => {
     if (newTransactionOpen) setMovementAccount(formTransaction?.accountName ?? '');
   }, [newTransactionOpen, formTransaction?.accountName]);
+  // Il conto d'arrivo: stesso motivo del conto di partenza, piu' uno suo. Il
+  // secondo importo ha senso solo fra conti in valute diverse, e per saperlo
+  // bisogna sapere quale conto si e' scelto.
+  useEffect(() => {
+    if (newTransactionOpen) {
+      setMovementDestination(formTransaction?.destinationName ?? '');
+      setArrivo(formTransaction?.destinationAmount != null ? String(formTransaction.destinationAmount) : '');
+    }
+  }, [newTransactionOpen, formTransaction?.destinationName, formTransaction?.destinationAmount, formTransaction]);
+  const valutaPartenza = accounts.find((account) => account.name === movementAccount)?.currency;
+  const valutaArrivo = accounts.find((account) => account.name === movementDestination)?.currency;
   // Il conto scelto serve a decidere se mostrare il campo dell'addebito: una
   // spesa su un conto di debito puo' essere un interesse, su un conto normale no.
   const contoDebito = accounts.some((account) => account.name === movementAccount && account.group === 'liability');
@@ -2418,6 +2437,10 @@ function MoneyDashboardInner() {
   // niente categoria, destinazione obbligatoria - e un vincolo in piu': un
   // lato dev'essere un conto broker.
   const isSpostamento = movementType === 'Transfers' || movementType === 'Investment' || movementType === 'Debt';
+  // Fra conti nella stessa valuta l'importo che arriva e' quello che parte: il
+  // campo del secondo importo non c'e'. Chiedere una cifra che non puo' che
+  // essere uguale a un'altra e' il modo piu' corto per farla sbagliare.
+  const cambioDiValuta = isSpostamento && !!valutaPartenza && !!valutaArrivo && valutaPartenza !== valutaArrivo;
   const isTransfer = isSpostamento;
   // Se il broker e' gia' l'origine, il movimento e' un PRELIEVO e la
   // destinazione e' una banca qualunque. Filtrare la destinazione sui soli
@@ -2887,12 +2910,31 @@ function MoneyDashboardInner() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <label htmlFor="movement-account" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldAccount')}<select id="movement-account" name="account_name" required value={movementAccount} onChange={(event) => setMovementAccount(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"><option value="">{t('noAccount')}</option>{accounts.filter(a => a.isActive !== false || (!!editingTransaction && a.name === formTransaction?.accountName)).map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}</select></label>
-              <label htmlFor="movement-destination" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDestinationAccount')}<select id="movement-destination" name="destination_name" required={isTransfer} disabled={!isTransfer} defaultValue={formTransaction?.destinationName ?? ''} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]"><option value="">{isTransfer ? t('none') : t('destinationOnlyForTransfers')}</option>{isTransfer && accounts.filter(a => (movementType !== 'Investment' || prelievoDaBroker || a.isBroker === true
+              <label htmlFor="movement-destination" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDestinationAccount')}<select id="movement-destination" name="destination_name" required={isTransfer} disabled={!isTransfer} value={movementDestination} onChange={(event) => setMovementDestination(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]"><option value="">{isTransfer ? t('none') : t('destinationOnlyForTransfers')}</option>{isTransfer && accounts.filter(a => (movementType !== 'Investment' || prelievoDaBroker || a.isBroker === true
               // Il valore gia' salvato resta sempre in elenco: una tendina che
               // non contiene il proprio valore lo perde al primo salvataggio.
               || a.name === formTransaction?.destinationName)
               && (a.isActive !== false || (!!editingTransaction && a.name === formTransaction?.destinationName))).map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}</select></label>
             </div>
+            {/* Il secondo importo di un giroconto fra due valute. Compaiono solo
+                qui: fra conti in euro la cifra che arriva e' quella che parte, e
+                un campo in piu' da compilare quando non serve e' un campo da
+                sbagliare. Il cambio implicito sta sotto, perche' e' quello che
+                si vuole controllare quando due cifre non tornano. */}
+            {cambioDiValuta && (() => {
+              const entrata = Number(arrivo);
+              const uscita = Number(effectivePreview.amount || 0);
+              return <label htmlFor="movement-destination-amount" className="block space-y-1.5 text-xs font-medium text-[#52615d]">
+                {t('fieldDestinationAmount', { currency: valutaArrivo })}
+                <Input id="movement-destination-amount" name="destination_amount" type="number" min="0" step="0.01"
+                       value={arrivo} onChange={(event) => setArrivo(event.target.value)} className="h-10 bg-white" />
+                <span className="block text-[11px] leading-4 text-[#5e6c68]">
+                  {entrata > 0 && uscita > 0
+                    ? t('destinationAmountRate', { rate: formatNumber(entrata / uscita, { maximumFractionDigits: 4 }) })
+                    : t('destinationAmountHint', { currency: valutaArrivo })}
+                </span>
+              </label>;
+            })()}
             {movementType === 'Expenses' && contoDebito && <div className="space-y-1.5 rounded-xl border border-[#bd5e46]/20 bg-[#fff9f6] p-3">
               {/* Una spesa su un conto di debito puo' essere un interesse, e
                   finche' non lo si dice non entra nei totali del debito: il

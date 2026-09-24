@@ -21,6 +21,34 @@ class CalculationEngineTests(TestCase):
         self.assertEqual(calculate_account_balance(50, "A", transactions), Decimal("105.00"))
         self.assertEqual(calculate_account_balance(0, "B", transactions), Decimal("15.00"))
 
+    def test_un_giroconto_fra_valute_diverse_muove_i_due_importi(self):
+        # Mille euro che partono e novecentoventicinque franchi che arrivano: il
+        # cambio se lo tiene la banca, e i due conti si muovono di due cifre
+        # diverse. Con un importo solo, uno dei due saldi sarebbe in un'altra
+        # valuta contata come se fosse la sua.
+        transactions = [
+            {"transaction_type": "Transfers", "amount": 1000, "account_name": "Euro",
+             "destination_name": "Franchi", "destination_amount": Decimal("925.00")},
+        ]
+        self.assertEqual(calculate_account_balance(0, "Euro", transactions), Decimal("-1000.00"))
+        self.assertEqual(calculate_account_balance(0, "Franchi", transactions), Decimal("925.00"))
+
+    def test_anche_nella_stessa_valuta_i_due_importi_possono_differire(self):
+        # Una banca puo' addebitare milleseicento e accreditarne milleseicentodue
+        # e quaranta: il movimento porta tutte e due le cifre, e contarle uguali
+        # farebbe sbagliare il conto d'arrivo di due e quaranta.
+        transactions = [
+            {"transaction_type": "Transfers", "amount": 1600, "account_name": "A",
+             "destination_name": "B", "destination_amount": Decimal("1602.40")},
+        ]
+        self.assertEqual(calculate_account_balance(0, "A", transactions), Decimal("-1600.00"))
+        self.assertEqual(calculate_account_balance(0, "B", transactions), Decimal("1602.40"))
+        # Un movimento senza secondo importo muove la stessa cifra da tutte e due
+        # le parti, come ha sempre fatto.
+        self.assertEqual(calculate_account_balance(0, "B", [
+            {"transaction_type": "Transfers", "amount": 1600, "account_name": "A", "destination_name": "B"},
+        ]), Decimal("1600.00"))
+
     def test_savings_rate_is_what_is_left_of_income(self):
         self.assertEqual(savings_rate(1000, 600), Decimal("0.4000"))
         self.assertIsNone(savings_rate(0, 600))

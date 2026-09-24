@@ -34,7 +34,7 @@ from .models import (Account, AccountValuation, AppSetting, BudgetPlan, Category
                      LiabilityProfile, LiabilityTransactionDetail, LookupOption, Note, Transaction, TransactionEvent,
                      TransactionLedgerLink)
 
-FORMAT_VERSION = "1.13"
+FORMAT_VERSION = "1.14"
 
 
 def _cell(value: Any) -> Any:
@@ -72,7 +72,11 @@ SHEETS: dict[str, tuple[Any, list[str]]] = {
     "Movimenti": (Transaction, ["id", "occurred_on", "transaction_type", "category_id", "amount", "account_type",
                                 "account_name", "destination_type", "destination_name", "goal", "details",
                                 "balance", "is_recurring_template", "recurrence_rule", "recurrence_end_date",
-                                "recurrence_parent_id", "counts_in_budget", "refund_of_id", "incomplete_accepted"]),
+                                "recurrence_parent_id", "counts_in_budget", "refund_of_id", "incomplete_accepted",
+                                # In fondo, e non accanto a `destination_name`: la
+                                # colonna nuova sta dove non sposta le altre, cosi'
+                                # un file scritto prima si legge ancora.
+                                "destination_amount"]),
     "Budget": (BudgetPlan, ["id", "period", "budget_type", "category_id", "amount"]),
     "Obiettivi": (Goal, ["id", "name", "starting_amount", "target_amount", "start_date", "target_date", "completed_at", "kind", "target_account"]),
     # Sotto gli obiettivi, e con il loro id dentro: una tappa senza il suo

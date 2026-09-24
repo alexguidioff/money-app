@@ -141,6 +141,11 @@ def _read_sheet(workbook, title: str, model, columns: list[str], version: str = 
     # rotto, non un campo nuovo.
     if title == "Conti" and tuple(int(parte) for parte in version.split(".")) < (1, 13):
         additions["currency"] = "EUR"
+    # Il secondo importo di un giroconto e' nato con la 1.14: un file scritto
+    # prima non ce l'ha, e li' i due lati si muovevano della stessa cifra.
+    # Leggerlo con quel valore e' esattamente quello che il file dice.
+    if title == "Movimenti" and tuple(int(parte) for parte in version.split(".")) < (1, 14):
+        additions["destination_amount"] = None
     # I ripieghi dipendono dall'entita': "kind" non ha lo stesso significato
     # per un obiettivo e per un debito. I file 1.6 non avevano questi campi.
     legacy_additions = {

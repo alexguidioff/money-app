@@ -603,6 +603,12 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
                 category_id=_id_categoria(session, category_id=tx_data.get('categoryId'),
                                           nome=tx_data.get('category'), transaction_type=transaction_type),
                 amount=amount, account_name=account.name, account_type=account.source_group.title(),
+                # Un giroconto fra valute diverse arriva con i due importi: quello
+                # che esce e quello che entra. Senza il secondo, il conto di
+                # destinazione riceverebbe una cifra che non e' la sua.
+                destination_amount=_to_decimal(tx_data.get('destinationAmount'), "destination_amount",
+                                               allow_negative=False)
+                if transaction_type in SPOSTAMENTI and tx_data.get('destinationAmount') else None,
                 destination_name=destination.name if transaction_type in SPOSTAMENTI else None,
                 destination_type=destination.source_group.title() if transaction_type in SPOSTAMENTI else None,
                 goal=tx_data.get('goal'), details=tx_data.get('details') or tx_data.get('description') or None,
@@ -780,6 +786,9 @@ def _transaction_to_dict(tx: Transaction, session: Session | None = None) -> dic
         "accountName": tx.account_name,
         "destinationType": tx.destination_type,
         "destinationName": tx.destination_name,
+        # Quanto arriva dall'altra parte, quando e' diverso da quello che esce.
+        # L'assenza non e' un buco: vuol dire che l'importo e' lo stesso.
+        "destinationAmount": float(tx.destination_amount) if tx.destination_amount is not None else None,
         "goal": tx.goal,
         "details": tx.details,
         "balance": float(tx.balance) if tx.balance is not None else None,
@@ -834,6 +843,10 @@ class TransactionPayload(BaseModel):
     amount: float
     account_name: str | None = None
     destination_name: str | None = None
+    # Quanto arriva sul conto di destinazione, quando la valuta e' un'altra.
+    # Assente vuol dire "lo stesso importo dell'uscita": e' il caso normale, e
+    # anche il modo in cui il modulo la manda quando i due conti sono in euro.
+    destination_amount: float | None = None
     goal: str | None = None
     details: str | None = None
     account_type: str | None = None
@@ -874,11 +887,21 @@ def _apply_transaction_payload(tx: Transaction, payload: TransactionPayload, ses
     tx.amount = _to_decimal(payload.amount, "amount", allow_negative=False)
     tx.account_name = (payload.account_name or None) or None
     tx.destination_name = (payload.destination_name or None) or None
+    # Il secondo importo si scrive solo se e' davvero diverso da quello che esce:
+    # uguale vuol dire "non c'e' nessun cambio di mezzo", ed e' la colonna vuota
+    # che lo dice. Riempiendola con la stessa cifra ogni saldo resterebbe giusto
+    # ma il dato non direbbe piu' niente.
+    arrivo = payload.destination_amount
+    tx.destination_amount = (_to_decimal(arrivo, "destination_amount", allow_negative=False)
+                             if arrivo is not None else None)
+    if tx.destination_amount is not None and tx.destination_amount == tx.amount:
+        tx.destination_amount = None
     if payload.transaction_type not in SPOSTAMENTI:
         # Entrate e uscite toccano un conto solo: una destinazione rimasta da
         # un tipo precedente va tolta, o il movimento resta a meta' fra due
         # forme diverse. Il ramo per il vecchio tipo Savings e' sparito con lui.
         tx.destination_name = None
+        tx.destination_amount = None
     if payload.transaction_type in SPOSTAMENTI:
         tx.counts_in_budget = False
     elif payload.counts_in_budget is not None:
@@ -4004,6 +4027,10 @@ async def generate_recurring_transactions(
                         transaction_type=template.transaction_type,
                         category_id=template.category_id,
                         amount=template.amount,
+                        # Anche il secondo importo: una ricorrenza fra due conti
+                        # in valute diverse muove le due cifre che il modello
+                        # porta, non la stessa da tutte e due le parti.
+                        destination_amount=template.destination_amount,
                         account_name=template.account_name,
                         destination_name=template.destination_name,
                         goal=template.goal,

@@ -16,6 +16,10 @@ export function transactionPayload(form: FormData) {
     amount: Number(form.get('amount')),
     account_name: form.get('account_name') || null,
     destination_name: form.get('destination_name') || null,
+    // Il secondo importo c'e' solo su un giroconto fra valute diverse, e solo se
+    // e' stato compilato: la stringa vuota il backend la leggerebbe come zero.
+    ...(SPOSTAMENTI.includes(txType) && String(form.get('destination_amount') ?? '').trim()
+      ? { destination_amount: Number(form.get('destination_amount')) } : {}),
     counts_in_budget: !SPOSTAMENTI.includes(txType) && !form.get('exclude_budget'),
     refund_of_id: form.get('refund_of_id') ? Number(form.get('refund_of_id')) : null,
     goal: form.get('goal') || null,

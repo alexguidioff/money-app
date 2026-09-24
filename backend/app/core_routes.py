@@ -1619,6 +1619,10 @@ def movimenti_per_saldi(session: Session) -> list[Any]:
     return session.execute(select(
         Transaction.effective_on, Transaction.occurred_on, Transaction.transaction_type,
         Transaction.amount, Transaction.account_name, Transaction.destination_name,
+        # Il secondo importo di un giroconto fra valute diverse: senza questa
+        # colonna il conto d'arrivo si muoverebbe della cifra sbagliata, e il suo
+        # saldo sarebbe sbagliato senza che niente lo dica.
+        Transaction.destination_amount,
     ).where(REAL_MOVEMENT)).all()
 
 
@@ -2412,7 +2416,7 @@ def _movimenti_goal(session: Session, goal: Goal) -> list[tuple[date, Decimal]]:
     """
     righe = session.execute(select(
         Transaction.effective_on, Transaction.transaction_type, Transaction.account_name,
-        Transaction.destination_name, Transaction.amount,
+        Transaction.destination_name, Transaction.amount, Transaction.destination_amount,
     ).where(Transaction.goal == goal.name, REAL_MOVEMENT)).all()
     salvadanaio = normalized_name(goal.target_account)
     firmati: list[tuple[date, Decimal]] = []
@@ -2422,6 +2426,11 @@ def _movimenti_goal(session: Session, goal: Goal) -> list[tuple[date, Decimal]]:
             # Esce dal salvadanaio: stesso verso che il movimento ha sul saldo
             # del conto, cosi' il goal non puo' raccontare l'opposto dell'estratto.
             importo = source_effect(riga.transaction_type, riga.amount)
+        elif salvadanaio and normalized_name(riga.destination_name) == salvadanaio \
+                and normalized_name(riga.account_name) != salvadanaio:
+            # Entra nel salvadanaio: quello che ci arriva davvero, che fra due
+            # valute non e' quello che e' partito.
+            importo = Decimal(str(riga.destination_amount if riga.destination_amount is not None else riga.amount))
         else:
             importo = Decimal(str(riga.amount))
         firmati.append((riga.effective_on, importo))

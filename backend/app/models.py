@@ -361,6 +361,11 @@ class Transaction(Base):
     # movimenti. NULL vuol dire "non ne ha" - un giroconto, per esempio.
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(16, 2))
+    # Quanto arriva dall'altra parte, quando i due conti non parlano la stessa
+    # valuta: mille euro che escono possono essere novecentoventicinque franchi
+    # che entrano, e il cambio se lo tiene la banca. NULL vuol dire "lo stesso
+    # importo dell'uscita", che e' quello che succede fra conti in euro.
+    destination_amount: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
     account_type: Mapped[str | None] = mapped_column(String(80))
     account_name: Mapped[str | None] = mapped_column(String(255), index=True)
     destination_type: Mapped[str | None] = mapped_column(String(80))

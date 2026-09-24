@@ -44,9 +44,17 @@ def normalized_name(value: Any) -> str:
 
 
 def _movement_amounts(transaction: Any) -> tuple[Decimal, Decimal]:
-    """Un giroconto muove lo stesso importo su entrambi i conti."""
+    """Un giroconto muove lo stesso importo su entrambi i conti.
+
+    Fra due conti in valute diverse ne muove due: quello che esce e quello che
+    arriva, e il secondo se lo scrive il movimento. E' l'unico posto che decide
+    quanto entra dall'altra parte - i saldi per conto, la quadratura e le serie
+    passano tutti da qui - quindi un movimento senza secondo importo si comporta
+    come si e' sempre comportato, cifra per cifra.
+    """
     amount = money(_value(transaction, "amount"))
-    return amount, amount
+    arrival = _value(transaction, "destination_amount")
+    return amount, amount if arrival is None else money(arrival)
 
 
 def calculate_account_balance(starting_balance: Any, account_name: str, transactions: Iterable[Any]) -> Decimal:
