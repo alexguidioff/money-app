@@ -114,6 +114,16 @@ class ConUnBackup(unittest.TestCase):
         # Tutto lo schema: l'anteprima legge anche le regole di categorizzazione.
         Base.metadata.create_all(self.engine)
         self.session = Session(self.engine)
+        # Nessun test esce dalla macchina, e nessuno aspetta la pausa fra due
+        # richieste alla fonte. Il franco vale 0,95 euro: un numero tondo e
+        # inventato, scritto qui una volta per tutti i test che convertono.
+        pausa = mock.patch.object(main, "SOURCE_REQUEST_PAUSE_SECONDS", 0)
+        pausa.start()
+        self.addCleanup(pausa.stop)
+        fonte = mock.patch.object(main, "fetch_price_history",
+                                  return_value=[(date(2026, 1, 31), 0.95, "CHF")])
+        fonte.start()
+        self.addCleanup(fonte.stop)
 
     def tearDown(self) -> None:
         self.session.close()
@@ -318,14 +328,6 @@ class AnteprimaBackupTests(ConUnBackup):
 class SalvataggioBackupTests(ConUnBackup):
     """Il salvataggio: i conti che nascono, le categorie, il secondo import."""
 
-    def setUp(self) -> None:
-        super().setUp()
-        # La pausa fra due richieste alla fonte non fa aspettare nessuno, e
-        # nessun test esce dalla macchina: la fonte si sostituisce.
-        pausa = mock.patch.object(main, "SOURCE_REQUEST_PAUSE_SECONDS", 0)
-        pausa.start()
-        self.addCleanup(pausa.stop)
-
     def anteprima(self) -> dict:
         return asyncio.run(main.import_fastbudget_backup(
             UploadFile(filename="fastbudget.bak", file=BytesIO(self.percorso.read_bytes())),
@@ -367,11 +369,14 @@ class SalvataggioBackupTests(ConUnBackup):
         movimenti = self.session.scalars(select(Transaction)).all()
         dichiarati = {nome: valore for nome, valore, _, _ in CONTI}
         # "Vechio" non e' nel file: quello che l'app puo' dire di lui e' solo
-        # quello che le righe hanno mosso - settanta arrivati da Banca,
-        # venticinque usciti verso Franchi. E' un saldo a una gamba: le partenze
-        # e gli arrivi che il file non ha registrato non ci sono, e per questo
-        # sta fuori dal patrimonio.
-        dichiarati["Vechio"] = 45.00
+        # quello che le righe hanno mosso - settanta arrivati da Banca, e
+        # venticinque franchi usciti verso Franchi. Quei venticinque sono
+        # franchi: uscendo da un conto in euro valgono il cambio del giorno,
+        # 25 / 0,95 = 26,32, e contarli come euro lascerebbe sul conto un
+        # residuo che nessuno ha mai speso. E' un saldo a una gamba - le partenze
+        # e gli arrivi che il file non ha registrato non ci sono - e per questo
+        # Vechio sta fuori dal patrimonio.
+        dichiarati["Vechio"] = 43.68
         for nome, valore in dichiarati.items():
             conto = self.conti()[nome]
             self.assertEqual(Decimal(str(valore)).quantize(Decimal("0.01")),
@@ -386,6 +391,25 @@ class SalvataggioBackupTests(ConUnBackup):
         self.assertEqual([], esito["errors"])
         riga = self.session.scalar(select(Transaction).where(Transaction.source_row == 101))
         self.assertEqual(Decimal("30.00"), riga.amount)
+
+    def test_la_gamba_che_il_file_non_ha_si_ricava_al_cambio(self) -> None:
+        # Venticinque franchi arrivati da un conto che il file non ha piu': il
+        # file registra la gamba dell'arrivo, e la cifra che porta e' quella. La
+        # partenza - che il file non ha - si ricava al cambio del giorno, come
+        # l'app converte ogni movimento in un'altra valuta.
+        righe = self.anteprima()["transactions"]
+        entrata = [riga for riga in righe if riga.get("sourceRow") == 117][0]
+        self.assertEqual(25.00, entrata["destinationAmount"])
+        self.assertEqual(26.32, entrata["amount"])
+
+    def test_a_valute_uguali_la_riga_resta_quella_di_sempre(self) -> None:
+        # Due conti in euro e una gamba sola: la gamba che manca vale la stessa
+        # cifra, non c'e' niente da convertire, e il secondo importo non si
+        # scrive - vuoto vuol dire "lo stesso importo", che e' la verita'.
+        righe = self.anteprima()["transactions"]
+        uscita = [riga for riga in righe if riga.get("sourceRow") == 118][0]
+        self.assertEqual(40.00, uscita["amount"])
+        self.assertNotIn("destinationAmount", uscita)
 
     def test_il_giroconto_si_salva_con_i_due_importi(self) -> None:
         self.salva()
@@ -468,6 +492,11 @@ class SalvataggioBackupTests(ConUnBackup):
             esito = self.salva()
         self.assertEqual(13, esito["saved"])
         self.assertEqual(["CHF"], esito["fxMissing"])
+        # Senza il cambio non si inventa niente: la gamba che il file non ha
+        # porta la cifra del file, com'era prima di questa regola, e il
+        # movimento entra lo stesso.
+        riga = self.session.scalar(select(Transaction).where(Transaction.source_row == 117))
+        self.assertEqual((Decimal("25.00"), Decimal("25.00")), (riga.amount, riga.destination_amount))
 
 
 if __name__ == "__main__":

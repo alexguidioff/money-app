@@ -28,7 +28,7 @@ from .calculation_engine import (account_balances_series, calculate_account_bala
 from .categorization import PENDING_CATEGORY, applica, carica_regole, categoria_da_nome, scartate
 from .categorie import _prossima_posizione, gruppo_di_categoria, nome_di, nomi as nomi_categorie
 from .core_routes import (BASE_CURRENCY, GOAL_KINDS, MAX_SELEZIONE_MASSA, _cambi_per_valute,
-                          _cambio_al_giorno, _in_euro, account_currencies, benchmark_symbol,
+                          _cambio_al_giorno, _in_euro, _rate_on, account_currencies, benchmark_symbol,
                           display_currencies, fx_rates_by_month, fx_symbols, movimenti_per_saldi, num,
                           sync_savings_plan)
 from .database import Base, admin_engine, engine, get_session, set_default_user, current_user_id
@@ -397,7 +397,35 @@ def _doppione_mostrato(match, coppia: list) -> dict:
             "description": " + ".join(filter(None, (item.details for item in coppia))) if coppia else match.details}
 
 
-def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
+def _cambia(importo: Decimal, da: Any, a: Any, giorno: date | None,
+            cambi: dict[str, list[tuple[date, Decimal]]]) -> Decimal | None:
+    """L'importo da una valuta a un'altra al cambio del giorno, ai centesimi.
+
+    Il listino dice quante unita' di una valuta vale un euro, quindi si passa per
+    l'euro: si divide per il cambio della valuta di partenza e si moltiplica per
+    quello della valuta d'arrivo. Fra la stessa valuta il numero non si muove.
+
+    Senza il cambio di una delle due torna **None**, e non 1 come fa
+    `_cambio_al_giorno` nei totali: li' un movimento che sparisce da una somma e'
+    peggio di una conversione approssimata, mentre qui l'1 sarebbe proprio
+    l'errore che questa conversione corregge - un franco contato come un euro. Una
+    riga che non si sa convertire resta com'e', e si vede.
+    """
+    codice_da = str(da or BASE_CURRENCY).strip().upper()
+    codice_a = str(a or BASE_CURRENCY).strip().upper()
+    if giorno is None:
+        return None
+    partenza = (Decimal(1) if codice_da == BASE_CURRENCY
+                else _rate_on(cambi.get(codice_da) or [], giorno))
+    arrivo = (Decimal(1) if codice_a == BASE_CURRENCY
+              else _rate_on(cambi.get(codice_a) or [], giorno))
+    if not partenza or not arrivo:
+        return None
+    return (importo / partenza * arrivo).quantize(Decimal("0.01"))
+
+
+def statement_preview(raw_transactions: list[dict], session: Session, *,
+                      valute: dict[str, str] | None = None) -> dict:
     """Le righe lette da un estratto conto, con i possibili doppioni gia' segnati.
 
     Un doppione si riconosce da importo e data, non dalla descrizione: quella
@@ -410,6 +438,11 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
     Una spesa divisa si registra spesso in due movimenti (la propria parte e
     quella da farsi restituire): se nessun movimento ha l'importo della riga,
     vale anche una coppia dello stesso giorno e dello stesso conto che lo somma.
+
+    ``valute`` e' la valuta che ogni conto nominato avra' nell'app (nome
+    normalizzato come ``_chiave_conto``), e la passa solo l'import di un backup:
+    e' quello che serve a ricavare la gamba mancante di un giroconto fra due
+    valute diverse. Senza, questa funzione resta quella di sempre.
     """
     if not raw_transactions:
         raise HTTPException(422, detail="statementEmpty")
@@ -430,12 +463,41 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
     # chiude senza salvare.
     nomi_cat = nomi_categorie(session)
     id_di_nome = {nome.casefold(): identificativo for identificativo, nome in nomi_cat.items()}
+    # I cambi si leggono una volta per valuta, non una per riga, e solo se
+    # qualcuno ha detto le valute dei conti: per un estratto conto il dizionario
+    # resta vuoto e non si legge niente.
+    cambi = _cambi_per_valute(session, set(valute.values())) if valute else {}
     rows = []
     for tx in raw_transactions:
         occurred = tx.get("occurredOn")
         description = tx.get("details") or tx.get("description") or ""
         amount = abs(Decimal(str(tx.get("rawAmount", tx.get("amount", 0)))))
         day = date.fromisoformat(occurred) if occurred else None
+        tipo = tx.get("transactionType", "Expenses")
+        arrivo = tx.get("destinationAmount")
+        # Un giroconto che il file registra da una gamba sola: la cifra che c'e'
+        # e' quella della gamba che il file ha, e l'altra si ricava al cambio del
+        # giorno. Si ricava **qui**, e non al salvataggio, perche' l'anteprima e'
+        # quella che si approva: il numero mostrato dev'essere il numero scritto.
+        # A valute uguali non c'e' niente da ricavare: li' "stesso importo da
+        # tutte e due le parti" e' la verita'.
+        if cambi and tipo in SPOSTAMENTI and day is not None:
+            # La valuta di un conto che il file nomina e che l'anteprima non
+            # conosce non si inventa: senza sapere le due valute la conversione
+            # non si sa fare, e quel che resta e' la riga di oggi.
+            da = (valute or {}).get(_chiave_conto(tx.get("accountName")))
+            a = (valute or {}).get(_chiave_conto(tx.get("destinationName")))
+            if da and a and da != a:
+                if tx.get("amount") is None and arrivo is not None:
+                    # La partenza e' la gamba che manca: quel che e' uscito e' il
+                    # valore, nella valuta della partenza, di quel che e' arrivato.
+                    ricavato = _cambia(Decimal(str(arrivo)), a, da, day, cambi)
+                    if ricavato is not None:
+                        amount = ricavato
+                elif tx.get("amount") is not None and arrivo is None:
+                    ricavato = _cambia(amount, da, a, day, cambi)
+                    if ricavato is not None:
+                        arrivo = ricavato
         origine = gia_importate.get(tx.get("sourceRow"))
         if origine is not None:
             match, coppia = origine, [origine]
@@ -443,7 +505,6 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
             match, coppia = doppioni.abbina(day, amount, description, tx.get("transactionType"))
         # Nessuno ha scelto a mano questa categoria: se una regola decide, la
         # categoria resta automatica e il pattern dice da quale regola viene.
-        tipo = tx.get("transactionType", "Expenses")
         dichiarata = (tx.get("category") or "").strip()
         automatica = not dichiarata or dichiarata.casefold() == PENDING_CATEGORY.casefold()
         decisione = applica(regole, description, tipo, amount)
@@ -480,13 +541,18 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
         if origine is not None:
             riga["alreadyImported"] = True
         # Quello che sa solo il file di FastBudget: la riga d'origine (per non
-        # importarla due volte), il padre sotto cui far nascere una categoria che
-        # nell'app non esiste ancora, e il secondo importo di un trasferimento
-        # passato per il cambio. Un estratto conto non li ha, e la riga resta
+        # importarla due volte) e il padre sotto cui far nascere una categoria che
+        # nell'app non esiste ancora. Un estratto conto non li ha, e la riga resta
         # quella di prima.
-        for campo in ("sourceRow", "categoryParent", "destinationAmount"):
+        for campo in ("sourceRow", "categoryParent"):
             if tx.get(campo) is not None:
                 riga[campo] = tx[campo]
+        # Il secondo importo di un trasferimento: quello del file quando c'e', e
+        # quello ricavato al cambio quando la gamba che il file registra e' una
+        # sola. E' l'unico numero della riga che non viene dal file, ed e' quello
+        # che il salvataggio scrive: qui si vede, e qui si approva.
+        if arrivo is not None:
+            riga["destinationAmount"] = float(arrivo)
         rows.append(riga)
     # Le regole che non si sono potute compilare: l'interfaccia le segnala,
     # perche' altrimenti sarebbero regole che non fanno niente e non lo dicono.
@@ -533,8 +599,27 @@ async def import_fastbudget_backup(file: UploadFile = File(...), tz: str = "",
             temp_file.write(content)
             temp_file.flush()
             letto = await asyncio.to_thread(leggi_backup, temp_file.name, tz)
-        anteprima = statement_preview(letto["transactions"], session)
-        anteprima["accounts"] = _conti_in_anteprima(session, letto["accounts"])
+        # I conti si risolvono **prima** dell'anteprima, non dopo: la valuta che
+        # ogni conto avra' nell'app e' quello che serve a ricavare la gamba
+        # mancante di un giroconto, e l'anteprima la deve sapere mentre legge. Un
+        # conto che esiste gia' vale con la valuta che ha davvero - e' quella che
+        # il salvataggio scrivera' sulla riga.
+        conti = _conti_in_anteprima(session, letto["accounts"])
+        valute = {_chiave_conto(conto["name"]): (conto.get("existingCurrency") or conto["currency"])
+                  for conto in conti}
+        # I cambi si chiedono alla fonte adesso, prima di leggere le righe: senza,
+        # un primo import di una valuta mai vista non saprebbe convertire, e
+        # l'anteprima mostrerebbe un numero diverso da quello che l'app scriverebbe
+        # al salvataggio. Se la fonte non risponde la conversione salta e le righe
+        # restano quelle di oggi - l'import non si perde per un cambio mancante.
+        try:
+            _scarica_cambi(session, set(valute.values()))
+            session.commit()
+        except Exception:  # noqa: BLE001
+            logger.warning("Cambi non scaricati prima dell'anteprima", exc_info=True)
+            session.rollback()
+        anteprima = statement_preview(letto["transactions"], session, valute=valute)
+        anteprima["accounts"] = conti
         return anteprima
     except HTTPException:
         raise

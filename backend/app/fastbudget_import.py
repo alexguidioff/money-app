@@ -407,6 +407,13 @@ def _accoppia(righe: list[dict], conti_del_file: dict[str, dict[str, Any]]) -> l
             # La gamba di arrivo e' gia' dentro la riga di uscita: da sola
             # sarebbe lo stesso giro di soldi contato due volte.
             continue
+        # Quante delle due gambe il file registra. Quando ne registra una sola, la
+        # cifra e' quella del conto su cui l'ha scritta, e dall'altra parte non si
+        # copia: quella gamba si ricava al cambio del giorno, e ricavarla e' un
+        # lavoro dell'anteprima (che i cambi li puo' leggere). Copiarla qui vuol
+        # dire scrivere un franco come se fosse un euro, ed e' il conto di
+        # passaggio che poi legge un saldo che somma due valute.
+        manca_partenza = False
         arrivo = abbinate.get(riga["_id"])
         if arrivo is not None:
             riga["destinationAmount"] = arrivo["rawAmount"]
@@ -414,15 +421,19 @@ def _accoppia(righe: list[dict], conti_del_file: dict[str, dict[str, Any]]) -> l
         elif riga["_entrata"]:
             # L'arrivo c'e' e la partenza no: i soldi sono entrati da un conto che
             # il file non ha piu'. Il movimento si scrive lo stesso, con la
-            # controparte al posto di partenza.
+            # controparte al posto di partenza, e la cifra del file - che e'
+            # quella che e' arrivata - resta dalla parte dell'arrivo.
             riga["accountName"], riga["destinationName"] = riga["_altro"], riga["_conto"]
-            riga["destinationAmount"] = None
+            riga["destinationAmount"] = riga["rawAmount"]
+            manca_partenza = True
         else:
             riga["destinationName"] = riga["_altro"]
             riga["destinationAmount"] = None
         # Su un trasferimento l'importo e' positivo da tutte e due le parti: il
-        # verso lo dice il campo, non il segno.
-        riga["amount"] = riga["rawAmount"]
+        # verso lo dice il campo, non il segno. Dove la partenza manca, resta
+        # vuota invece di portare la cifra dell'arrivo: vuoto dice che quella
+        # gamba non c'e', un numero sbagliato dice il falso.
+        riga["amount"] = None if manca_partenza else riga["rawAmount"]
         riga["type"] = "transfer"
         riga["transactionType"] = "Transfers"
         riga["category"] = CATEGORIA_TRASFERIMENTO

@@ -15,15 +15,23 @@ from __future__ import annotations
 
 import logging
 import os
+from decimal import Decimal
 
 from sqlalchemy import text, inspect
 from sqlalchemy.engine import Engine
+
+from .core_routes import BASE_CURRENCY, fx_symbols
 
 logger = logging.getLogger("money.migrations")
 
 
 def tracked_changes(engine: Engine) -> None:
-    """Applies tracked schema changes without rewriting movements or balances."""
+    """Applies tracked schema changes without rewriting movements or balances.
+
+    L'unica eccezione sono i giroconti a una gamba sola che l'import di un backup
+    scriveva con la stessa cifra da tutte e due le parti: li' la gamba che manca
+    si ricava al cambio del giorno, e il saldo del conto d'arrivo non si muove.
+    """
     with engine.begin() as conn:
         tx_cols = {c["name"] for c in inspect(conn).get_columns("transactions")}
         if "counts_in_budget" not in tx_cols:
@@ -282,6 +290,63 @@ def tracked_changes(engine: Engine) -> None:
                     if colonna in presenti:
                         conn.execute(text(f"ALTER TABLE {tabella} DROP COLUMN {colonna}"))
 
+        # --- La gamba mancante di un giroconto ------------------------------
+        # L'import di un backup leggeva un trasferimento fra due valute diverse
+        # da una gamba sola - quella che il file registra - e scriveva la stessa
+        # cifra da tutte e due le parti. Cosi' il conto di passaggio leggeva una
+        # somma di unita' diverse: franchi contati come euro. Qui si ricava la
+        # gamba che il file non aveva, al cambio del giorno del movimento, come
+        # fa l'anteprima (``_cambia``, in ``main.py``: stessa aritmetica, stesso
+        # cambio - se una delle due cambia, l'altra mente).
+        #
+        # Tocca solo le righe che l'import di un backup ha scritto con una gamba
+        # sola. ``source_row`` e' la firma di quell'import: un movimento a mano,
+        # un estratto conto o un ripristino non ce l'hanno, e senza quella prova
+        # una riga di uscita sola registrata apposta verrebbe "corretta"
+        # inventando un numero che nessuno ha mai scritto.
+        #
+        # Idempotente come il resto del file: dopo la prima volta
+        # ``destination_amount`` non e' piu' vuoto e non trova piu' niente. Una
+        # riga a cui manca ancora il cambio si salta, e si riprende al primo
+        # avvio in cui il cambio c'e'.
+        colonne_tx = _colonne_di(conn, "transactions")
+        if ({"user_id", "source_row", "destination_amount"} <= colonne_tx
+                and inspect(conn).has_table("market_prices")):
+            una_gamba = conn.execute(text(
+                "SELECT t.id, t.occurred_on, t.amount, "
+                "COALESCE(part.currency, :base) AS valuta_partenza, "
+                "COALESCE(dest.currency, :base) AS valuta_arrivo "
+                "FROM transactions t "
+                "JOIN accounts part ON part.name = t.account_name AND part.user_id = t.user_id "
+                "JOIN accounts dest ON dest.name = t.destination_name AND dest.user_id = t.user_id "
+                "WHERE t.transaction_type = 'Transfers' "
+                "AND t.destination_amount IS NULL AND t.source_row IS NOT NULL "
+                "AND COALESCE(part.currency, :base) <> COALESCE(dest.currency, :base)"
+            ), {"base": BASE_CURRENCY}).mappings().all()
+            corrette = 0
+            for riga in una_gamba:
+                if riga["amount"] is None:
+                    continue
+                partenza = _cambio_del_giorno(conn, riga["valuta_partenza"], riga["occurred_on"])
+                arrivo = _cambio_del_giorno(conn, riga["valuta_arrivo"], riga["occurred_on"])
+                if not partenza or not arrivo:
+                    continue
+                # La cifra del file e' quella del conto su cui il file l'aveva
+                # registrata - per queste righe, l'arrivo - e li' resta. La
+                # partenza prende il suo valore in euro, arrotondato ai
+                # centesimi come ogni importo dell'app.
+                cifra = Decimal(str(riga["amount"]))
+                # I due importi viaggiano come testo e il database li converte
+                # nella sua cifra decimale: Decimal non lo accetta ogni motore
+                # come parametro, e la colonna e' comunque decimal(16,2).
+                conn.execute(text("UPDATE transactions SET destination_amount = CAST(:cifra AS DECIMAL(16,2)), "
+                                  "amount = CAST(:nuovo AS DECIMAL(16,2)) WHERE id = :id"),
+                             {"id": riga["id"], "cifra": str(cifra),
+                              "nuovo": str((cifra / arrivo * partenza).quantize(Decimal("0.01")))})
+                corrette += 1
+            if corrette:
+                logger.info("Giroconti a una gamba corretti: %s", corrette)
+
 # --- I due alberi (PIANO-B3b) ------------------------------------------
 # A cosa servono i soldi, e per quali soldi. La voce della mappa e' il nome che
 # la categoria ha gia' ("Travels" e non "Travel", "Study" e non "Education"):
@@ -472,6 +537,32 @@ def _sposta_le_entrate(conn, user_id: int) -> None:
         conn.execute(text("UPDATE transactions SET category_id = :a WHERE user_id = :u "
                           "AND transaction_type = 'Income' AND category_id = :p"),
                      {"a": id_arrivo, "p": id_partenza, "u": user_id})
+
+
+def _cambio_del_giorno(conn, valuta: str, giorno) -> Decimal | None:
+    """Quante unita' della valuta vale 1 euro a quella data, lette dal listino.
+
+    E' ``_rate_on`` di ``core_routes`` scritto in SQL: l'ultimo prezzo noto non
+    successivo al giorno, che e' il cambio con cui l'app converte quel movimento
+    nei suoi totali. Qui la riga che serve la sceglie il database, perche' la
+    migrazione non passa dall'ORM e non ha una serie da caricare in memoria.
+    ``None`` quando il cambio non c'e': chi chiama salta la riga invece di
+    contare un franco come un euro.
+    """
+    codice = str(valuta or BASE_CURRENCY).strip().upper()
+    if codice == BASE_CURRENCY:
+        return Decimal(1)
+    for symbol, inverted in fx_symbols(codice):
+        prezzo = conn.execute(text(
+            "SELECT price FROM market_prices WHERE symbol = :symbol AND price > 0 "
+            "AND observed_on <= :giorno ORDER BY observed_on DESC LIMIT 1"),
+            {"symbol": symbol, "giorno": giorno}).scalar()
+        if prezzo is not None and Decimal(str(prezzo)) > 0:
+            cambio = Decimal(str(prezzo))
+            # Le cripto si quotano al contrario ("euro per bitcoin"): il numero
+            # da usare e' l'inverso, come in `fx_rates_by_month`.
+            return (Decimal(1) / cambio) if inverted else cambio
+    return None
 
 
 def _colonne_di(conn, tabella: str) -> set[str]:

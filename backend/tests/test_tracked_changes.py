@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from app.categorie import nomi as nomi_categorie
 from app.database import Base
-from app.models import Account, BudgetPlan, Transaction
+from app.models import Account, BudgetPlan, MarketPrice, Transaction
 from app import main, core_routes
 from app.transaction_rules import missing_fields
 from app.interchange import build_export
@@ -196,3 +196,89 @@ class TrackedChangesTests(unittest.TestCase):
             self.assertNotIn("account_type", {row[1] for row in conn.execute(text("PRAGMA table_info(accounts)"))})
             self.assertEqual(conn.execute(text("SELECT amount, counts_in_budget, refund_of_id FROM transactions")).one(), (123.45,1,None))
         engine.dispose()
+
+
+class GirocontiAUnaGambaTests(unittest.TestCase):
+    """La correzione dei giroconti che l'import di un backup scrisse a una gamba.
+
+    Il lettore prendeva il trasferimento da una gamba sola e scriveva la stessa
+    cifra da tutte e due le parti: fra due valute diverse il conto di passaggio
+    leggeva una somma di unita' diverse. Qui si ricava la gamba mancante al
+    cambio del giorno, e la correzione passa una volta sola.
+    """
+
+    def setUp(self):
+        self.engine = create_engine("sqlite://")
+        Base.metadata.create_all(self.engine)
+        self.s = Session(self.engine)
+        self.s.add_all([Account(name="Banca", source_group="bank", currency="EUR", starting_balance=0),
+                        Account(name="Franchi", source_group="bank", currency="CHF", starting_balance=0),
+                        Account(name="Conto2", source_group="bank", currency="EUR", starting_balance=0)])
+        self.s.commit()
+
+    def tearDown(self):
+        self.s.close()
+        self.engine.dispose()
+
+    def cambio(self, codice, giorno, valore):
+        self.s.add(MarketPrice(symbol=f"EUR{codice}=X", observed_on=giorno, price=Decimal(valore)))
+        self.s.commit()
+
+    def giroconto(self, **changes):
+        values = dict(occurred_on=date(2026, 4, 2), effective_on=date(2026, 4, 2),
+                      transaction_type="Transfers", category_id=None, amount=Decimal("25.00"),
+                      account_name="Banca", destination_name="Franchi", currency="EUR",
+                      source_row=117)
+        values.update(changes)
+        riga = Transaction(**values)
+        self.s.add(riga)
+        self.s.commit()
+        return riga
+
+    def correggi(self):
+        tracked_changes(self.engine)
+        self.s.expire_all()
+
+    def letta(self, identificativo):
+        return self.s.get(Transaction, identificativo)
+
+    def test_la_gamba_mancante_si_ricava_al_cambio_del_giorno(self):
+        self.cambio("CHF", date(2026, 4, 1), "0.95")
+        riga = self.giroconto()
+        self.correggi()
+        # La cifra del file era quella dell'arrivo - 25,00 franchi - e li'
+        # resta; la partenza, che il file non registra, vale 25 / 0,95 = 26,32.
+        letta = self.letta(riga.id)
+        self.assertEqual((Decimal("26.32"), Decimal("25.00")), (letta.amount, letta.destination_amount))
+
+    def test_la_correzione_non_ripassa(self):
+        self.cambio("CHF", date(2026, 4, 1), "0.95")
+        riga = self.giroconto()
+        self.correggi()
+        prima = (self.letta(riga.id).amount, self.letta(riga.id).destination_amount)
+        self.correggi()
+        dopo = self.letta(riga.id)
+        self.assertEqual(prima, (dopo.amount, dopo.destination_amount))
+
+    def test_quello_che_non_e_una_gamba_sola_di_un_import_resta_intatto(self):
+        self.cambio("CHF", date(2026, 4, 1), "0.95")
+        # A valute uguali la cifra da tutte e due le parti e' la verita', e il
+        # secondo importo resta vuoto.
+        uguali = self.giroconto(destination_name="Conto2")
+        # Un movimento scritto a mano, un estratto conto, un ripristino: la
+        # riga d'origine non c'e', e senza quella prova la stessa forma di riga
+        # potrebbe essere un'uscita sola registrata apposta.
+        a_mano = self.giroconto(source_row=None)
+        # Il cambio del franco non c'e' ancora: si salta, e si riprende al primo
+        # avvio in cui c'e'.
+        senza_cambio = self.giroconto(amount=Decimal("30.00"), occurred_on=date(2025, 1, 2),
+                                      effective_on=date(2025, 1, 2))
+        # Una riga che il secondo importo ce l'ha gia' non e' una gamba sola.
+        entrambe = self.giroconto(amount=Decimal("40.00"), destination_amount=Decimal("38.00"))
+        self.correggi()
+        for riga, atteso in ((uguali, (Decimal("25.00"), None)),
+                             (a_mano, (Decimal("25.00"), None)),
+                             (senza_cambio, (Decimal("30.00"), None)),
+                             (entrambe, (Decimal("40.00"), Decimal("38.00")))):
+            letta = self.letta(riga.id)
+            self.assertEqual(atteso, (letta.amount, letta.destination_amount), riga.id)
