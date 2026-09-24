@@ -34,7 +34,7 @@ from .models import (Account, AccountValuation, AppSetting, BudgetPlan, Category
                      LiabilityProfile, LiabilityTransactionDetail, LookupOption, Note, Transaction, TransactionEvent,
                      TransactionLedgerLink)
 
-FORMAT_VERSION = "1.12"
+FORMAT_VERSION = "1.13"
 
 
 def _cell(value: Any) -> Any:
@@ -59,7 +59,7 @@ SHEETS: dict[str, tuple[Any, list[str]]] = {
     # Le categorie vengono prima di chi le nomina: il foglio si legge da solo e
     # un padre puo' stare in una riga sotto il figlio.
     "Categorie": (Category, ["id", "parent_id", "name", "position", "active", "scope", "essenziale"]),
-    "Conti": (Account, ["id", "source_group", "name", "starting_balance", "current_balance", "status",
+    "Conti": (Account, ["id", "source_group", "name", "currency", "starting_balance", "current_balance", "status",
                         "counts_in_net_worth", "is_active", "is_liquid", "notes", "needs_manual_valuation", "is_broker"]),
     "ValutazioniConti": (AccountValuation, ["id", "account_id", "observed_on", "value", "notes"]),
     "Debiti": (LiabilityProfile, ["id", "account_id", "debt_type", "original_principal", "annual_rate",

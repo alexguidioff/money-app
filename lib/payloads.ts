@@ -91,6 +91,9 @@ export function accountPayload(data: FormData, modifica: boolean) {
   return {
     name: String(data.get('name') || '').trim(),
     source_group: String(data.get('source_group') || ''),
+    // Vuoto vale euro: e' quello che erano i conti prima che la valuta
+    // esistesse, e un campo svuotato non deve cambiare un saldo.
+    currency: String(data.get('currency') || 'EUR').trim().toUpperCase() || 'EUR',
     starting_balance: Number(data.get('starting_balance') || 0),
     notes: String(data.get('notes') || '').trim() || null,
     counts_in_net_worth: data.get('counts_in_net_worth') !== null,

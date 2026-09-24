@@ -121,6 +121,11 @@ class Account(Base):
     user_id: Mapped[int] = mapped_column(Integer, index=True, default=current_user_id)
     source_group: Mapped[str] = mapped_column(String(40), index=True)
     name: Mapped[str] = mapped_column(String(255), index=True)
+    # La valuta in cui il conto tiene i suoi soldi. Il saldo di un conto in
+    # franchi e' in franchi, e sommarlo agli altri senza convertirlo darebbe un
+    # numero che non vuol dire niente: e' il motivo per cui questa colonna
+    # esiste. Euro e' il valore dei conti che c'erano prima.
+    currency: Mapped[str] = mapped_column(String(3), default="EUR", server_default=text("'EUR'"))
     starting_balance: Mapped[Decimal] = mapped_column(Numeric(16, 2), default=0)
     current_balance: Mapped[Decimal] = mapped_column(Numeric(16, 2), default=0)
     status: Mapped[str | None] = mapped_column(String(80))

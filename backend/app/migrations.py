@@ -68,6 +68,10 @@ def tracked_changes(engine: Engine) -> None:
         if "needs_manual_valuation" not in account_cols:
             conn.execute(text(
                 "ALTER TABLE accounts ADD COLUMN needs_manual_valuation BOOLEAN NOT NULL DEFAULT false"))
+        if "currency" not in account_cols:
+            # I conti che c'erano erano tutti in euro: il default li lascia
+            # esattamente com'erano, e nessun numero gia' mostrato si muove.
+            conn.execute(text("ALTER TABLE accounts ADD COLUMN currency VARCHAR(3) NOT NULL DEFAULT 'EUR'"))
         if "source_group" in account_cols:
             # Il gruppo 'financial' voleva dire due cose insieme: "e' un
             # investimento" e "il suo valore lo dice il ledger". La prima e'

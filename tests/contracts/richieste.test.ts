@@ -70,6 +70,10 @@ const richieste = [
   { endpoint: 'account', case: 'conto broker', body: accountPayload(modulo({
     name: 'Nuovo broker', source_group: 'asset', starting_balance: '0', notes: '', is_broker: 'on', counts_in_net_worth: 'on' }), false) },
   { endpoint: 'account', case: 'banca', body: accountPayload(modulo({ name: 'Conto nuovo', source_group: 'bank', starting_balance: '150.5', counts_in_net_worth: 'on' }), false) },
+  // La valuta arriva dal campo scritto in minuscolo: il gestore vero la
+  // accetta solo maiuscola, e il giro completo lo verifica qui.
+  { endpoint: 'account', case: 'conto in franchi', body: accountPayload(modulo({
+    name: 'Conto CHF', source_group: 'bank', currency: 'chf', starting_balance: '0', counts_in_net_worth: 'on' }), false) },
   { endpoint: 'goal', case: 'accumulo verso un conto', body: goalPayload(modulo({
     name: 'Viaggio', starting_amount: '100', target_amount: '3000', start_date: oggi, target_date: annoProssimo,
     kind: 'contributions', target_account: 'Banca' })) },

@@ -32,6 +32,14 @@ type I18nContextValue = {
   locale: string;
   formatEuro: (value: number) => string;
   formatCompactEuro: (value: number) => string;
+  /**
+   * Una cifra nella valuta che le appartiene.
+   *
+   * Il saldo di un conto in franchi e' in franchi: mostrarlo come euro sarebbe
+   * un numero sbagliato con la forma giusta. I totali invece si mostrano sempre
+   * in euro, e per quelli restano `formatEuro` e `formatCompactEuro`.
+   */
+  formatMoney: (value: number, currency: string) => string;
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
   /**
    * Le percentuali si scrivono in un modo solo: un decimale al massimo, col
@@ -130,6 +138,18 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     [locale],
   );
 
+  const formatMoney = useCallback((value: number, currency: string) => {
+    const codice = (currency || 'EUR').trim().toUpperCase();
+    try {
+      return new Intl.NumberFormat(locale, { style: 'currency', currency: codice, minimumFractionDigits: 2 }).format(value);
+    } catch {
+      // Intl conosce solo le valute con un codice ISO: una sigla come BTC lo fa
+      // esplodere, e una pagina che si rompe per un'etichetta e' peggio di una
+      // cifra con la sigla accanto.
+      return `${new Intl.NumberFormat(locale, { minimumFractionDigits: 2 }).format(value)} ${codice}`;
+    }
+  }, [locale]);
+
   const formatNumber = useCallback(
     (value: number, options?: Intl.NumberFormatOptions) => new Intl.NumberFormat(locale, options).format(value),
     [locale],
@@ -181,8 +201,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     [monthNamesShort, lang]);
 
   const value = useMemo(
-    () => ({ lang, setLang, t, locale, formatEuro, formatCompactEuro, formatNumber, formatPercentRatio, formatPercentPoints, formatPercentNumber, formatDate, monthNames, monthNamesShort, formatPeriodLabel }),
-    [lang, setLang, t, locale, formatEuro, formatCompactEuro, formatNumber, formatPercentRatio, formatPercentPoints, formatPercentNumber, formatDate, monthNames, monthNamesShort, formatPeriodLabel],
+    () => ({ lang, setLang, t, locale, formatEuro, formatCompactEuro, formatMoney, formatNumber, formatPercentRatio, formatPercentPoints, formatPercentNumber, formatDate, monthNames, monthNamesShort, formatPeriodLabel }),
+    [lang, setLang, t, locale, formatEuro, formatCompactEuro, formatMoney, formatNumber, formatPercentRatio, formatPercentPoints, formatPercentNumber, formatDate, monthNames, monthNamesShort, formatPeriodLabel],
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

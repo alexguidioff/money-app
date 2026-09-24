@@ -27,8 +27,8 @@ from .calculation_engine import (account_balances_series, calculate_account_bala
                                  normalized_name, stato_debito_registrato)
 from .categorization import PENDING_CATEGORY, applica, carica_regole, categoria_da_nome, scartate
 from .categorie import gruppo_di_categoria, nome_di, nomi as nomi_categorie
-from .core_routes import (GOAL_KINDS, MAX_SELEZIONE_MASSA, benchmark_symbol, display_currencies,
-                          fx_symbols, movimenti_per_saldi, num, sync_savings_plan)
+from .core_routes import (GOAL_KINDS, MAX_SELEZIONE_MASSA, account_currencies, benchmark_symbol,
+                          display_currencies, fx_symbols, movimenti_per_saldi, num, sync_savings_plan)
 from .database import Base, admin_engine, engine, get_session, set_default_user, current_user_id
 from .migrations import accendi_isolamento, aggiungi_colonna_utente, tracked_changes
 from .transaction_rules import (REAL_MOVEMENT, BUDGET_MOVEMENT, SPOSTAMENTI, TIPI_MOVIMENTO,
@@ -1359,6 +1359,10 @@ def delete_goal(goal_id: int, session: Session = Depends(get_session)):
 class AccountPayload(BaseModel):
     name: str
     source_group: str
+    # La valuta del conto. Assente vale euro: e' quello che erano tutti i conti
+    # prima che la colonna esistesse, e un campo nuovo non deve cambiare il
+    # significato di un saldo che nessuno ha toccato.
+    currency: str = "EUR"
     starting_balance: float = 0
     # False per i conti che tracciano un accantonamento: il denaro sta gia'
     # altrove, contarlo qui lo conterebbe due volte.
@@ -1372,6 +1376,21 @@ class AccountPayload(BaseModel):
     needs_manual_valuation: bool = False
     # Il conto dove stanno i titoli: e' li' che puo' puntare un Investment.
     is_broker: bool = False
+
+
+def _valuta(codice: str | None) -> str:
+    """Il codice valuta del conto, in maiuscolo.
+
+    Tre lettere o niente: una valuta che nessuno sa leggere e' peggio di un
+    rifiuto, perche' il saldo finirebbe in un totale convertito con un cambio
+    che non esiste. Vuoto vale euro, come i conti che c'erano prima.
+    """
+    pulito = (codice or "").strip().upper()
+    if not pulito:
+        return "EUR"
+    if len(pulito) != 3 or not pulito.isalpha():
+        raise HTTPException(status_code=422, detail="accountCurrencyInvalid")
+    return pulito
 
 
 def _liquidita_predefinita(payload: AccountPayload) -> bool:
@@ -1483,6 +1502,7 @@ def _account_to_dict(account: Account) -> dict[str, Any]:
         "id": account.id,
         "name": account.name,
         "group": account.source_group,
+        "currency": account.currency or "EUR",
         "startingBalance": float(account.starting_balance or 0),
         "currentBalance": float(account.current_balance or 0),
         "countsInNetWorth": account.counts_in_net_worth,
@@ -1510,6 +1530,7 @@ def create_account(payload: AccountPayload, session: Session = Depends(get_sessi
     account = Account(
         source_group=payload.source_group,
         name=name,
+        currency=_valuta(payload.currency),
         starting_balance=starting,
         current_balance=starting,
         status=None,
@@ -1554,6 +1575,11 @@ def update_account(account_id: int, payload: AccountPayload, session: Session = 
         raise HTTPException(status_code=409, detail="accountDuplicate")
     account.source_group = payload.source_group
     account.name = name
+    # Cambiare valuta e' quasi sempre la correzione di una valuta dichiarata
+    # male subito dopo: i movimenti registrati prima hanno ancora la vecchia, e
+    # finche' non vengono riallineati il saldo del conto e' la somma di due
+    # valute diverse. Il riallineamento arriva con la valuta dei movimenti.
+    account.currency = _valuta(payload.currency)
     account.counts_in_net_worth = payload.counts_in_net_worth
     account.is_active = payload.is_active
     account.is_liquid = _liquidita_predefinita(payload)
@@ -3446,8 +3472,9 @@ def backfill_price_history(years: int = 10, session: Session = Depends(get_sessi
             stored.append(benchmark)
 
     # Oltre alle valute delle quotazioni servono quelle in cui si legge il
-    # patrimonio: senza il loro storico la conversione mese per mese non si fa.
-    for currency in sorted(currencies | set(display_currencies(session))):
+    # patrimonio e quelle in cui sono tenuti i conti: senza il loro storico la
+    # conversione mese per mese non si fa, e un conto in franchi non si somma.
+    for currency in sorted(currencies | set(display_currencies(session)) | set(account_currencies(session))):
         last_error = "unexpected"
         for fx_symbol, _ in fx_symbols(currency):
             time.sleep(SOURCE_REQUEST_PAUSE_SECONDS)
@@ -3552,7 +3579,7 @@ def refresh_instrument_quotes(force: bool = False, session: Session = Depends(ge
             errors.append({"instrument": instrument.name, "symbol": symbol,
                            "code": getattr(exc, "code", "unexpected"), "detail": str(exc)})
 
-    for currency in sorted(currencies | set(display_currencies(session))):
+    for currency in sorted(currencies | set(display_currencies(session)) | set(account_currencies(session))):
         last_error = None
         for fx_symbol, _ in fx_symbols(currency):
             try:

@@ -329,6 +329,9 @@ export type Account = {
   id: number;
   name: string;
   group: 'bank' | 'asset' | 'liability' | 'financial';
+  // In che soldi e' `value`. Il saldo di un conto in franchi si legge in
+  // franchi; i totali della pagina restano in euro.
+  currency: string;
   // Quanto vale oggi: lo stesso numero della pagina Patrimonio, debiti
   // positivi compresi. `calculatedBalance` risponde a un'altra domanda -
   // cosa dicono i movimenti - e serve solo alla riconciliazione.
@@ -3216,6 +3219,7 @@ function MoneyDashboardInner() {
                   <option value="asset">{t('groupAsset')}</option>
                   <option value="liability">{t('groupLiability')}</option>
                 </select></label>
+                <label htmlFor="account-currency" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldCurrency')}<Input id="account-currency" name="currency" maxLength={3} defaultValue={conto?.currency ?? 'EUR'} className="h-10 w-24 bg-white uppercase" /><span className="block pt-1 font-normal leading-5 text-[#5e6c68]">{t('accountCurrencyHint')}</span></label>
                 <label htmlFor="account-balance" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldInitialBalance')}<Input id="account-balance" name="starting_balance" type="number" step="0.01" defaultValue={conto ? String(conto.startingBalance) : '0'} className="h-10 bg-white" />{accountGroup === 'liability' && <span className="block pt-1 font-normal leading-5 text-[#5e6c68]">{t('initialBalanceSignHint')}</span>}</label>
                 <label htmlFor="account-notes" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('note')}<textarea id="account-notes" name="notes" defaultValue={conto?.notes ?? ''} className="min-h-20 w-full rounded-lg border border-input bg-white p-2.5 text-sm" /></label>
                 <label className="flex items-center gap-2.5 text-xs font-medium text-[#52615d]"><input type="checkbox" name="counts_in_net_worth" defaultChecked={conto ? conto.countsInNetWorth !== false : true} className="size-4 accent-[var(--money-primary)]" />{t('fieldCountsInNetWorth')}</label>
@@ -6600,7 +6604,7 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
   onValuations: (account: Account) => void;
   onDelete: (account: Account) => void;
 }) {
-  const { t, formatEuro, formatPercentNumber } = useI18n();
+  const { t, formatEuro, formatMoney, formatPercentNumber } = useI18n();
   const hiddenCount = totalCount - items.length;
   return (
     <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
@@ -6627,7 +6631,7 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
       {expanded && (items.length === 0 ? (
         <p className="border-t border-black/5 px-5 pt-3 text-xs text-[#5e6c68]">{t('accountsAllHiddenZero')}</p>
       ) : (
-        <CardContent className="divide-y divide-black/5 border-t border-black/5 pt-2">{items.map((account) => { const valore = account.value; const share = account.countsInNetWorth === false || !netWorth ? null : Math.abs(valore) / Math.abs(netWorth) * 100; return <div key={account.id} className="py-3.5"><div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-[#edf0ed] text-[#4e6c64]"><Landmark className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{account.name}</p>{account.notes && <p className="mt-0.5 line-clamp-2 text-xs text-[#5e6c68]">{account.notes}</p>}</div><div className="text-right"><p className="text-sm font-semibold tabular-nums">{formatEuro(valore)}</p><p title={t('netWorthShareExplanation')} className="text-[11px] text-[#5e6c68]">{share !== null ? t('netWorthShare', { percent: formatPercentNumber(share) })
+        <CardContent className="divide-y divide-black/5 border-t border-black/5 pt-2">{items.map((account) => { const valore = account.value; const share = account.countsInNetWorth === false || !netWorth ? null : Math.abs(valore) / Math.abs(netWorth) * 100; return <div key={account.id} className="py-3.5"><div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-[#edf0ed] text-[#4e6c64]"><Landmark className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{account.name}</p>{account.notes && <p className="mt-0.5 line-clamp-2 text-xs text-[#5e6c68]">{account.notes}</p>}</div><div className="text-right"><p className="text-sm font-semibold tabular-nums">{formatMoney(valore, account.currency ?? 'EUR')}</p><p title={t('netWorthShareExplanation')} className="text-[11px] text-[#5e6c68]">{share !== null ? t('netWorthShare', { percent: formatPercentNumber(share) })
                     : account.countsInNetWorth === false ? t('accountOutsideNetWorth') : '—'}</p></div>{azioni && <>{account.needsManualValuation && <Button size="icon" variant="ghost" aria-label={`${t('valuationsTitle')} ${account.name}`} onClick={() => onValuations(account)} className="text-[#52615d] hover:text-[#173b33]"><Gauge className="size-4" /></Button>}<Button size="icon" variant="ghost" aria-label={`${t('edit')} ${account.name}`} onClick={() => onEdit(account)} className="text-[#52615d] hover:text-[#173b33]"><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${account.name}`} onClick={() => onDelete(account)} className="text-[#a94f3a] hover:text-[#a04f3a]"><Trash2 className="size-4" /></Button></>}</div>{/* Costo e rivalutazione non compaiono qui: sono le prime due voci della card
     del capitale proprio, dove hanno anche la spiegazione. La riconciliazione
     invece riguarda solo questo conto e vale per tutti, broker compresi: il
@@ -6641,8 +6645,8 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
     dicono un'altra cosa: senza questa riga la cifra in alto sembra sbagliata a
     chi ha in mente i soldi versati. Le stesse due parole del cruscotto
     investimenti ("capitale versato"), cosi' il numero si riconosce. */}
-{account.valuedByLedger && <p className="ml-12 mt-1.5 text-[11px] text-[#5e6c68]">{t('accountsMarketValue', { sum: formatEuro(account.calculatedBalance) })}</p>}
-{azioni && Math.abs(account.startingBalance) > 0.005 && <p className="ml-12 mt-1.5 text-[11px] text-[#5e6c68]">{t('initial')} <b className="font-medium text-[#52615d]">{formatEuro(account.group === 'liability' ? Math.abs(account.startingBalance) : account.startingBalance)}</b></p>}
+{account.valuedByLedger && <p className="ml-12 mt-1.5 text-[11px] text-[#5e6c68]">{t('accountsMarketValue', { sum: formatMoney(account.calculatedBalance, account.currency ?? 'EUR') })}</p>}
+{azioni && Math.abs(account.startingBalance) > 0.005 && <p className="ml-12 mt-1.5 text-[11px] text-[#5e6c68]">{t('initial')} <b className="font-medium text-[#52615d]">{formatMoney(account.group === 'liability' ? Math.abs(account.startingBalance) : account.startingBalance, account.currency ?? 'EUR')}</b></p>}
 {/* Il valore di una casa e' fermo a quando l'hai stimato: senza questa riga
     l'unico modo di accorgersene era aprire le valutazioni una per una. Il
     numero c'e' solo quando c'e' una stima da datare - l'eta' la calcola il

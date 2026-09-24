@@ -1647,6 +1647,9 @@ def accounts(at: str | None = Query(None, description="Saldi a questa data (YYYY
     valore = {riga["account_id"]: riga["balance"] for riga in saldi["accounts"]}
     return {"items": [{
         "id": row.id, "name": row.name, "group": row.source_group,
+        # In che soldi e' `value`: senza, un saldo in franchi e uno in euro si
+        # leggono uguali e si sommano insieme.
+        "currency": row.currency or BASE_CURRENCY,
         # `value` e' quanto vale alla data chiesta: e' il numero della pagina
         # Patrimonio, coi debiti positivi come li' e le valutazioni applicate.
         "value": num(valore[row.id]),
@@ -2912,6 +2915,17 @@ def display_currencies(session: Session) -> list[str]:
     raw = session.scalar(select(AppSetting.value).where(AppSetting.key == NET_WORTH_CURRENCIES_KEY))
     codes = [code.strip().upper() for code in (NET_WORTH_CURRENCIES_DEFAULT if raw is None else raw).split(",") if code.strip()]
     return [code for code in dict.fromkeys(codes) if code != BASE_CURRENCY]
+
+
+def account_currencies(session: Session) -> list[str]:
+    """Le valute in cui sono tenuti i conti, senza l'euro.
+
+    Servono allo scarico dei cambi: senza lo storico di una valuta il saldo di
+    quel conto non si converte, e una conversione a 1 (un franco per un euro)
+    e' peggio di un numero che manca, perche' nessuno se ne accorge.
+    """
+    codici = session.scalars(select(Account.currency).distinct()).all()
+    return sorted({(codice or BASE_CURRENCY).strip().upper() for codice in codici} - {BASE_CURRENCY})
 
 
 def fx_symbols(currency: str) -> list[tuple[str, bool]]:

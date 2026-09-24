@@ -64,6 +64,28 @@ class CompleteExportTests(TestCase):
         linea = self.target.scalar(select(Account).where(Account.name=='Linea'))
         self.assertEqual(linea.id, self.target.scalar(select(LiabilityProfile)).account_id)
 
+    def test_la_valuta_del_conto_attraversa_il_file(self):
+        # Un ripristino non deve rimettere in euro un conto in franchi: il
+        # numero del saldo resta lo stesso, il suo significato no.
+        self.source.scalars(select(Account).where(Account.name == 'Casa')).one().currency = 'CHF'
+        self.source.commit()
+        import_data(self.target, build_export(self.source))
+        self.assertEqual('CHF', self.target.scalars(select(Account).where(Account.name == 'Casa')).one().currency)
+        self.assertEqual('EUR', self.target.scalars(select(Account).where(Account.name == 'Broker')).one().currency)
+
+    def test_un_file_senza_la_colonna_della_valuta_legge_euro(self):
+        # I file scritti prima della 1.13 i conti li avevano tutti in euro:
+        # senza il ripiego l'import si fermerebbe su un file che era valido.
+        wb = load_workbook(build_export(self.source))
+        for row in wb['Meta']:
+            if row[0].value == 'versione':
+                row[1].value = '1.12'
+        index = [c.value for c in wb['Conti'][1]].index('currency') + 1
+        wb['Conti'].delete_cols(index)
+        data = BytesIO(); wb.save(data); data.seek(0)
+        import_data(self.target, data)
+        self.assertEqual('EUR', self.target.scalars(select(Account).where(Account.name == 'Casa')).one().currency)
+
     def test_version_16_still_imports_with_defined_defaults(self):
         wb = load_workbook(build_export(self.source))
         for row in wb['Meta']:

@@ -134,6 +134,13 @@ def _read_sheet(workbook, title: str, model, columns: list[str], version: str = 
     additions = {"counts_in_budget": True, "refund_of_id": None, "is_active": True, "is_liquid": True,
                  "repayment_start_date": None, "planned_drawdowns": None, "grace_interest": "paid",
                  "is_classified": False, "incomplete_accepted": False}
+    # La valuta del conto e' nata con la 1.13 e prima non c'era: i file scritti
+    # prima sono in euro, che e' quello che erano, e leggerli con quel valore
+    # non li cambia. Vale solo per i conti: strumenti e operazioni del ledger
+    # una valuta ce l'hanno da sempre, e li' una colonna che manca e' un file
+    # rotto, non un campo nuovo.
+    if title == "Conti" and tuple(int(parte) for parte in version.split(".")) < (1, 13):
+        additions["currency"] = "EUR"
     # I ripieghi dipendono dall'entita': "kind" non ha lo stesso significato
     # per un obiettivo e per un debito. I file 1.6 non avevano questi campi.
     legacy_additions = {
