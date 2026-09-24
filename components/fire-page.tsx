@@ -102,6 +102,18 @@ const ETICHETTE_FASE: Record<string, string> = {
  */
 let memoria: { utente: number | null; dati: FireData; quando: number } | null = null;
 
+/**
+ * La richiesta gia' partita e non ancora risposta.
+ *
+ * Il piano e' lento, e la memoria sopra si riempie solo quando la risposta
+ * arriva: uscire dalla sezione un istante dopo essere entrati e rientrare
+ * faceva partire un secondo conto identico, perche' nel frattempo in memoria
+ * non c'era ancora niente. Qui c'e' la richiesta in volo, e chi rientra aspetta
+ * quella. Porta il nome della persona come la memoria: una richiesta partita
+ * per uno non deve finire sotto gli occhi dell'altro.
+ */
+let inVolo: { utente: number | null; dati: Promise<FireData> } | null = null;
+
 /** Il piano in memoria, ma solo se e' di questa persona. */
 function daMemoria(utente: number | null) {
   return memoria && memoria.utente === utente ? memoria : null;
@@ -121,9 +133,18 @@ export function FirePage({ apiUrl, utente }: { apiUrl: string; utente: number | 
   const carica = useCallback(async () => {
     setInCorso(true);
     try {
-      const risposta = await fetch(`${apiUrl}/api/fire`);
-      if (!risposta.ok) throw new Error('fire');
-      const nuovi = await risposta.json() as FireData;
+      let volo = inVolo;
+      if (volo?.utente !== utente) {
+        const dati = fetch(`${apiUrl}/api/fire`).then(async (risposta) => {
+          if (!risposta.ok) throw new Error('fire');
+          return await risposta.json() as FireData;
+        });
+        volo = inVolo = { utente, dati };
+        // Il posto si libera quando la risposta arriva, buona o cattiva: chi
+        // rientra dopo non deve agganciarsi a una richiesta che non c'e' piu'.
+        void dati.catch(() => undefined).finally(() => { if (inVolo === volo) inVolo = null; });
+      }
+      const nuovi = await volo.dati;
       // La memoria si aggiorna solo con una risposta buona: un errore di rete
       // non deve cancellare il piano che si sta guardando.
       memoria = { utente, dati: nuovi, quando: Date.now() };
@@ -146,7 +167,9 @@ export function FirePage({ apiUrl, utente }: { apiUrl: string; utente: number | 
     // Tornando dal profilo il piano in memoria non vale piu': mostrare il
     // numero di prima accanto a un profilo appena salvato sarebbe la bugia
     // peggiore. Si rifa', e la riga della data sotto dice quando.
-    if (nuova === 'piano' && scheda === 'profilo') memoria = null;
+    // Anche la richiesta in volo cade per lo stesso motivo: e' partita prima
+    // che il profilo cambiasse, ed e' il conto vecchio che sta arrivando.
+    if (nuova === 'piano' && scheda === 'profilo') { memoria = null; inVolo = null; }
     setScheda(nuova);
   }
 
