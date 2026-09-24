@@ -44,6 +44,7 @@ from .models import User
 from .reports import excel_report, pdf_report
 from .pdf_importer import BankStatementParser
 from .csv_importer import CSVStatementParser
+from .fastbudget_import import leggi_backup
 from .statement_parsing import parse_amount, parse_date
 from .auth import middleware_utente, router as auth_router
 from .notifications import router as notifications_router
@@ -459,6 +460,14 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
         # riga e' a posto, perche' "nessun motivo" non e' un motivo.
         if tx.get("errorCode"):
             riga["errorCode"] = tx["errorCode"]
+        # Quello che sa solo il file di FastBudget: la riga d'origine (per non
+        # importarla due volte), il padre sotto cui far nascere una categoria che
+        # nell'app non esiste ancora, e il secondo importo di un trasferimento
+        # passato per il cambio. Un estratto conto non li ha, e la riga resta
+        # quella di prima.
+        for campo in ("sourceRow", "categoryParent", "destinationAmount"):
+            if tx.get(campo) is not None:
+                riga[campo] = tx[campo]
         rows.append(riga)
     # Le regole che non si sono potute compilare: l'interfaccia le segnala,
     # perche' altrimenti sarebbero regole che non fanno niente e non lo dicono.
@@ -478,6 +487,40 @@ async def import_pdf_statement(file: UploadFile = File(...), session: Session = 
         raise
     except Exception as error:
         logger.exception("Parsing PDF fallito")
+        raise HTTPException(422, detail="statementParseFailed") from error
+
+
+@app.post("/api/import/fastbudget")
+async def import_fastbudget_backup(file: UploadFile = File(...), tz: str = "",
+                                   session: Session = Depends(get_session)):
+    """L'anteprima di un backup di FastBudget: le righe, piu' i conti che nomina.
+
+    Il file si legge in una copia temporanea e in sola lettura: e' l'unica copia
+    della storia di chi lo carica, e l'app non ci scrive nemmeno per sbaglio.
+
+    ``tz`` e' il fuso di chi sta guardando lo schermo, e arriva dal browser
+    perche' e' l'unico posto dove si conosce: FastBudget scrive un istante in
+    millisecondi, e leggerlo in UTC sposterebbe indietro di un giorno tutto
+    quello che si e' registrato dopo le 23.
+
+    Il blocco ``accounts`` c'e' solo qui: da un estratto conto i conti si
+    scelgono riga per riga, mentre un backup arriva con la sua storia di conti
+    (compresi quelli che il file nomina e non ha piu'), e chi importa decide
+    cosa farne prima di salvare.
+    """
+    content = await read_upload(file, '.bak')
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.bak') as temp_file:
+            temp_file.write(content)
+            temp_file.flush()
+            letto = await asyncio.to_thread(leggi_backup, temp_file.name, tz)
+        anteprima = statement_preview(letto["transactions"], session)
+        anteprima["accounts"] = letto["accounts"]
+        return anteprima
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception("Lettura del backup FastBudget fallita")
         raise HTTPException(422, detail="statementParseFailed") from error
 
 
