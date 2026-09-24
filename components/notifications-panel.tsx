@@ -19,6 +19,7 @@ const TESTI: Record<string, TranslationKey> = {
   staleQuote: 'notifStaleQuote',
   missingQuote: 'notifMissingQuote',
   missingFx: 'notifMissingFx',
+  accountMissingFx: 'notifAccountMissingFx',
   instrumentsWithoutTicker: 'notifInstrumentsWithoutTicker',
   budgetEnding: 'notifBudgetEnding',
   emptyMonth: 'notifEmptyMonth',

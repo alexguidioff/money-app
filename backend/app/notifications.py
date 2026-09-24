@@ -20,6 +20,7 @@ l'interfaccia nella lingua scelta.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date, datetime
 from typing import Any
 
@@ -28,8 +29,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .categorie import nomi as nomi_categorie
-from .core_routes import (budget_actual, conti_con_valore_di_mercato, quoted_prices_by_instrument,
-                          stato_valutazione)
+from .core_routes import (BASE_CURRENCY, _rate_on, budget_actual, conti_con_valore_di_mercato,
+                          fx_rates_by_month, quoted_prices_by_instrument, stato_valutazione)
 from .database import get_session
 from .models import (Account, AccountValuation, BudgetPlan, DismissedNotification,
                      InvestmentInstrument, InvestmentTransaction, Transaction)
@@ -243,6 +244,35 @@ def _portafoglio_senza_conto(session: Session) -> list[dict[str, Any]]:
     }]
 
 
+def _conti_senza_cambio(session: Session, oggi: date) -> list[dict[str, Any]]:
+    """Un conto tenuto in una valuta di cui non si ha il cambio.
+
+    Il suo saldo non si sa quanto vale in euro, quindi resta fuori dal
+    patrimonio: e' la scelta giusta - sommarlo a 1 sarebbe peggio - ma senza
+    dirlo il totale cala e nessuno sa perche'. La chiave porta la valuta e non
+    il conto: quello che manca e' il cambio, e scaricarlo li rimette dentro
+    tutti insieme.
+    """
+    valute: dict[str, list[str]] = defaultdict(list)
+    for conto in session.scalars(select(Account)).all():
+        codice = (conto.currency or BASE_CURRENCY).strip().upper()
+        if conto.counts_in_net_worth and codice != BASE_CURRENCY:
+            valute[codice].append(conto.name)
+    avvisi = []
+    for codice, nomi in sorted(valute.items()):
+        # La stessa regola con cui `_saldi_in_euro` decide se un conto entra nel
+        # totale: qui si dice il perche', li' si fa la somma.
+        if _rate_on(fx_rates_by_month(session, codice)[0], oggi) is not None:
+            continue
+        avvisi.append({
+            "key": f"account-fx:{codice}",
+            "code": "accountMissingFx",
+            "level": "warning",
+            "params": {"currency": codice, "accounts": ", ".join(sorted(nomi)[:3])},
+        })
+    return avvisi
+
+
 def costruisci(session: Session) -> list[dict[str, Any]]:
     """Tutti gli avvisi che valgono adesso, ancora senza filtrare i chiusi."""
     oggi = date.today()
@@ -256,6 +286,7 @@ def costruisci(session: Session) -> list[dict[str, Any]]:
         lambda: _mese_da_chiudere(session, oggi),
         lambda: _valutazioni_scadute(session, oggi),
         lambda: _portafoglio_senza_conto(session),
+        lambda: _conti_senza_cambio(session, oggi),
         lambda: _backup(oggi),
     ):
         try:

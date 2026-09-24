@@ -354,6 +354,11 @@ export type Account = {
   // positivi compresi. `calculatedBalance` risponde a un'altra domanda -
   // cosa dicono i movimenti - e serve solo alla riconciliazione.
   value: number;
+  // Lo stesso valore in euro, per i totali della pagina, che sommano conti di
+  // valute diverse. `null` quando la valuta del conto non ha un cambio: quel
+  // conto resta fuori dalla somma e l'avviso dice perche'. Per un conto in
+  // euro e' lo stesso numero di `value`.
+  valueInEuro: number | null;
   startingBalance: number;
   calculatedBalance: number;
 };
@@ -5923,11 +5928,16 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
       : accountOrder === 'added' ? a.id - b.id : Math.abs(a.value) - Math.abs(b.value);
     return accountOrderDirection === 'asc' ? esito : -esito;
   };
+  // I totali della pagina sono in euro: un conto in franchi si legge in
+  // franchi sulla sua riga, ma entrare in queste somme al valore di un franco
+  // per un euro sarebbe peggio che restarne fuori. `valueInEuro` e' `null`
+  // quando il cambio non c'e', e allora il conto non entra.
+  const inEuro = (account: Account) => account.valueInEuro;
   const perGruppo = (Object.keys(groupLabel) as Account['group'][]).map((group) => {
     const all = accounts.filter((account) => account.group === group);
     const items = (hideZeroBalances ? all.filter((account) => !isZeroBalance(account)) : all).sort(compareAccounts);
     return { group, items, totalCount: all.length,
-             total: all.reduce((sum, account) => account.countsInNetWorth === false ? sum : sum + account.value, 0) };
+             total: all.reduce((sum, account) => account.countsInNetWorth === false || account.valueInEuro === null ? sum : sum + account.valueInEuro, 0) };
   }).filter((voce) => voce.totalCount > 0);
   const colonnaAttivo = perGruppo.filter((voce) => voce.group !== 'liability');
   const colonnaPassivo = perGruppo.filter((voce) => voce.group === 'liability');
@@ -5937,9 +5947,11 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
     let versati = 0;
     for (const account of accounts) {
       if (account.countsInNetWorth === false) continue;
-      gruppo[account.group] += account.value;
+      const valore = inEuro(account);
+      if (valore === null) continue;
+      gruppo[account.group] += valore;
       if (account.valuedByLedger) {
-        investimenti += account.value;
+        investimenti += valore;
         versati += account.calculatedBalance;
       }
     }
@@ -6758,7 +6770,7 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
       {expanded && (items.length === 0 ? (
         <p className="border-t border-black/5 px-5 pt-3 text-xs text-[#5e6c68]">{t('accountsAllHiddenZero')}</p>
       ) : (
-        <CardContent className="divide-y divide-black/5 border-t border-black/5 pt-2">{items.map((account) => { const valore = account.value; const share = account.countsInNetWorth === false || !netWorth ? null : Math.abs(valore) / Math.abs(netWorth) * 100; return <div key={account.id} className="py-3.5"><div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-[#edf0ed] text-[#4e6c64]"><Landmark className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{account.name}</p>{account.notes && <p className="mt-0.5 line-clamp-2 text-xs text-[#5e6c68]">{account.notes}</p>}</div><div className="text-right"><p className="text-sm font-semibold tabular-nums">{formatMoney(valore, account.currency ?? 'EUR')}</p><p title={t('netWorthShareExplanation')} className="text-[11px] text-[#5e6c68]">{share !== null ? t('netWorthShare', { percent: formatPercentNumber(share) })
+        <CardContent className="divide-y divide-black/5 border-t border-black/5 pt-2">{items.map((account) => { const valore = account.value; const quota = account.valueInEuro; const share = account.countsInNetWorth === false || !netWorth || quota === null ? null : Math.abs(quota) / Math.abs(netWorth) * 100; return <div key={account.id} className="py-3.5"><div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-[#edf0ed] text-[#4e6c64]"><Landmark className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{account.name}</p>{account.notes && <p className="mt-0.5 line-clamp-2 text-xs text-[#5e6c68]">{account.notes}</p>}</div><div className="text-right"><p className="text-sm font-semibold tabular-nums">{formatMoney(valore, account.currency ?? 'EUR')}</p><p title={t('netWorthShareExplanation')} className="text-[11px] text-[#5e6c68]">{share !== null ? t('netWorthShare', { percent: formatPercentNumber(share) })
                     : account.countsInNetWorth === false ? t('accountOutsideNetWorth') : '—'}</p></div>{azioni && <>{account.needsManualValuation && <Button size="icon" variant="ghost" aria-label={`${t('valuationsTitle')} ${account.name}`} onClick={() => onValuations(account)} className="text-[#52615d] hover:text-[#173b33]"><Gauge className="size-4" /></Button>}<Button size="icon" variant="ghost" aria-label={`${t('edit')} ${account.name}`} onClick={() => onEdit(account)} className="text-[#52615d] hover:text-[#173b33]"><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${account.name}`} onClick={() => onDelete(account)} className="text-[#a94f3a] hover:text-[#a04f3a]"><Trash2 className="size-4" /></Button></>}</div>{/* Costo e rivalutazione non compaiono qui: sono le prime due voci della card
     del capitale proprio, dove hanno anche la spiegazione. La riconciliazione
     invece riguarda solo questo conto e vale per tutti, broker compresi: il

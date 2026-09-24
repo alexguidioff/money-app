@@ -585,9 +585,14 @@ def _net_worth_breakdown(session: Session, year: int, month: int | None,
     linea = linea_portafoglio if linea_portafoglio is not None else portfolio_timeline(session)
     # `movimenti` si passa quando il chiamante ne ha bisogno per due periodi:
     # caricarli due volte costa piu' del calcolo che ci si fa sopra.
+    quando = cutoff - timedelta(days=1)
     saldi = account_balances_at(conti, movimenti if movimenti is not None else movimenti_per_saldi(session),
-                                cutoff - timedelta(days=1), valutazioni_per_conto(session),
+                                quando, valutazioni_per_conto(session),
                                 rivalutazioni_per_conto(session))
+    # Un conto in franchi vale in franchi: si somma a conti in euro, quindi e'
+    # questo il punto in cui si converte. Chi non ha un cambio resta fuori dal
+    # totale, e l'avviso (`notifications.py`) dice perche'.
+    saldi = _saldi_in_euro(saldi, conti, _cambi_dei_conti(session, conti), quando)[0]
     # `totals["liability"]` e' il debito con il segno gia' girato, cioe' un
     # numero positivo: va sottratto, non sommato. Sommandolo un mutuo faceva
     # salire il patrimonio invece di abbassarlo, e la Panoramica dava 80.000 in
@@ -1649,6 +1654,11 @@ def accounts(at: str | None = Query(None, description="Saldi a questa data (YYYY
     saldi = account_balances_at(rows, all_transactions, quando,
                                 valutazioni_per_conto(session), rivalutazioni_per_conto(session))
     valore = {riga["account_id"]: riga["balance"] for riga in saldi["accounts"]}
+    # Lo stesso valore in euro. La riga di un conto si legge nella sua valuta,
+    # ma i totali della pagina sommano conti diversi: la somma va fatta in euro.
+    # Un conto senza cambio non compare qui, e l'avviso dice perche'.
+    in_euro, _ = _saldi_in_euro(saldi, rows, _cambi_dei_conti(session, rows), quando)
+    euro = {riga["account_id"]: riga["balance"] for riga in in_euro["accounts"]}
     return {"items": [{
         "id": row.id, "name": row.name, "group": row.source_group,
         # In che soldi e' `value`: senza, un saldo in franchi e uno in euro si
@@ -1657,6 +1667,10 @@ def accounts(at: str | None = Query(None, description="Saldi a questa data (YYYY
         # `value` e' quanto vale alla data chiesta: e' il numero della pagina
         # Patrimonio, coi debiti positivi come li' e le valutazioni applicate.
         "value": num(valore[row.id]),
+        # Lo stesso numero in euro, per i totali della pagina: `null` quando la
+        # valuta del conto non ha un cambio, e allora il conto resta fuori dalla
+        # somma invece di entrarci a 1.
+        "valueInEuro": num(euro[row.id]) if row.id in euro else None,
         "startingBalance": num(row.starting_balance),
         # Il costo: quanto dicono i movimenti, senza valutazioni. Per un conto
         # broker e' il versato; per gli altri coincide con `value` al presente.
@@ -2719,8 +2733,11 @@ def _storico_patrimoniale(session: Session, goal: Goal, today: date,
     else:
         # Il mercato e' gia' dentro i saldi, sul conto investimenti: sommarlo
         # un'altra volta raddoppierebbe il portafoglio.
-        saldi = account_balances_series(basi.conti, basi.movimenti, tagli,
-                                        basi.valutazioni, basi.rivalutazioni)
+        cambi = _cambi_dei_conti(session, basi.conti)
+        saldi = [_saldi_in_euro(s, basi.conti, cambi, taglio)[0]
+                 for s, taglio in zip(account_balances_series(basi.conti, basi.movimenti, tagli,
+                                                              basi.valutazioni, basi.rivalutazioni),
+                                      tagli)]
         valori = [round(s["totals"]["bank"] + s["totals"]["asset"] - s["totals"]["liability"], 2)
                   for s in saldi]
     return [{"label": f"{MONTHS[m - 1]} {str(a)[-2:]}", "amount": valore}
@@ -2843,8 +2860,14 @@ def net_worth(year: int, month: int = Query(0, ge=0, le=12, description="0 = ann
     # Una passata sola per tutti i mesi del trend, invece di una per mese.
     stime = valutazioni_per_conto(session)
     guadagni = rivalutazioni_per_conto(session)
-    saldi_mensili = account_balances_series(accounts, all_transactions, [punto[2] for punto in month_points], stime, guadagni)
-    for (point_year, point_month, cutoff), balances in zip(month_points, saldi_mensili):
+    tagli = [punto[2] for punto in month_points]
+    # Il cambio di ogni valuta si legge una volta e si applica mese per mese:
+    # il saldo di un conto in franchi entra nel patrimonio convertito al cambio
+    # di quel mese, non a quello di oggi.
+    cambi = _cambi_dei_conti(session, accounts)
+    saldi_mensili = account_balances_series(accounts, all_transactions, tagli, stime, guadagni)
+    for (point_year, point_month, cutoff), grezzi in zip(month_points, saldi_mensili):
+        balances = _saldi_in_euro(grezzi, accounts, cambi, cutoff)[0]
         totals_month = _spacchetta(balances)
         net_worth = totals_month["bank"] + totals_month["asset"] - totals_month["liability"] + totals_month["financial"]
         trend.append({"label": f"{MONTHS[point_month - 1]} {str(point_year)[-2:]}", "period": f"{point_year}-{point_month:02d}",
@@ -2859,7 +2882,8 @@ def net_worth(year: int, month: int = Query(0, ge=0, le=12, description="0 = ann
     # Se il mese richiesto non era nel trend (per via di months troppo corto),
     # ricalcolo i totali per il cutoff richiesto.
     if not any(row["period"] == f"{end_year}-{end_month:02d}" for row in trend):
-        balances = account_balances_at(accounts, all_transactions, end_cutoff, stime, guadagni)
+        balances = _saldi_in_euro(account_balances_at(accounts, all_transactions, end_cutoff, stime, guadagni),
+                                  accounts, cambi, end_cutoff)[0]
         totals_month = _spacchetta(balances)
         last_totals = {**totals_month, "liquid": liquid_at(balances), "netWorth": round(totals_month["bank"] + totals_month["asset"] - totals_month["liability"] + totals_month["financial"], 2)}
         data_period = end_cutoff.replace(day=1)
@@ -2972,6 +2996,52 @@ def _rate_on(points: list[tuple[date, Decimal]], cutoff: date) -> Decimal | None
         else:
             break
     return chosen
+
+
+def _cambi_dei_conti(session: Session, conti: list[Account]) -> dict[str, list[tuple[date, Decimal]]]:
+    """Lo storico dei cambi di ogni valuta in cui e' tenuto un conto.
+
+    Una lettura per valuta, non una per conto per mese: i conti sono decine e i
+    mesi del trend dodici, e `fx_rates_by_month` e' una query ciascuno.
+    """
+    valute = {(conto.currency or BASE_CURRENCY).strip().upper() for conto in conti}
+    return {codice: fx_rates_by_month(session, codice)[0]
+            for codice in sorted(valute) if codice != BASE_CURRENCY}
+
+
+def _saldi_in_euro(saldi: dict[str, Any], conti: list[Account],
+                   cambi: dict[str, list[tuple[date, Decimal]]], cutoff: date,
+                   ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """I saldi dei conti portati in euro al cambio del giorno.
+
+    I saldi restano nella valuta del conto - e' il numero che si legge sulla
+    riga di quel conto - quindi si converte solo dove si somma fra conti
+    diversi, cioe' qui: patrimonio, bilancio nel tempo, serie dei goal.
+
+    Un conto la cui valuta non ha un cambio **non entra nel totale** e torna
+    indietro come motivo da dire. Sommarlo a 1 (un franco per un euro) sarebbe
+    la sola cosa peggiore del non sommarlo, perche' nessuno se ne accorgerebbe.
+    """
+    valuta = {conto.id: (conto.currency or BASE_CURRENCY).strip().upper() for conto in conti}
+    righe: list[dict[str, Any]] = []
+    mancanti: list[dict[str, Any]] = []
+    totali: dict[str, float] = {}
+    for riga in saldi["accounts"]:
+        codice = valuta.get(riga["account_id"], BASE_CURRENCY)
+        cambio = Decimal(1) if codice == BASE_CURRENCY else _rate_on(cambi.get(codice) or [], cutoff)
+        if cambio is None:
+            mancanti.append({"accountId": riga["account_id"], "name": riga["name"], "currency": codice})
+            continue
+        # Il cambio e' quante unita' di quella valuta valgono 1 euro: si
+        # divide, come fa `_fx_to_base`. Moltiplicare darebbe un franco per un
+        # euro e mezzo, e sembrerebbe comunque un numero giusto.
+        importo = round(float(Decimal(str(riga["balance"])) / cambio), 2)
+        righe.append({**riga, "balance": importo})
+        totali[riga["group"]] = totali.get(riga["group"], 0.0) + importo
+    # I gruppi che chi legge cerca sempre ci sono anche quando sono vuoti.
+    for gruppo in ("bank", "asset", "liability", "financial"):
+        totali.setdefault(gruppo, 0.0)
+    return {"totals": totali, "accounts": righe}, mancanti
 
 
 # Quotazioni piu' vecchie di questo margine non vengono usate: meglio il prezzo
@@ -3939,12 +4009,14 @@ def net_worth_series(session: Session, end_year: int, end_month: int, months: in
     movimenti = movimenti_per_saldi(session)
     stime = valutazioni_per_conto(session)
     guadagni = rivalutazioni_per_conto(session)
+    cambi = _cambi_dei_conti(session, conti)
 
     serie = []
     for anno, mese, cutoff in monthly_points(end_year, end_month, months):
         # Il mercato e' gia' dentro i saldi, sul conto investimenti: sommarlo
         # qui lo conterebbe due volte.
-        saldi = account_balances_at(conti, movimenti, cutoff, stime, guadagni)["totals"]
+        saldi = _saldi_in_euro(account_balances_at(conti, movimenti, cutoff, stime, guadagni),
+                               conti, cambi, cutoff)[0]["totals"]
         entrate = period_total(session, anno, mese, "Income")
         uscite = period_total(session, anno, mese, "Expenses")
         serie.append({
@@ -4067,9 +4139,13 @@ def balance_sheet_series(
     # includerli scendendo farebbe comparire soldi appena si clicca.
     conti = [c for c in session.scalars(select(Account)).all() if c.counts_in_net_worth]
     con_mercato = conti_con_valore_di_mercato(session)
-    saldi = account_balances_series(conti, movimenti_per_saldi(session),
-                                    [punto[2] for punto in punti],
-                                    valutazioni_per_conto(session), rivalutazioni_per_conto(session))
+    tagli = [punto[2] for punto in punti]
+    cambi = _cambi_dei_conti(session, conti)
+    saldi = [_saldi_in_euro(saldo, conti, cambi, taglio)[0]
+             for saldo, taglio in zip(account_balances_series(conti, movimenti_per_saldi(session),
+                                                             tagli,
+                                                             valutazioni_per_conto(session),
+                                                             rivalutazioni_per_conto(session)), tagli)]
     per_conto = {conto.id: conto for conto in conti}
 
     if level == "networth":
