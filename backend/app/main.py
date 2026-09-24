@@ -26,9 +26,10 @@ from sqlalchemy.orm import Session
 from .calculation_engine import (account_balances_series, calculate_account_balance, debito_pianificato_al, effective_date, piano_ammortamento,
                                  normalized_name, stato_debito_registrato)
 from .categorization import PENDING_CATEGORY, applica, carica_regole, categoria_da_nome, scartate
-from .categorie import gruppo_di_categoria, nome_di, nomi as nomi_categorie
-from .core_routes import (GOAL_KINDS, MAX_SELEZIONE_MASSA, account_currencies, benchmark_symbol,
-                          display_currencies, fx_symbols, movimenti_per_saldi, num, sync_savings_plan)
+from .categorie import _prossima_posizione, gruppo_di_categoria, nome_di, nomi as nomi_categorie
+from .core_routes import (BASE_CURRENCY, GOAL_KINDS, MAX_SELEZIONE_MASSA, account_currencies, benchmark_symbol,
+                          display_currencies, fx_rates_by_month, fx_symbols, movimenti_per_saldi, num,
+                          sync_savings_plan)
 from .database import Base, admin_engine, engine, get_session, set_default_user, current_user_id
 from .migrations import accendi_isolamento, aggiungi_colonna_utente, tracked_changes
 from .transaction_rules import (REAL_MOVEMENT, BUDGET_MOVEMENT, SPOSTAMENTI, TIPI_MOVIMENTO,
@@ -411,6 +412,14 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
     """
     if not raw_transactions:
         raise HTTPException(422, detail="statementEmpty")
+    # Le righe che questo stesso file ha gia' portato dentro: l'_id di FastBudget
+    # e' l'unica prova esatta che due righe sono la stessa riga. Una riga che
+    # somiglia a un movimento per importo e data puo' essere un doppione o puo'
+    # essere il secondo caffe' dello stesso giorno, e infatti la casella si puo'
+    # spuntare; questa invece e' la stessa riga riletta, e non si importa.
+    origini = [tx.get("sourceRow") for tx in raw_transactions if tx.get("sourceRow") is not None]
+    gia_importate = {riga.source_row: riga for riga in session.scalars(
+        select(Transaction).where(Transaction.source_row.in_(origini))).all()} if origini else {}
     doppioni = _Doppioni(session)
     regole = carica_regole(session)
     # La categoria e' un id: qui si legge per mostrarla, ma l'anteprima non
@@ -426,7 +435,11 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
         description = tx.get("details") or tx.get("description") or ""
         amount = abs(Decimal(str(tx.get("rawAmount", tx.get("amount", 0)))))
         day = date.fromisoformat(occurred) if occurred else None
-        match, coppia = doppioni.abbina(day, amount, description, tx.get("transactionType"))
+        origine = gia_importate.get(tx.get("sourceRow"))
+        if origine is not None:
+            match, coppia = origine, [origine]
+        else:
+            match, coppia = doppioni.abbina(day, amount, description, tx.get("transactionType"))
         # Nessuno ha scelto a mano questa categoria: se una regola decide, la
         # categoria resta automatica e il pattern dice da quale regola viene.
         tipo = tx.get("transactionType", "Expenses")
@@ -460,6 +473,11 @@ def statement_preview(raw_transactions: list[dict], session: Session) -> dict:
         # riga e' a posto, perche' "nessun motivo" non e' un motivo.
         if tx.get("errorCode"):
             riga["errorCode"] = tx["errorCode"]
+        # Questa riga del file e' gia' entrata con un import precedente: la si
+        # mostra - chi importa deve poter vedere che il file e' stato letto - ma
+        # non e' una riga da importare, e la casella dei doppioni non la riguarda.
+        if origine is not None:
+            riga["alreadyImported"] = True
         # Quello che sa solo il file di FastBudget: la riga d'origine (per non
         # importarla due volte), il padre sotto cui far nascere una categoria che
         # nell'app non esiste ancora, e il secondo importo di un trasferimento
@@ -515,7 +533,7 @@ async def import_fastbudget_backup(file: UploadFile = File(...), tz: str = "",
             temp_file.flush()
             letto = await asyncio.to_thread(leggi_backup, temp_file.name, tz)
         anteprima = statement_preview(letto["transactions"], session)
-        anteprima["accounts"] = letto["accounts"]
+        anteprima["accounts"] = _conti_in_anteprima(session, letto["accounts"])
         return anteprima
     except HTTPException:
         raise
@@ -524,9 +542,115 @@ async def import_fastbudget_backup(file: UploadFile = File(...), tz: str = "",
         raise HTTPException(422, detail="statementParseFailed") from error
 
 
-@app.post("/api/transactions/pdf-import")
-async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Session = Depends(get_session),
-                                source: str = ""):
+def _chiave_conto(nome: str | None) -> str:
+    """Il nome di un conto ridotto alla forma con cui si confronta.
+
+    FastBudget tiene i conti come li ha scritti chi li ha creati, e "Tinaba" e
+    "tinaba" sono lo stesso conto: senza questo, ogni import ne creerebbe un
+    secondo, con lo stesso saldo iniziale e meta' dei movimenti.
+    """
+    return " ".join((nome or "").split()).casefold()
+
+
+def _conti_del_file(session: Session, conti_file: list) -> tuple[dict[str, Account], list[Account], list[dict]]:
+    """I conti che un import nomina, risolti in conti dell'app, creandoli se mancano.
+
+    Un conto che esiste gia' si riusa e la sua valuta non si tocca: cambiarla
+    qui vorrebbe dire convertire tutti i movimenti che ha gia' a un cambio che
+    nessuno ha chiesto. Se quella del file e' diversa, la differenza si
+    riporta, cosi' chi importa la vede e la sistema a mano se e' il caso.
+
+    Una controparte che il file non ha piu' - i soldi usciti verso un conto
+    cancellato - nasce **fuori dal patrimonio**: il suo saldo verrebbe da una
+    gamba sola, e sommarlo a un totale sarebbe sommare un numero inventato.
+    """
+    per_nome = {_chiave_conto(conto.name): conto for conto in session.scalars(select(Account)).all()}
+    creati: list[Account] = []
+    avvisi: list[dict] = []
+    for voce in conti_file:
+        nome = (voce.name or "").strip()
+        if not nome:
+            continue
+        conto = session.get(Account, voce.target) if voce.target is not None else None
+        if voce.target is not None and conto is None:
+            raise HTTPException(status_code=404, detail="accountNotFound")
+        if conto is None:
+            conto = per_nome.get(_chiave_conto(nome))
+        valuta = _valuta(voce.currency)
+        if conto is None:
+            conto = _conto_nuovo(
+                name=nome,
+                # Il file non ha gruppi, e i suoi conti sono conti di soldi: e'
+                # l'unico dei tre in cui l'app legge un saldo che i movimenti
+                # calcolano da soli.
+                source_group="bank",
+                currency=valuta,
+                starting=Decimal(str(voce.startingBalance or 0)).quantize(Decimal("0.01")),
+                counts_in_net_worth=bool(voce.inFile),
+                is_liquid=True,
+            )
+            session.add(conto)
+            creati.append(conto)
+        elif valuta != (conto.currency or BASE_CURRENCY):
+            avvisi.append({"name": conto.name, "code": "accountCurrencyMismatch",
+                           "currency": conto.currency or BASE_CURRENCY, "fileCurrency": valuta})
+        per_nome[_chiave_conto(nome)] = conto
+    session.flush()
+    return per_nome, creati, avvisi
+
+
+def _conti_in_anteprima(session: Session, conti: list[dict]) -> list[dict]:
+    """I conti del file con quello che l'app sa gia' di ognuno.
+
+    Un conto che esiste gia' si riusa, e la sua valuta non si tocca: se quella
+    del file e' diversa, chi importa lo deve vedere adesso, perche' dopo e' una
+    correzione a mano su ogni movimento che ci e' finito dentro.
+    """
+    esistenti = {_chiave_conto(conto.name): conto for conto in session.scalars(select(Account)).all()}
+    for conto in conti:
+        esistente = esistenti.get(_chiave_conto(conto["name"]))
+        conto["accountId"] = esistente.id if esistente else None
+        conto["existingCurrency"] = (esistente.currency or BASE_CURRENCY) if esistente else None
+    return conti
+
+
+def _scarica_cambi(session: Session, valute: set[str], years: int = 10) -> list[str]:
+    """Scarica lo storico dei cambi delle valute che non ce l'hanno ancora.
+
+    Un conto in un'altra valuta senza storico non si converte, e la conversione
+    che ne esce e' 1 - un franco per un euro - cioe' un numero sbagliato che non
+    si lamenta. Qui si chiede alla fonte, una volta per valuta; i codici che non
+    si sono potuti scaricare tornano indietro, e l'import riesce lo stesso: i
+    totali in euro di quella valuta restano quelli di prima, e la risposta lo
+    dice invece di far finta di niente.
+    """
+    mancanti: list[str] = []
+    for currency in sorted({(codice or "").strip().upper() for codice in valute} - {BASE_CURRENCY, ""}):
+        if fx_rates_by_month(session, currency)[0]:
+            # Lo storico c'e' gia': rifare l'import non richiede niente alla
+            # fonte, e non fa aspettare chi lo rifa'.
+            continue
+        ultimo = "unexpected"
+        for fx_symbol, _ in fx_symbols(currency):
+            # La pausa e' quella del backfill: la fonte risponde 429 a tutto
+            # l'indirizzo, e un import non e' una buona ragione per farselo
+            # chiudere.
+            time.sleep(SOURCE_REQUEST_PAUSE_SECONDS)
+            try:
+                points = fetch_price_history(fx_symbol, years=years)
+            except MarketDataError as exc:
+                ultimo = getattr(exc, "code", "unexpected")
+                continue
+            _store_history(session, fx_symbol, points)
+            break
+        else:
+            logger.warning("Cambio %s non scaricato: %s", currency, ultimo)
+            mancanti.append(currency)
+    return mancanti
+
+
+def _salva_movimenti(righe: list[dict], source: str, session: Session, *,
+                     conti_file: list | None = None) -> dict[str, Any]:
     """Salva solo righe valide; restituisce gli indici per ritentare solo quelle fallite.
 
     ``source`` e' il nome del file da cui vengono le righe: e' facoltativo
@@ -541,10 +665,37 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
     volte non si disfa con un clic come si disfa un annullamento. Una riga che
     l'anteprima aveva segnato e che chi importa ha tenuto si salva: la casella
     era il consenso.
+
+    ``conti_file`` c'e' solo per il backup di FastBudget: sono i conti che il
+    file nomina, con la valuta e il saldo iniziale che il file dichiara. Un
+    estratto conto non li porta - i conti li sceglie riga per riga chi importa,
+    fra quelli che l'app ha gia' - e senza questo il salvataggio e' quello di
+    sempre.
     """
     saved_count = 0
     errors = []
     accounts = {a.name: a for a in session.scalars(select(Account)).all()}
+    conti_da_file: dict[str, Account] = {}
+    conti_creati: list[Account] = []
+    avvisi: list[dict] = []
+    if conti_file is not None:
+        conti_da_file, conti_creati, avvisi = _conti_del_file(session, conti_file)
+
+    def conto_di(nome: str | None) -> Account | None:
+        """Il conto che una riga nomina: quello del file, o quello dell'app."""
+        if conti_file is not None:
+            return conti_da_file.get(_chiave_conto(nome))
+        return accounts.get(nome)
+
+    # Le righe che questo stesso file ha gia' portato dentro, cercate per _id di
+    # FastBudget. E' l'unica prova esatta che due righe sono la stessa riga: un
+    # secondo import dello stesso backup non deve raddoppiare niente, nemmeno se
+    # la casella dei doppioni viene spuntata, perche' non e' un movimento che
+    # somiglia a un altro - e' quello stesso movimento riletto.
+    origini = [tx.get('sourceRow') for tx in righe if tx.get('sourceRow') is not None]
+    gia_importate = {riga.source_row: riga for riga in session.scalars(
+        select(Transaction).where(Transaction.source_row.in_(origini))).all()} if origini else {}
+    gia_dentro = 0
     # L'archivio si legge qui, prima di scrivere: le righe che si salvano adesso
     # non devono entrare fra i candidati, altrimenti il secondo caffe' dello
     # stesso giorno verrebbe scartato come doppione del primo.
@@ -556,13 +707,20 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
     lotto = ImportBatch(kind="statement", source_name=(source.strip()[:255] or "estratto-conto"))
     session.add(lotto)
     session.commit()
-    for index, tx_data in enumerate(transactions):
+    for index, tx_data in enumerate(righe):
         try:
+            # Una riga che un import precedente ha gia' portato dentro si salta
+            # prima di tutto: non e' un errore e non e' una riga da correggere,
+            # e' la stessa riga riletta. Non entra nelle scartate - l'import e'
+            # andato bene - e nemmeno nel lotto, dove conterebbe come accettata.
+            if tx_data.get('sourceRow') is not None and tx_data.get('sourceRow') in gia_importate:
+                gia_dentro += 1
+                continue
             occurred = date.fromisoformat(str(tx_data.get('date') or ''))
             transaction_type = tx_data.get('transactionType')
             amount = Decimal(str(tx_data.get('amount', '')))
-            account = accounts.get(tx_data.get('accountName'))
-            destination = accounts.get(tx_data.get('destinationName'))
+            account = conto_di(tx_data.get('accountName'))
+            destination = conto_di(tx_data.get('destinationName'))
             if transaction_type not in VALID_TRANSACTION_TYPES:
                 raise ValueError("statementInvalidType")
             if not amount.is_finite() or amount <= 0 or amount >= Decimal('100000000000000') or amount != amount.quantize(Decimal('.01')):
@@ -592,6 +750,10 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
                 continue
             transaction = Transaction(
                 import_batch_id=lotto.id,
+                # La riga del file da cui viene questo movimento, quando il file
+                # la numera (il backup di FastBudget): e' quello che permette di
+                # rileggere lo stesso file senza raddoppiarlo.
+                source_row=tx_data.get('sourceRow'),
                 occurred_on=occurred,
                 effective_on=compute_effective_on(session, occurred, transaction_type),
                 transaction_type=transaction_type,
@@ -601,7 +763,8 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
                 # categoria resta senza: il segnaposto lo scioglie
                 # `_resolve_category`.
                 category_id=_id_categoria(session, category_id=tx_data.get('categoryId'),
-                                          nome=tx_data.get('category'), transaction_type=transaction_type),
+                                          nome=tx_data.get('category'), transaction_type=transaction_type,
+                                          padre=tx_data.get('categoryParent')),
                 amount=amount, account_name=account.name, account_type=account.source_group.title(),
                 # Un giroconto fra valute diverse arriva con i due importi: quello
                 # che esce e quello che entra. Senza il secondo, il conto di
@@ -641,8 +804,67 @@ async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Ses
     lotto.rows_accepted = saved_count
     lotto.rows_rejected = len(errors)
     lotto.rejected_reasons = json.dumps(motivi) if motivi else None
+    # Il cambio si scarica alla fine, dopo che i conti esistono: una valuta
+    # nuova senza storico renderebbe i totali in euro sbagliati di silenzio, e
+    # qui si e' ancora in tempo a chiederlo alla fonte. Prima di questo passo
+    # l'import non ha mai aggiunto valute, quindi per un estratto conto la
+    # chiamata non si fa nemmeno.
+    fx_missing = _scarica_cambi(session, {conto.currency for conto in conti_da_file.values()})
     session.commit()
-    return {"success": not errors, "saved": saved_count, "errors": errors}
+    return {"success": not errors, "saved": saved_count, "errors": errors,
+            # Le righe che c'erano gia', contate a parte: non sono un errore e non
+            # sono un salvataggio, e sommarle a una delle due direbbe il falso.
+            "alreadyImported": gia_dentro,
+            # I conti che questo import ha creato, e le valute che non si sono
+            # potute scaricare: la pagina lo dice invece di mostrare un totale
+            # che comprende una cifra convertita a 1.
+            "accountsCreated": [{"name": conto.name, "currency": conto.currency} for conto in conti_creati],
+            "warnings": avvisi,
+            "fxMissing": fx_missing}
+
+
+class FastBudgetAccount(BaseModel):
+    """Un conto del backup, come lo rimanda indietro l'anteprima.
+
+    ``target`` e' il conto dell'app su cui far passare un conto del file: senza,
+    il conto si cerca per nome e, se non c'e', nasce con la valuta e il saldo
+    iniziale del file.
+    """
+
+    name: str = ""
+    currency: str = BASE_CURRENCY
+    startingBalance: float | None = None
+    inFile: bool = False
+    target: int | None = None
+
+
+class FastBudgetImportPayload(BaseModel):
+    transactions: List[Dict[str, Any]] = []
+    accounts: List[FastBudgetAccount] = []
+    source: str = ""
+
+
+@app.post("/api/transactions/fastbudget-import")
+def import_fastbudget_transactions(payload: FastBudgetImportPayload, session: Session = Depends(get_session)):
+    """Salva un backup di FastBudget, conti compresi.
+
+    E' l'unica rotta di salvataggio scritta ``def`` e non ``async def``: lo
+    scarico dei cambi aspetta la fonte, e un'attesa dentro una rotta async
+    fermerebbe tutto il server invece del solo import.
+    """
+    return _salva_movimenti(payload.transactions, payload.source.strip()[:255] or "fastbudget.bak", session,
+                            conti_file=payload.accounts)
+
+
+@app.post("/api/transactions/pdf-import")
+async def save_pdf_transactions(transactions: List[Dict[str, Any]], session: Session = Depends(get_session),
+                                source: str = ""):
+    """L'import di un estratto conto: il salvataggio di sempre, senza conti nuovi.
+
+    I conti li sceglie riga per riga chi importa, fra quelli che l'app ha gia':
+    qui non ne nascono.
+    """
+    return _salva_movimenti(transactions, source, session)
 
 
 @app.get("/api/import-batches")
@@ -1563,6 +1785,31 @@ def _valutazione_manuale(payload: AccountPayload) -> bool:
     return bool(payload.needs_manual_valuation) if payload.source_group in GRUPPI_VALUTABILI else False
 
 
+def _conto_nuovo(name: str, source_group: str, currency: str, starting: Decimal, *,
+                 counts_in_net_worth: bool = True, is_liquid: bool = True,
+                 notes: str | None = None, needs_manual_valuation: bool = False,
+                 is_broker: bool = False) -> Account:
+    """Un conto appena creato, nella forma che l'app scrive.
+
+    Sta fuori dalla rotta perche' i conti li crea anche l'import di un backup:
+    un secondo posto che scrive un conto e' un secondo posto da tenere allineato
+    a questo, e il giorno che un campo cambia se ne dimentica uno.
+    """
+    return Account(
+        source_group=source_group,
+        name=name,
+        currency=currency,
+        starting_balance=starting,
+        current_balance=starting,
+        status=None,
+        counts_in_net_worth=counts_in_net_worth,
+        is_liquid=is_liquid,
+        notes=notes,
+        needs_manual_valuation=needs_manual_valuation,
+        is_broker=is_broker,
+    )
+
+
 def _account_to_dict(account: Account) -> dict[str, Any]:
     return {
         "id": account.id,
@@ -1593,13 +1840,11 @@ def create_account(payload: AccountPayload, session: Session = Depends(get_sessi
     if existing is not None:
         raise HTTPException(status_code=409, detail="accountDuplicate")
     starting = _to_decimal(payload.starting_balance, "starting_balance")
-    account = Account(
-        source_group=payload.source_group,
+    account = _conto_nuovo(
         name=name,
+        source_group=payload.source_group,
         currency=_valuta(payload.currency),
-        starting_balance=starting,
-        current_balance=starting,
-        status=None,
+        starting=starting,
         counts_in_net_worth=payload.counts_in_net_worth,
         is_liquid=_liquidita_predefinita(payload),
         notes=(payload.notes or "").strip() or None,
@@ -3078,8 +3323,33 @@ def _resolve_category(category: str | None, transaction_type: str, regola: str |
     return regola or PENDING_CATEGORY
 
 
+def _categoria_sotto(session: Session, nome: str, padre_nome: str) -> int:
+    """La categoria ``nome`` sotto la radice ``padre_nome``, creandola se manca.
+
+    Il padre arriva per nome e non per id perche' lo nomina il file di
+    FastBudget, che le radici dell'app le scrive come sono: chi legge il file non
+    ha un id da mandare. Una voce che nasce sotto una radice di spese e' una
+    spesa - il verso lo decide il padre, come nella rotta delle categorie - e
+    senza questo un "Tasse" del file nascerebbe in cima all'albero, accanto a
+    "Housing", invece che sotto "Altro (Spese)" dov'era.
+    """
+    padre_id = categoria_da_nome(session, padre_nome)
+    padre = session.get(Category, padre_id) if padre_id is not None else None
+    condizione = (Category.parent_id.is_(None) if padre is None else Category.parent_id == padre.id)
+    esistente = session.scalar(
+        select(Category.id).where(func.lower(Category.name) == nome.lower(), condizione).limit(1))
+    if esistente is not None:
+        return esistente
+    figlio = Category(name=nome, parent_id=padre.id if padre else None,
+                      scope=padre.scope if padre else None,
+                      position=_prossima_posizione(session, padre.id if padre else None))
+    session.add(figlio)
+    session.flush()
+    return figlio.id
+
+
 def _id_categoria(session: Session, *, category_id: int | None, nome: str | None,
-                  transaction_type: str) -> int | None:
+                  transaction_type: str, padre: str | None = None) -> int | None:
     """La categoria da scrivere su un movimento, come id.
 
     L'id vince sul nome: due figli con lo stesso nome sotto padri diversi hanno
@@ -3093,6 +3363,11 @@ def _id_categoria(session: Session, *, category_id: int | None, nome: str | None
     faceva la vecchia colonna di testo, e le categorie della migrazione sono
     nate cosi'.
 
+    ``padre`` e' la radice sotto cui farla nascere, e arriva solo dai file che
+    la nominano (il backup di FastBudget): vale solo per una categoria che
+    nell'app non c'e' ancora - una che c'e' ha gia' il suo posto, e spostarla
+    sarebbe una decisione che nessuno ha preso.
+
     I trasferimenti non hanno categoria: tornano vuoti anche col nome scritto.
     """
     if transaction_type in SPOSTAMENTI:
@@ -3101,7 +3376,10 @@ def _id_categoria(session: Session, *, category_id: int | None, nome: str | None
         if session.get(Category, category_id) is None:
             raise HTTPException(status_code=404, detail="categoryNotFound")
         return category_id
-    return categoria_da_nome(session, _resolve_category(nome, transaction_type))
+    risolto = _resolve_category(nome, transaction_type)
+    if padre:
+        return _categoria_sotto(session, risolto, padre)
+    return categoria_da_nome(session, risolto)
 
 
 def _categoria_di_budget(session: Session, category_id: int | None, nome: str | None) -> int:

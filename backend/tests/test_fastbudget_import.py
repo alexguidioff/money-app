@@ -19,17 +19,22 @@ import asyncio
 import sqlite3
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
+from unittest import mock
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app import main
+from app.calculation_engine import calculate_account_balance
 from app.database import Base
 from app.fastbudget_import import leggi_backup
+from app.market_data import MarketDataError
+from app.models import Account, Category, MarketPrice, Transaction
 
 # I tre conti del file finto. Il valore dichiarato e' quello che le righe del
 # file dicono conto per conto, contando ogni riga sul suo conto soltanto: e' il
@@ -284,6 +289,151 @@ class AnteprimaBackupTests(ConUnBackup):
                 "Europe/Zurich", self.session))
         self.assertEqual(400, errore.exception.status_code)
         self.assertEqual("uploadFormat", errore.exception.detail)
+
+
+class SalvataggioBackupTests(ConUnBackup):
+    """Il salvataggio: i conti che nascono, le categorie, il secondo import."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        # La pausa fra due richieste alla fonte non fa aspettare nessuno, e
+        # nessun test esce dalla macchina: la fonte si sostituisce.
+        pausa = mock.patch.object(main, "SOURCE_REQUEST_PAUSE_SECONDS", 0)
+        pausa.start()
+        self.addCleanup(pausa.stop)
+
+    def anteprima(self) -> dict:
+        return asyncio.run(main.import_fastbudget_backup(
+            UploadFile(filename="fastbudget.bak", file=BytesIO(self.percorso.read_bytes())),
+            "Europe/Zurich", self.session))
+
+    def salva(self, anteprima: dict | None = None) -> dict:
+        """Salva quello che l'anteprima ha mostrato, com'e' tornato indietro.
+
+        Il blocco dei conti si rimanda intero, con i campi che il salvataggio non
+        legge: e' quello che fa la pagina, ed e' il modo di sapere che i campi in
+        piu' non lo disturbano.
+        """
+        anteprima = anteprima or self.anteprima()
+        return main.import_fastbudget_transactions(
+            main.FastBudgetImportPayload(transactions=anteprima["transactions"], accounts=anteprima["accounts"]),
+            self.session)
+
+    def conti(self) -> dict:
+        return {conto.name: conto for conto in self.session.scalars(select(Account)).all()}
+
+    def test_i_conti_nascono_con_la_valuta_e_il_saldo_iniziale_del_file(self) -> None:
+        esito = self.salva()
+        conti = self.conti()
+        self.assertEqual({"Banca", "Conto2", "Franchi", "Vechio"}, set(conti))
+        self.assertEqual(("EUR", Decimal("1000.00")), (conti["Banca"].currency, conti["Banca"].starting_balance))
+        self.assertEqual("CHF", conti["Franchi"].currency)
+        self.assertEqual(["Banca", "Conto2", "Franchi", "Vechio"],
+                         [conto["name"] for conto in esito["accountsCreated"]])
+        # La controparte che il file non ha piu' nasce fuori dal patrimonio: il
+        # suo saldo viene da una gamba sola, e sommarlo sarebbe sommarlo due volte
+        # a meta'.
+        self.assertFalse(conti["Vechio"].counts_in_net_worth)
+        self.assertTrue(conti["Banca"].counts_in_net_worth)
+
+    def test_ogni_conto_arriva_dove_fastbudget_dice(self) -> None:
+        # La prova che conta: il saldo che l'app calcola dai movimenti importati
+        # e' quello che FastBudget mostra sui suoi tre conti.
+        self.salva()
+        movimenti = self.session.scalars(select(Transaction)).all()
+        dichiarati = {nome: valore for nome, valore, _, _ in CONTI}
+        # "Vechio" non e' nel file: quello che l'app puo' dire di lui e' solo
+        # quello che le righe hanno mosso - settanta arrivati da Banca,
+        # venticinque usciti verso Franchi. E' un saldo a una gamba: le partenze
+        # e gli arrivi che il file non ha registrato non ci sono, e per questo
+        # sta fuori dal patrimonio.
+        dichiarati["Vechio"] = 45.00
+        for nome, valore in dichiarati.items():
+            conto = self.conti()[nome]
+            self.assertEqual(Decimal(str(valore)).quantize(Decimal("0.01")),
+                             calculate_account_balance(conto.starting_balance, nome, movimenti), nome)
+
+    def test_il_giroconto_si_salva_con_i_due_importi(self) -> None:
+        self.salva()
+        cambio = self.session.scalar(select(Transaction).where(Transaction.source_row == 112))
+        self.assertEqual(("Banca", "Franchi", "Transfers"),
+                         (cambio.account_name, cambio.destination_name, cambio.transaction_type))
+        self.assertEqual((Decimal("200.00"), Decimal("180.00")), (cambio.amount, cambio.destination_amount))
+        # Un movimento normale non porta un secondo importo: il campo vuoto vuol
+        # dire "lo stesso importo", che e' il comportamento di sempre.
+        self.assertIsNone(self.session.scalar(select(Transaction).where(Transaction.source_row == 101)).destination_amount)
+
+    def test_il_secondo_import_non_aggiunge_niente(self) -> None:
+        self.salva()
+        primi = list(self.session.scalars(select(Transaction.id).order_by(Transaction.id)))
+        secondo = self.salva()
+        self.assertEqual(13, secondo["alreadyImported"])
+        self.assertEqual(0, secondo["saved"])
+        # Non sono scartate: le righe c'erano gia', e l'import e' andato bene.
+        self.assertEqual([], secondo["errors"])
+        self.assertEqual(primi, list(self.session.scalars(select(Transaction.id).order_by(Transaction.id))))
+
+    def test_l_anteprima_di_un_file_gia_importato_lo_dice(self) -> None:
+        self.assertFalse(any(riga.get("alreadyImported") for riga in self.anteprima()["transactions"]))
+        self.salva()
+        righe = self.anteprima()["transactions"]
+        self.assertTrue(all(riga["alreadyImported"] for riga in righe))
+        # E dice anche con quale movimento: sono la stessa riga, e chi importa la
+        # vede accanto a quella che gia' c'e'.
+        self.assertTrue(all(riga["duplicateOf"]["id"] for riga in righe))
+
+    def test_una_categoria_nuova_nasce_sotto_la_radice_mappata(self) -> None:
+        self.salva()
+        tasse = self.session.scalar(select(Category).where(Category.name == "Tasse"))
+        padre = self.session.get(Category, tasse.parent_id)
+        self.assertEqual("Other Expenses", padre.name)
+        # Il verso lo decide il padre: una voce nata sotto le spese e' una spesa.
+        self.assertEqual("expense", tasse.scope)
+        # La sottocategoria mappata invece non nasce radice: sta sotto la sua.
+        ristoranti = self.session.scalar(select(Category).where(Category.name == "Restaurants"))
+        self.assertEqual("Food & Dining", self.session.get(Category, ristoranti.parent_id).name)
+        # Un nome che l'app ha gia' non si duplica.
+        self.assertEqual(1, len(self.session.scalars(select(Category).where(Category.name == "Restaurants")).all()))
+
+    def test_un_conto_che_esiste_gia_si_riusa_e_la_sua_valuta_non_si_tocca(self) -> None:
+        self.session.add(Account(source_group="bank", name="Franchi", currency="EUR",
+                                 starting_balance=Decimal("10.00"), current_balance=Decimal("10.00"),
+                                 is_active=True))
+        self.session.commit()
+        anteprima = self.anteprima()
+        esistente = [conto for conto in anteprima["accounts"] if conto["name"] == "Franchi"][0]
+        # L'anteprima lo dice prima di salvare: la valuta del file e' un'altra, e
+        # dopo sarebbe una correzione su ogni movimento che ci e' finito dentro.
+        self.assertEqual(("CHF", "EUR"), (esistente["currency"], esistente["existingCurrency"]))
+        esito = self.salva(anteprima)
+        self.assertEqual([{"name": "Franchi", "code": "accountCurrencyMismatch",
+                           "currency": "EUR", "fileCurrency": "CHF"}], esito["warnings"])
+        franchi = [conto for conto in self.conti().values() if conto.name == "Franchi"]
+        self.assertEqual(1, len(franchi))
+        self.assertEqual(("EUR", Decimal("10.00")), (franchi[0].currency, franchi[0].starting_balance))
+        # Il movimento va sul conto che c'e' gia': la valuta del conto resta la
+        # sua, e la riga dice che il file ne dichiarava un'altra.
+        cambio = self.session.scalar(select(Transaction).where(Transaction.source_row == 112))
+        self.assertEqual("Franchi", cambio.destination_name)
+
+    def test_la_valuta_nuova_porta_il_suo_cambio(self) -> None:
+        with mock.patch.object(main, "fetch_price_history",
+                               return_value=[(date(2026, 1, 31), 0.95, "CHF")]) as scarico:
+            esito = self.salva()
+        self.assertEqual([], esito["fxMissing"])
+        self.assertEqual("EURCHF=X", scarico.call_args.args[0])
+        prezzi = self.session.scalars(select(MarketPrice).where(MarketPrice.symbol == "EURCHF=X")).all()
+        self.assertEqual(1, len(prezzi))
+
+    def test_una_valuta_senza_cambio_si_dichiara_e_l_import_riesce(self) -> None:
+        # Senza storico il franco non si converte, e convertirlo a 1 - un franco
+        # per un euro - sarebbe un numero sbagliato che non si lamenta. L'import
+        # entra lo stesso, e la risposta dice cosa manca.
+        with mock.patch.object(main, "fetch_price_history",
+                               side_effect=MarketDataError("irraggiungibile", code="unreachable")):
+            esito = self.salva()
+        self.assertEqual(13, esito["saved"])
+        self.assertEqual(["CHF"], esito["fxMissing"])
 
 
 if __name__ == "__main__":

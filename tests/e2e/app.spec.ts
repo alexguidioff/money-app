@@ -275,6 +275,12 @@ test('Regole di categorizzazione: la regola scritta in Movimenti decide la categ
   await card.getByRole('button', { name: 'Aggiungi', exact: true }).click();
   await expect(card.getByRole('cell', { name: 'supermercato e2e regola', exact: true })).toBeVisible();
 
+  // Il terzo tasto c'e' e apre la sua scelta di file. L'import vero di un
+  // backup non si prova qui: servirebbe un database SQLite costruito in un
+  // test end-to-end, cioe' un file binario nel posto sbagliato - la lettura e
+  // il salvataggio hanno i loro test, con un `.bak` fatto su misura.
+  await expect(page.getByRole('button', { name: 'Importa da FastBudget' })).toBeVisible();
+
   const scelta = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Importa da CSV' }).click();
   // Una data lontana da quelle delle altre scene: un movimento uguale per

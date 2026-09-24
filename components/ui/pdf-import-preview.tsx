@@ -26,6 +26,31 @@ export type PDFTransaction = {
   duplicate?: boolean;
   duplicateOf?: { id: number; date: string; amount: number; description: string } | null;
   errorCode?: string;
+  // Quello che sa solo il backup di FastBudget: la riga del file da cui viene
+  // (per non importarla due volte), la radice sotto cui far nascere la sua
+  // categoria, il secondo importo di un giroconto passato per il cambio, e se
+  // e' gia' entrata con un import precedente.
+  sourceRow?: number;
+  categoryParent?: string | null;
+  destinationAmount?: number | null;
+  alreadyImported?: boolean;
+};
+
+/** Un conto che il backup nomina, con quello che l'app sa gia' di lui.
+ *
+ *  `target` e' il conto dell'app su cui farlo passare: senza, si cerca per nome
+ *  e, se non c'e', nasce con la valuta e il saldo iniziale del file.
+ */
+export type BackupAccountRow = {
+  name: string;
+  currency: string;
+  startingBalance: number | null;
+  declaredBalance: number | null;
+  movements: number;
+  inFile: boolean;
+  accountId: number | null;
+  existingCurrency: string | null;
+  target?: number | null;
 };
 
 /** Una mappatura di colonne salvata con un nome.
@@ -185,9 +210,9 @@ function ColonneDelFile({ headers, mapping, onChange, disabled, modelli }: {
   </div>;
 }
 
-export function PDFImportPreview({ transactions, accounts, categoriesByType, categoryTree, onConfirm, onCancel, feedback, colonne, onCambiaColonne, modelli }: {
+export function PDFImportPreview({ transactions, accounts, categoriesByType, categoryTree, onConfirm, onCancel, feedback, colonne, onCambiaColonne, modelli, backupAccounts, onCambiaConto }: {
   transactions: PDFTransaction[];
-  accounts: { name: string }[];
+  accounts: { id: number; name: string }[];
   categoriesByType: Record<string, string[]>;
   categoryTree: CategoryNode[];
   onConfirm: (approvedTransactions: PDFTransaction[]) => Promise<void>;
@@ -202,8 +227,14 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, cat
   onCambiaColonne?: (mapping: Record<string, number>, delimiter?: string) => void;
   /** I modelli salvati: niente per un PDF, dove non c'e' niente da scegliere. */
   modelli?: ModelliDiMappatura;
+  /** I conti che un backup nomina: niente per un estratto conto, dove i conti
+   *  si scelgono riga per riga fra quelli che l'app ha gia'. */
+  backupAccounts?: BackupAccountRow[];
+  /** Su quale conto far passare un conto del file: `null` vuol dire "cercalo
+   *  per nome, e crealo se non c'e'". */
+  onCambiaConto?: (nome: string, target: number | null) => void;
 }) {
-  const { t, formatEuro, formatDate } = useI18n();
+  const { t, formatEuro, formatMoney, formatDate } = useI18n();
   // La chiave resta con la riga anche quando se ne inseriscono altre: con
   // l'indice, dividere una riga sposterebbe i valori digitati su quella sotto.
   const [contatore] = useState(() => ({ valore: 0 }));
@@ -256,7 +287,28 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, cat
     <DialogDescription>{t('statementPreviewHint', { count: rows.length })}</DialogDescription>
     {colonne && onCambiaColonne && <ColonneDelFile headers={colonne.headers} mapping={colonne.mapping}
       onChange={onCambiaColonne} disabled={isSaving} modelli={modelli} />}
-    <p className="text-sm">{t('duplicateSummary', { count: rows.length, duplicates: rows.filter(row => row.duplicate).length })}</p>
+    {/* I conti del backup, prima delle righe: ogni riga passa da uno di questi,
+        e un conto che nasce con la valuta sbagliata o che punta al conto
+        sbagliato si scopre qui, non dopo aver salvato mille movimenti. */}
+    {backupAccounts && backupAccounts.length > 0 && <div className="shrink-0 rounded-lg border border-black/8 bg-[#fafaf8] p-3">
+      <p className="text-xs font-medium text-[#52615d]">{t('backupAccountsTitle')}</p>
+      <p className="mt-1 text-xs text-[#5e6c68]">{t('backupAccountsHint')}</p>
+      <ul className="mt-2 space-y-1.5">{backupAccounts.map(conto => <li key={conto.name} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+        <span className="font-medium">{conto.name}</span>
+        <span className="text-xs text-[#5e6c68]">{conto.currency} · {t('backupAccountMovements', { count: conto.movements })}</span>
+        {conto.declaredBalance !== null && <span className="text-xs text-[#5e6c68]">{t('backupAccountDeclared', { amount: formatMoney(conto.declaredBalance, conto.currency) })}</span>}
+        {!conto.inFile && <span className="text-xs text-[#a94f3a]">{t('backupAccountOutOfNetWorth')}</span>}
+        {conto.existingCurrency && conto.existingCurrency !== conto.currency &&
+          <span className="text-xs text-[#a94f3a]">{t('backupAccountExisting', { currency: conto.existingCurrency })}</span>}
+        <select aria-label={t('backupAccountTarget', { account: conto.name })} disabled={isSaving} value={conto.target ?? ''}
+          className="ml-auto rounded border p-1 text-xs"
+          onChange={event => onCambiaConto?.(conto.name, event.target.value === '' ? null : Number(event.target.value))}>
+          <option value="">{t('backupAccountCreate')}</option>
+          {accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+        </select>
+      </li>)}</ul>
+    </div>}
+    <p className="text-sm">{t('duplicateSummary', { count: rows.length, duplicates: rows.filter(row => row.duplicate && !row.alreadyImported).length })}</p>
     <label className="text-sm">{t('statementAccountAll')}
       <select aria-label={t('statementAccountAll')} disabled={isSaving} value={allAccount} className="ml-3 rounded border p-2"
         onChange={e => { setAllAccount(e.target.value); setRows(current => current.map(row => ({ ...row, accountName: e.target.value || null }))); }}>
@@ -284,14 +336,20 @@ export function PDFImportPreview({ transactions, accounts, categoriesByType, cat
           const scelte = Array.from(new Set([senzaCategoria ? '' : row.category, ...categorie].filter(Boolean)));
           const primaDelGruppo = row.divisa && rows.findIndex(altra => altra.divisa?.gruppo === row.divisa!.gruppo) === index;
           return <tr key={row.chiave} className={`border-b ${row.divisa ? 'bg-[#f7f9f6]' : ''}`}>
-            <td className="p-2"><input type="checkbox" aria-label={t('statementSelectRow', { row: index + 1 })} checked={row.selected} disabled={isSaving}
+            {/* Una riga che il file ha gia' portato dentro non si può
+                selezionare: non c'e' niente da decidere, e il salvataggio la
+                salterebbe comunque. Una casella che si spunta per non fare
+                niente e' una casella che mente. */}
+            <td className="p-2"><input type="checkbox" aria-label={t('statementSelectRow', { row: index + 1 })} checked={row.selected} disabled={isSaving || row.alreadyImported}
               onChange={e => updateRow(index, { selected: e.target.checked })} /></td>
             <td className="p-2">{!row.divisa
               ? <Button type="button" variant="ghost" size="icon" title={t('splitRow')} aria-label={t('splitRowAria', { row: index + 1 })} disabled={isSaving || !(row.amount >= 0.02)} onClick={() => dividi(index)}><Split className="size-4" /></Button>
               : primaDelGruppo && <Button type="button" variant="ghost" size="icon" title={t('splitUndo')} aria-label={t('splitUndoAria', { row: index + 1 })} disabled={isSaving} onClick={() => riunisci(row.divisa!.gruppo)}><Undo2 className="size-4" /></Button>}</td>
             <td className="p-2"><Input type="date" aria-label={t('date')} aria-invalid={row.selected && !row.date} value={row.date ?? ''} disabled={isSaving}
               onChange={e => updateRow(index, { date: e.target.value })} className="w-36" /></td>
-            <td className="min-w-44 p-2">{row.description}{row.duplicate && <p className="text-xs text-amber-700">{t('statementDuplicate')}{row.duplicateOf && <> · #{row.duplicateOf.id} · {formatDate(row.duplicateOf.date)} · {formatEuro(row.duplicateOf.amount)} · {row.duplicateOf.description}</>}</p>}
+            <td className="min-w-44 p-2">{row.description}{row.alreadyImported
+              ? <p className="text-xs text-[#5e6c68]">{t('statementAlreadyImported')}{row.duplicateOf && <> · #{row.duplicateOf.id} · {formatDate(row.duplicateOf.date)} · {formatEuro(row.duplicateOf.amount)}</>}</p>
+              : row.duplicate && <p className="text-xs text-amber-700">{t('statementDuplicate')}{row.duplicateOf && <> · #{row.duplicateOf.id} · {formatDate(row.duplicateOf.date)} · {formatEuro(row.duplicateOf.amount)} · {row.duplicateOf.description}</>}</p>}
               {row.errorCode && <p className="text-xs text-red-700">{t(Object.hasOwn(translations.it, row.errorCode) ? row.errorCode as TranslationKey : 'statementRowInvalid')}</p>}</td>
             <td className="p-2"><select aria-label={t('category')} value={spostamento || senzaCategoria ? '' : row.category} disabled={isSaving || spostamento} className="w-40 rounded border p-2 disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]"
               onChange={e => updateRow(index, { category: e.target.value, categoryAutomatic: !e.target.value, categoryRule: null })}>

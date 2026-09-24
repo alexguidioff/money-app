@@ -40,6 +40,7 @@ import { Flame,
   Pencil,
   PiggyBank,
   Plus,
+  DatabaseBackup,
   ReceiptText,
   RefreshCw,
   Search,
@@ -72,7 +73,7 @@ import {
 import { ImportHistoryCard } from '@/components/import-history-card';
 import { Input } from '@/components/ui/input';
 import { TabStrip } from '@/components/ui/tab-strip';
-import { PDFImportPreview, type PDFTransaction, type ImportTemplateRow, type ModelliDiMappatura } from '@/components/ui/pdf-import-preview';
+import { PDFImportPreview, type BackupAccountRow, type PDFTransaction, type ImportTemplateRow, type ModelliDiMappatura } from '@/components/ui/pdf-import-preview';
 import { RefundPicker } from '@/components/ui/refund-picker';
 import {
   ChartConfig,
@@ -243,6 +244,19 @@ export type StatementColumns = {
   sample: Record<string, string>[];
   mapping: Record<string, number>;
   delimiter: string;
+};
+
+/* Cosa risponde il salvataggio di un import. Le righe che c'erano gia' non
+   sono errori ne' salvataggi, e i conti che il backup ha creato, le valute
+   senza cambio e i conti con una valuta diversa si dicono qui: sono cose che
+   chi ha appena caricato il file deve sapere adesso. */
+type EsitoImport = {
+  saved: number;
+  errors: { index: number; code: string; duplicateOf?: PDFTransaction['duplicateOf'] }[];
+  alreadyImported?: number;
+  accountsCreated?: { name: string; currency: string }[];
+  warnings?: { name: string; code: string; currency: string; fileCurrency: string }[];
+  fxMissing?: string[];
 };
 
 export type Transaction = {
@@ -1082,6 +1096,13 @@ function MoneyDashboardInner() {
   // correggere una colonna vuol dire rileggere il file, e l'anteprima non ce l'ha.
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvColonne, setCsvColonne] = useState<StatementColumns | null>(null);
+  // Da dove vengono le righe in anteprima: un estratto conto o il backup di
+  // FastBudget. Il salvataggio e' diverso - il backup porta anche i conti - e
+  // l'anteprima e' la stessa, quindi la differenza sta qui.
+  const [statementKind, setStatementKind] = useState<'pdf' | 'csv' | 'bak'>('pdf');
+  // I conti che il backup nomina, come li rimanda il salvataggio: nome, valuta,
+  // saldo iniziale e su quale conto farlo passare.
+  const [backupAccounts, setBackupAccounts] = useState<BackupAccountRow[]>([]);
   // I modelli di mappatura salvati. Si leggono all'apertura di un CSV, che e'
   // l'unico momento in cui servono: chiederli a ogni apertura dell'app sarebbe
   // una richiesta per una cosa che si usa una volta al mese.
@@ -2172,6 +2193,21 @@ function MoneyDashboardInner() {
     return await response.json() as { transactions: PDFTransaction[]; rulesDiscarded?: string[] };
   }
 
+  /** L'anteprima di un backup di FastBudget: le righe, piu' i conti del file.
+   *
+   *  Il fuso di chi guarda lo schermo va con la richiesta: FastBudget scrive i
+   *  suoi movimenti come istanti, e il browser e' l'unico posto dove il fuso di
+   *  chi legge si conosce.
+   */
+  async function anteprimaBackup(file: File) {
+    const body = new FormData();
+    body.append('file', file);
+    const fuso = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const response = await fetch(`${apiUrl}/api/import/fastbudget?tz=${encodeURIComponent(fuso)}`, { method: 'POST', body });
+    if (!response.ok) throw new MessaggioUtente(await responseError(response, t));
+    return await response.json() as { transactions: PDFTransaction[]; accounts: BackupAccountRow[]; rulesDiscarded?: string[] };
+  }
+
   /** Le intestazioni del CSV e la mappatura proposta dall'euristica. */
   async function colonneDelCsv(file: File): Promise<StatementColumns> {
     const body = new FormData();
@@ -2247,7 +2283,7 @@ function MoneyDashboardInner() {
     await caricaModelli();
   }
 
-  async function importStatement(kind: 'pdf' | 'csv') {
+  async function importStatement(kind: 'pdf' | 'csv' | 'bak') {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = `.${kind}`;
@@ -2261,17 +2297,22 @@ function MoneyDashboardInner() {
       setImportFeedback(null);
       try {
         setStatementSource(file.name);
+        setStatementKind(kind);
         // Un CSV si legge in due passi: prima le colonne - che si possono
-        // correggere - poi le righe. Da un PDF non c'e' niente da scegliere.
+        // correggere - poi le righe. Da un PDF non c'e' niente da scegliere, e
+        // un backup porta con se' anche i conti che nomina.
         const colonne = kind === 'csv' ? await colonneDelCsv(file) : null;
         setCsvFile(kind === 'csv' ? file : null);
         setCsvColonne(colonne);
         if (kind === 'csv') void caricaModelli();
         const result = kind === 'csv'
           ? await anteprimaCsv(file, colonne!.mapping, colonne!.delimiter)
-          : await anteprimaPdf(file);
+          : kind === 'pdf' ? await anteprimaPdf(file) : await anteprimaBackup(file);
         if (!result.transactions.length) throw new Error(t('statementEmpty'));
         setPdfPreviewTransactions(result.transactions);
+        // I conti arrivano solo dal backup: un estratto conto non li porta, e il
+        // blocco dei conti non compare.
+        setBackupAccounts('accounts' in result ? (result as { accounts: BackupAccountRow[] }).accounts : []);
         // Regole scartate perche' non compilabili: senza dirle resterebbero
         // regole che non fanno niente, in silenzio.
         setImportFeedback(result.rulesDiscarded?.length
@@ -2286,21 +2327,51 @@ function MoneyDashboardInner() {
   }
   const handlePdfImport = () => importStatement('pdf');
   const handleCsvImport = () => importStatement('csv');
+  const handleBackupImport = () => importStatement('bak');
+
+  /** Salva le righe confermate di un estratto conto. */
+  async function salvaEstratto(approvedTransactions: PDFTransaction[]) {
+    // Il nome del file viaggia con la conferma: e' la rotta che scrive lo
+    // storico, e senza di esso la riga direbbe solo che un import e'
+    // avvenuto, non da dove.
+    const response = await fetch(`${apiUrl}/api/transactions/pdf-import?source=${encodeURIComponent(statementSource)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(approvedTransactions)
+    });
+    if (!response.ok) throw new MessaggioUtente(await responseError(response, t));
+    return await response.json() as EsitoImport;
+  }
+
+  /** Salva un backup di FastBudget: i movimenti **e** i conti che il file nomina. */
+  async function salvaBackup(approvedTransactions: PDFTransaction[]) {
+    const response = await fetch(`${apiUrl}/api/transactions/fastbudget-import`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactions: approvedTransactions, accounts: backupAccounts, source: statementSource })
+    });
+    if (!response.ok) throw new MessaggioUtente(await responseError(response, t));
+    return await response.json() as EsitoImport;
+  }
 
   async function handleConfirmPdfImport(approvedTransactions: PDFTransaction[]) {
     setPdfImporting(true);
     setImportFeedback(null);
     try {
-      // Il nome del file viaggia con la conferma: e' la rotta che scrive lo
-      // storico, e senza di esso la riga direbbe solo che un import e'
-      // avvenuto, non da dove.
-      const response = await fetch(`${apiUrl}/api/transactions/pdf-import?source=${encodeURIComponent(statementSource)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(approvedTransactions)
+      const result = statementKind === 'bak'
+        ? await salvaBackup(approvedTransactions)
+        : await salvaEstratto(approvedTransactions);
+      // Un conto creato con la valuta del file, una valuta senza cambio, un
+      // conto che in app ha un'altra valuta: non sono errori - l'import e'
+      // entrato - ma sono cose da sapere adesso, mentre si ha in mano il file.
+      const avvisi = [
+        result.alreadyImported ? t('backupAlreadyImported', { count: result.alreadyImported }) : '',
+        ...(result.warnings ?? []).map(avviso => t('backupCurrencyMismatch',
+          { account: avviso.name, currency: avviso.currency, fileCurrency: avviso.fileCurrency })),
+        result.fxMissing?.length ? t('backupFxMissing', { currencies: result.fxMissing.join(', ') }) : '',
+      ].filter(Boolean);
+      setImportFeedback({
+        ok: !result.errors.length,
+        message: [t('statementSaved', { saved: result.saved, errors: result.errors.length }), ...avvisi].join(' · ')
       });
-      if (!response.ok) throw new MessaggioUtente(await responseError(response, t));
-      const result = await response.json() as { saved: number; errors: { index: number; code: string; duplicateOf?: PDFTransaction['duplicateOf'] }[] };
-      setImportFeedback({ ok: !result.errors.length, message: t('statementSaved', { saved: result.saved, errors: result.errors.length }) });
       if (result.errors.length) {
         // Una riga rifiutata perche' somiglia a un movimento che c'e' gia' torna
         // segnata come se l'anteprima l'avesse vista: la casella vuota e' il
@@ -2316,6 +2387,7 @@ function MoneyDashboardInner() {
         setPdfPreviewTransactions([]);
         setCsvFile(null);
         setCsvColonne(null);
+        setBackupAccounts([]);
       }
       await loadData(undefined, ['ledger', 'overview', 'budget', 'goals']);
       setMovimentiVersione(versione => versione + 1);
@@ -2861,6 +2933,10 @@ function MoneyDashboardInner() {
               pdfImporting={pdfImporting}
               onPdfImport={handlePdfImport}
               onCsvImport={handleCsvImport}
+              onBackupImport={handleBackupImport}
+              backupAccounts={backupAccounts}
+              onCambiaConto={(nome, target) => setBackupAccounts(current =>
+                current.map(conto => conto.name === nome ? { ...conto, target } : conto))}
               showPdfPreview={showPdfPreview}
               pdfPreviewTransactions={pdfPreviewTransactions}
               onPdfImportConfirm={handleConfirmPdfImport}
@@ -2869,6 +2945,7 @@ function MoneyDashboardInner() {
                 setPdfPreviewTransactions([]);
                 setCsvFile(null);
                 setCsvColonne(null);
+                setBackupAccounts([]);
               }}
               colonne={csvColonne}
               onCambiaColonne={(mappatura, delimitatore) => void ricaricaCsv(mappatura, delimitatore)}
@@ -3481,6 +3558,9 @@ function SectionView({
   pdfImporting,
   onPdfImport,
   onCsvImport,
+  onBackupImport,
+  backupAccounts,
+  onCambiaConto,
   showPdfPreview,
   pdfPreviewTransactions,
   onPdfImportConfirm,
@@ -3582,10 +3662,14 @@ function SectionView({
   pdfImporting: boolean;
   onPdfImport: () => Promise<void>;
   onCsvImport: () => Promise<void>;
+  onBackupImport: () => Promise<void>;
   showPdfPreview: boolean;
   pdfPreviewTransactions: PDFTransaction[];
   onPdfImportConfirm: (transactions: PDFTransaction[]) => Promise<void>;
   onPdfImportCancel: () => void;
+  /** I conti che un backup nomina. Vuoto per un estratto conto. */
+  backupAccounts: BackupAccountRow[];
+  onCambiaConto: (nome: string, target: number | null) => void;
   /** Le colonne del CSV in anteprima. Niente per un PDF: li' non si sceglie. */
   colonne: StatementColumns | null;
   onCambiaColonne: (mapping: Record<string, number>, delimiter?: string) => void;
@@ -3737,7 +3821,7 @@ function SectionView({
     <>
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div><p className="mb-1 text-sm font-medium text-[#5e6c68]">{t(SECTION_DESC_KEYS[section])}</p><h1 className="flex items-center text-2xl font-semibold tracking-[-0.03em] sm:text-[30px]">{t(SECTION_LABEL_KEYS[section])}<PageHelp titolo="helpTitle" testo={SECTION_HELP_KEYS[section][0]} dipendenza={SECTION_HELP_KEYS[section][1]} /></h1></div>
-        {section === 'Movimenti' && <div className="flex flex-wrap gap-2"><div className="flex flex-wrap gap-2"><Button disabled={pdfImporting} onClick={() => void onPdfImport()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileText className={`size-4 ${pdfImporting ? 'animate-spin' : ''}`} />{pdfImporting ? t('importingEllipsis') : t('importFromPdf')}</Button><Button disabled={pdfImporting} onClick={() => void onCsvImport()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileSpreadsheet className={`size-4 ${pdfImporting ? 'animate-spin' : ''}`} />{pdfImporting ? t('importingEllipsis') : t('importFromCsv')}</Button></div><Button variant="outline" className="h-10 rounded-xl bg-white" onClick={() => onTransfer()}><ArrowRightLeft className="size-4" />{t('transfer')}</Button><Button className="h-10 rounded-xl bg-[var(--money-primary)] px-4 text-white hover:bg-[var(--money-primary-hover)]" onClick={onNewTransaction}><Plus className="size-4" />{t('newTransaction')}</Button></div>}
+        {section === 'Movimenti' && <div className="flex flex-wrap gap-2"><div className="flex flex-wrap gap-2"><Button disabled={pdfImporting} onClick={() => void onPdfImport()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileText className={`size-4 ${pdfImporting ? 'animate-spin' : ''}`} />{pdfImporting ? t('importingEllipsis') : t('importFromPdf')}</Button><Button disabled={pdfImporting} onClick={() => void onCsvImport()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileSpreadsheet className={`size-4 ${pdfImporting ? 'animate-spin' : ''}`} />{pdfImporting ? t('importingEllipsis') : t('importFromCsv')}</Button><Button disabled={pdfImporting} onClick={() => void onBackupImport()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><DatabaseBackup className={`size-4 ${pdfImporting ? 'animate-spin' : ''}`} />{pdfImporting ? t('importingEllipsis') : t('importFromFastbudget')}</Button></div><Button variant="outline" className="h-10 rounded-xl bg-white" onClick={() => onTransfer()}><ArrowRightLeft className="size-4" />{t('transfer')}</Button><Button className="h-10 rounded-xl bg-[var(--money-primary)] px-4 text-white hover:bg-[var(--money-primary-hover)]" onClick={onNewTransaction}><Plus className="size-4" />{t('newTransaction')}</Button></div>}
         {/* Le Categorie e le Entrate tardive non leggono il periodo: il primo
             mostra due alberi interi, il secondo due impostazioni. Il selettore
             acceso voleva dire poter cambiare mese senza che niente si muovesse. */}
@@ -3918,6 +4002,7 @@ function SectionView({
         {showPdfPreview && <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-[95vw]" showCloseButton={false}>
           <PDFImportPreview transactions={pdfPreviewTransactions} accounts={accounts.filter(a => a.isActive !== false)} categoriesByType={settingsData.categoriesByType} categoryTree={settingsData.categoryTree} feedback={importFeedback}
             colonne={colonne ?? undefined} onCambiaColonne={onCambiaColonne} modelli={modelli}
+            backupAccounts={backupAccounts} onCambiaConto={onCambiaConto}
             onConfirm={onPdfImportConfirm} onCancel={onPdfImportCancel} />
         </DialogContent>}
       </Dialog>
