@@ -151,6 +151,21 @@ def _valuta(campo: str | None) -> str:
     return codice if len(codice) == 3 and codice.isalpha() else "EUR"
 
 
+def _centesimi(valore: Any) -> float:
+    """Il numero del file ridotto ai centesimi.
+
+    FastBudget tiene gli importi in virgola mobile, e i numeri che ha calcolato
+    lui non sono cifre tonde: il saldo di un conto torna come 363,9700000000166,
+    e il lato convertito di un giroconto come 548,3200002. Portare dentro quel
+    numero cosi' com'e' non e' portare un decimale in piu': e' un movimento che
+    il salvataggio rifiuta, perche' un importo con sette decimali non e' denaro.
+    Il denaro sono i centesimi, e si arrotonda una volta sola, dove il numero del
+    file diventa il numero dell'app - non a ogni lettura, e non con un errore da
+    correggere a mano un movimento alla volta.
+    """
+    return round(float(valore or 0), 2)
+
+
 def _giorno(millisecondi: Any, fuso: ZoneInfo) -> date | None:
     try:
         return datetime.fromtimestamp(int(millisecondi) / 1000, tz=fuso).date()
@@ -241,8 +256,8 @@ def _conti(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
     for nome, valore, iniziale, valuta in conn.execute(
             "SELECT name, value, initial_funds, currency FROM account").fetchall():
         conti[(nome or "").strip()] = {
-            "currency": _valuta(valuta), "startingBalance": float(iniziale or 0),
-            "balance": float(valore or 0),
+            "currency": _valuta(valuta), "startingBalance": _centesimi(iniziale),
+            "balance": _centesimi(valore),
         }
     return conti
 
@@ -262,7 +277,9 @@ def _movimenti(conn: sqlite3.Connection, fuso: ZoneInfo, albero: dict[str, str])
         trasferimento = categoria == CATEGORIA_TRASFERIMENTO
         nome_categoria, padre = (None, None) if trasferimento else _categoria(
             categoria, albero.get(categoria, categoria), entrata)
-        importo = abs(float(valore or 0))
+        # Il verso lo dice `i_e`, non il segno: un importo scritto in negativo
+        # non cambia lato, e il valore assoluto e' quello che si mostra.
+        importo = abs(_centesimi(valore))
         descrizione = _descrizione(altro, note) or categoria
         righe.append({
             "_id": identificativo, "_trasferimento": trasferimento, "_entrata": entrata,

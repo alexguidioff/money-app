@@ -140,6 +140,20 @@ class ConUnBackup(unittest.TestCase):
     def leggi(self, tz: str = "Europe/Zurich") -> dict:
         return leggi_backup(str(self.percorso), tz)
 
+    def sporca(self, identificativo: int, valore: float) -> None:
+        """Riscrive l'importo di una riga del file con un numero non tondo.
+
+        E' quello che il file fa da solo sugli importi che ha calcolato: la
+        colonna e' in virgola mobile, e il risultato di una conversione torna coi
+        decimali che il binario gli lascia. Si riscrive la riga invece di
+        aggiungerne una al file finto: il file finto e' la storia di tutti i
+        test, e un importo in piu' cambierebbe i saldi che gli altri fissano.
+        """
+        conn = sqlite3.connect(self.percorso)
+        conn.execute("UPDATE income_or_expense SET value = ? WHERE _id = ?", (valore, identificativo))
+        conn.commit()
+        conn.close()
+
     def righe(self, tz: str = "Europe/Zurich") -> list[dict]:
         return self.leggi(tz)["transactions"]
 
@@ -282,6 +296,16 @@ class AnteprimaBackupTests(ConUnBackup):
         self.assertEqual(422, errore.exception.status_code)
         self.assertEqual("statementParseFailed", errore.exception.detail)
 
+    def test_una_cifra_calcolata_dal_file_arriva_ai_centesimi(self) -> None:
+        # Due forme dello stesso guaio: i decimali che una conversione si lascia
+        # dietro, e il numero tondo che cade una unita' sotto la sua
+        # rappresentazione. Nessuna delle due e' una cifra di denaro.
+        self.sporca(101, 30.0000002)
+        self.sporca(103, 12.500000000000002)
+        self.assertEqual(30.00, self.riga(101)["rawAmount"])
+        self.assertEqual(-30.00, self.riga(101)["amount"])
+        self.assertEqual(12.50, self.riga(103)["rawAmount"])
+
     def test_l_estensione_la_controlla_il_caricamento(self) -> None:
         with self.assertRaises(HTTPException) as errore:
             asyncio.run(main.import_fastbudget_backup(
@@ -352,6 +376,16 @@ class SalvataggioBackupTests(ConUnBackup):
             conto = self.conti()[nome]
             self.assertEqual(Decimal(str(valore)).quantize(Decimal("0.01")),
                              calculate_account_balance(conto.starting_balance, nome, movimenti), nome)
+
+    def test_una_cifra_non_tonda_non_fa_perdere_il_movimento(self) -> None:
+        # Il movimento che il salvataggio rifiutava non arrivava mai: il conto
+        # restava corto di quella cifra, e l'anteprima diceva "un errore" come se
+        # il file fosse storto invece che il numero.
+        self.sporca(101, 30.0000002)
+        esito = self.salva()
+        self.assertEqual([], esito["errors"])
+        riga = self.session.scalar(select(Transaction).where(Transaction.source_row == 101))
+        self.assertEqual(Decimal("30.00"), riga.amount)
 
     def test_il_giroconto_si_salva_con_i_due_importi(self) -> None:
         self.salva()
