@@ -93,8 +93,10 @@ describe('testi senza uso', () => {
     // Due forme: quelli che si alzano, e quelli che la lettura di un CSV attacca
     // a una riga sola invece di far fallire tutto l'import.
     const codiciServer = new Set([...backend.matchAll(/(?:detail=|"code":\s*|ValueError\(|motivo = )["'](\w+)["']/g)].map((m) => m[1]));
-    // Chiavi composte a runtime: `t(\`debtIssue_${motivo}\`)`.
-    const prefissiDinamici = ['debtIssue_'];
+    // Chiavi composte a runtime: `t(\`debtIssue_${motivo}\`)`, e i motivi di
+    // scarto dell'import di Scalable, che `motivoRifiuto` costruisce dal codice
+    // corto che manda il lettore (`scalableReason` + `CoppiaInterna`).
+    const prefissiDinamici = ['debtIssue_', 'scalableReason'];
     const orfane = Object.keys(italiano).filter((chiave) =>
       !new RegExp(`['"\`]${chiave}['"\`]`).test(frontend)
       && !prefissiDinamici.some((prefisso) => chiave.startsWith(prefisso))

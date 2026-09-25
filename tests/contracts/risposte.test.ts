@@ -68,6 +68,10 @@ const CONTRATTI: Array<{ risposta: string; tipo: string; da: string }> = [
   // arrivano vuoti, e la pagina li mostra senza accorgersene.
   { risposta: 'importTemplates', tipo: '{ items: ImportTemplateRow[] }', da: '@/components/ui/pdf-import-preview' },
   { risposta: 'backups', tipo: '{ items?: BackupItem[] }', da: '@/components/money-dashboard' },
+  // L'anteprima dell'elenco di Scalable: il riquadro dell'import legge una
+  // trentina di campi da questa risposta, e un nome cambiato qui vorrebbe dire
+  // un'anteprima vuota senza che nessun test del backend se ne accorga.
+  { risposta: 'scalablePreview', tipo: 'ScalablePreview', da: '@/components/ui/scalable-import-dialog' },
 ];
 
 function importazioni(): string {

@@ -30,6 +30,7 @@ from io import BytesIO
 from pathlib import Path
 from decimal import Decimal
 from typing import Any
+from unittest.mock import patch
 
 from fastapi import HTTPException, UploadFile
 from fastapi.encoders import jsonable_encoder
@@ -55,11 +56,14 @@ from app.fire_routes import (FlussoPayload, ProfiloPayload, RegolePayload, crea_
                              leggi_profilo, leggi_regole, salva_profilo, salva_regole, spostamento_pensioni)
 from app.main import (AccountPayload, BudgetCreatePayload, BudgetUpdatePayload, GoalPayload, ImportTemplatePayload,
                       InvestmentTxPayload,
-                      LiabilityPayload, NotePayload, RecurringTransactionCreate, SettingValueUpdate, SplitPayload, TransactionPayload,
+                      LiabilityPayload, NotePayload, RecurringTransactionCreate, ScalableImportPayload,
+                      ScalablePreviewPayload, SettingValueUpdate, SplitPayload, TransactionPayload,
                       create_account, create_budget, create_goal, create_import_template, create_investment_tx, create_note,
                       create_recurring_transaction, create_transaction, import_batches, import_csv_columns,
-                      liabilities, list_backups_endpoint, list_import_templates,
-                      list_recurring_transactions, save_liability, split_transaction, update_budget, update_setting)
+                      import_scalable, liabilities, list_backups_endpoint, list_import_templates,
+                      list_recurring_transactions, save_liability, scalable_preview, split_transaction,
+                      update_budget, update_setting)
+from app.market_data import MarketDataError
 from app.models import (Account, AccountValuation, AppSetting, BudgetPlan, CategorizationRule, Category, Event, Goal,
                         GoalMilestone, ImportBatch, IncomeStream, InvestmentInstrument,
                         LiabilityProfile, LookupOption, MarketPrice, Note, RetirementProfile, Transaction, TransactionLedgerLink)
@@ -260,6 +264,48 @@ def _semina(session: Session) -> None:
     assert vendita
 
 
+# L'elenco di Scalable scritto qui: nomi di strumenti inventati, cifre tonde e
+# date vecchie, che non possono incontrare una riga di banca del seme. Fra le
+# colonne c'e' il separatore vero dell'interfaccia (U+2028): un testo separato da
+# spazi non proverebbe quella lettura.
+ELENCO_SCALABLE = "\n".join([
+    "luned\u00ec, 3 febbraio 2020", "Piano di accumulo\u2028Fondo Alfa UCITS ETF 1C\u202810,00 az.\u2028\u20ac-200,00",
+    "marted\u00ec, 4 febbraio 2020", "Piano di accumulo\u2028Fondo Alfa UCITS ETF Acc\u20285,00 az.\u2028\u20ac-120,00",
+    "mercoled\u00ec, 5 febbraio 2020", "Deposito\u2028\u20ac300,00",
+    "gioved\u00ec, 6 febbraio 2020", "Interesse\u2028\u20ac12,34",
+    # Un tipo che non si riconosce: senza, l'elenco dei rifiuti sarebbe vuoto e
+    # il contratto non direbbe come si legge un motivo.
+    "venerd\u00ec, 7 febbraio 2020", "Commissione\u2028\u20ac1,00",
+])
+
+
+UTENTE_DI_PROVA = 1
+
+
+def _anteprima_scalable(payload: ScalablePreviewPayload, session: Session) -> dict[str, Any]:
+    """L'anteprima dell'elenco di prova, senza uscire in rete.
+
+    La ricerca dei ticker chiama una fonte esterna e il contratto non prova la
+    rete: si finge che non risponda, che e' anche il caso che il frontend deve
+    saper leggere (una scelta senza candidati).
+
+    L'utente si fissa a un numero inventato. Senza sessione l'utente e' il primo
+    del database - e qui il database puo' rispondere o no a seconda di come gira
+    il container: l'id vero finirebbe dentro la risposta di prova, e l'import si
+    rifiuterebbe perche' il corpo ne manda un altro. Il contratto prova la forma
+    del corpo, non chi c'e' scritto dentro.
+    """
+    with patch("app.main.search_yahoo_symbols", side_effect=MarketDataError("offline")), \
+         patch("app.main.current_user_id", return_value=UTENTE_DI_PROVA):
+        return scalable_preview(payload, session)
+
+
+def _import_scalable(payload: ScalableImportPayload, session: Session) -> dict[str, Any]:
+    """L'import dell'elenco di prova, con lo stesso utente dell'anteprima."""
+    with patch("app.main.current_user_id", return_value=UTENTE_DI_PROVA):
+        return import_scalable(payload, session)
+
+
 def _colonne_di_prova() -> dict[str, Any]:
     """Le colonne lette da un CSV scritto qui: numeri tondi e inventati.
 
@@ -328,6 +374,7 @@ def risposte() -> dict[str, Any]:
         "recurring": asyncio.run(list_recurring_transactions(session)),
         "importBatches": import_batches(20, session),
         "statementColumns": _colonne_di_prova(),
+        "scalablePreview": _anteprima_scalable(ScalablePreviewPayload(testo=ELENCO_SCALABLE), session),
         "importTemplates": _modelli_di_prova(session),
         "notifications": notifiche(session),
         "backups": _backup_di_prova(),
@@ -411,6 +458,11 @@ def _gestori(session: Session) -> dict[str, tuple[type[BaseModel], Any]]:
         "split": (SplitPayload, lambda p: split_transaction(session.scalars(select(Transaction.id).where(
             Transaction.transaction_type == "Expenses",
             Transaction.category_id == categoria(session, "Housing"))).first(), p, session)),
+        "scalablePreview": (ScalablePreviewPayload, lambda p: _anteprima_scalable(p, session)),
+        # Il corpo dell'import dice su quale utente si sta scrivendo: la rotta
+        # rifiuta chi non e' l'utente della sessione, ed e' il controllo che
+        # questo contratto deve attraversare, non aggirare.
+        "scalableImport": (ScalableImportPayload, lambda p: _import_scalable(p, session)),
     }
 
 

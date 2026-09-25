@@ -32,6 +32,7 @@ import { Flame,
   FileSpreadsheet,
   FileText,
   Filter,
+  Upload,
   Landmark,
   LayoutDashboard,
   LineChart as LineChartIcon,
@@ -75,6 +76,7 @@ import { Input } from '@/components/ui/input';
 import { TabStrip } from '@/components/ui/tab-strip';
 import { PDFImportPreview, type BackupAccountRow, type PDFTransaction, type ImportTemplateRow, type ModelliDiMappatura } from '@/components/ui/pdf-import-preview';
 import { RefundPicker } from '@/components/ui/refund-picker';
+import { ScalableImportDialog } from '@/components/ui/scalable-import-dialog';
 import {
   ChartConfig,
   ChartContainer,
@@ -2936,6 +2938,7 @@ function MoneyDashboardInner() {
               account={auth?.user ?? null}
               onAccountChanged={loadAuth}
               importFeedback={importFeedback}
+              onImportFeedback={setImportFeedback}
               downloadBusy={downloadBusy}
               downloadError={downloadError}
               canManageBackups={auth?.canManageBackups ?? false}
@@ -3561,6 +3564,7 @@ function SectionView({
   importing,
   onImportData,
   importFeedback,
+  onImportFeedback,
   downloadBusy,
   downloadError,
   canManageBackups,
@@ -3665,6 +3669,7 @@ function SectionView({
   importing: boolean;
   onImportData: (file: File) => Promise<string>;
   importFeedback: { ok: boolean; message: string } | null;
+  onImportFeedback: (esito: { ok: boolean; message: string } | null) => void;
   downloadBusy: boolean;
   downloadError: string;
   canManageBackups: boolean;
@@ -3988,7 +3993,7 @@ function SectionView({
 
       {section === 'Debiti' && <LiabilitiesView apiUrl={apiUrl} onDeleted={onReloadData} accounts={accounts} version={movimentiVersione} onPayment={onTransfer} onNewAccount={() => onNewAccount('liability')} onEditAccount={onAccountEdit} onEditTransaction={onEditTransaction} />}
 
-      {section === 'Investimenti' && <InvestmentsView apiUrl={apiUrl} onQuotesChanged={onReloadData} dashboard={investmentDashboardData} ledger={investmentLedger} allocation={investmentAllocationData} onSave={onInvestmentSave} onDelete={onInvestmentDelete} onInstrumentSave={onInstrumentSave} onRefresh={onMarketRefresh} accounts={accounts} impostazioni={{ valori: settingsData.settings, inCorso: settingSaving, errore: settingError, onCambia: onSettingChange }} />}
+      {section === 'Investimenti' && <InvestmentsView apiUrl={apiUrl} onQuotesChanged={onReloadData} dashboard={investmentDashboardData} ledger={investmentLedger} allocation={investmentAllocationData} onSave={onInvestmentSave} onDelete={onInvestmentDelete} onInstrumentSave={onInstrumentSave} onRefresh={onMarketRefresh} accounts={accounts} impostazioni={{ valori: settingsData.settings, inCorso: settingSaving, errore: settingError, onCambia: onSettingChange }} importFeedback={importFeedback} onImportFeedback={onImportFeedback} />}
 
       {section === 'Impostazioni' && <div className="space-y-5">
         {/* Due colonne: a sinistra chi sei e cosa entra, a destra come l'app
@@ -5320,9 +5325,10 @@ function RendimentoCard({ titolo, spiegazione, esito }: {
   </Card>;
 }
 
-function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChanged, onSave, onDelete, onInstrumentSave, onRefresh, accounts, impostazioni }: { apiUrl: string; onQuotesChanged: () => Promise<void>; dashboard: InvestmentDashboardData; ledger: InvestmentTransaction[]; allocation: InvestmentAllocationData; onSave: (transactionId: number | null, payload: Record<string, string | number | boolean>) => Promise<void>; onDelete: (transaction: InvestmentTransaction) => Promise<void>; onInstrumentSave: (instrumentId: number, payload: Record<string, string | number | null>) => Promise<void>; onRefresh: () => Promise<{ updated: number; errors: Array<{ code?: string; error?: string }> }>; accounts: Account[]; impostazioni: ImpostazioniDellaPagina }) {
+function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChanged, onSave, onDelete, onInstrumentSave, onRefresh, accounts, impostazioni, importFeedback, onImportFeedback }: { apiUrl: string; onQuotesChanged: () => Promise<void>; dashboard: InvestmentDashboardData; ledger: InvestmentTransaction[]; allocation: InvestmentAllocationData; onSave: (transactionId: number | null, payload: Record<string, string | number | boolean>) => Promise<void>; onDelete: (transaction: InvestmentTransaction) => Promise<void>; onInstrumentSave: (instrumentId: number, payload: Record<string, string | number | null>) => Promise<void>; onRefresh: () => Promise<{ updated: number; errors: Array<{ code?: string; error?: string }> }>; accounts: Account[]; impostazioni: ImpostazioniDellaPagina; importFeedback: { ok: boolean; message: string } | null; onImportFeedback: (esito: { ok: boolean; message: string } | null) => void }) {
   const { t, lang, locale, formatEuro, formatCompactEuro, formatDate, monthNames, formatPeriodLabel, formatPercentPoints, formatPercentNumber } = useI18n();
   const [tab, setTab] = useState<'portfolio' | 'ledger' | 'instruments' | 'allocation' | 'quotes' | 'metodo'>('portfolio');
+  const [scalableOpen, setScalableOpen] = useState(false);
   const [showClosedPositions, setShowClosedPositions] = useState(false);
   // "Chiusa" vuol dire zero quote. Ma gli interessi del broker, una
   // commissione, un versamento nascono a zero quote: una riga cosi' non e'
@@ -5701,7 +5707,13 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
 
     {tab === 'ledger' && (
       <div className="space-y-5">
+        {/* L'esito dell'import sta dove sta il pulsante: l'elenco di Scalable e
+            il CSV partono dalla stessa riga, e chi lo preme guarda qui. */}
+        {importFeedback && (importFeedback.ok
+          ? <p role="status" className="rounded-xl border border-black/6 bg-white px-4 py-2 text-sm text-[#3a4a46] shadow-sm shadow-black/[0.02]">{importFeedback.message}</p>
+          : <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#a94f3a]">{importFeedback.message}</p>)}
         <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => { onImportFeedback(null); setScalableOpen(true); }}><Upload className="size-4" />{t('scalableImport')}</Button>
           <Button variant="outline" onClick={() => void chooseLedgerCsv()}><FileSpreadsheet className="size-4" />{t('importFromCsv')}</Button>
           <Button className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]" onClick={() => { setEditing(null); setError(''); }}>
             <Plus className="size-4" />{t('newOperation')}
@@ -5858,6 +5870,9 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
           paese, che e' l'unica cosa che puo' dire senza inventare. */}
       <SettingCountry label={t('taxCountry')} value={impostazioni.valori.tax_country ?? ''} saving={impostazioni.inCorso === 'tax_country'} hint={t('taxCountryHint')} onChange={(value) => void impostazioni.onCambia('tax_country', value)} />
     </CardImpostazioni>}
+
+    <ScalableImportDialog open={scalableOpen} apiUrl={apiUrl} onClose={() => setScalableOpen(false)}
+      onDone={async (esito) => { await onQuotesChanged(); onImportFeedback(esito); }} />
 
     <Dialog open={ledgerCsvOpen} onOpenChange={(open) => { setLedgerCsvOpen(open); if (!open) { setLedgerCsvFile(null); setLedgerCsvPreview([]); setLedgerCsvError(''); } }}>
       <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-[95vw]">

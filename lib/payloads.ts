@@ -226,3 +226,38 @@ export function eventPayload(form: FormData) {
 export function eventAttachPayload(eventId: number | null) {
   return { event_id: eventId };
 }
+
+/** Il testo incollato dall'elenco di Scalable: da solo, l'anteprima lo rilegge. */
+export function scalablePreviewPayload(testo: string) {
+  return { testo };
+}
+
+export type ScalableDecisions = {
+  testo: string;
+  /** L'utente su cui si sta scrivendo. Lo dice l'anteprima, non si indovina. */
+  utente: number;
+  /** Come si chiama ogni strumento e con quali grafie e' scritto nel testo.
+   *  Due strumenti con lo stesso nome scritto qui diventano uno solo. */
+  strumenti: Array<{ nome: string; grafie: string[]; ticker: string }>;
+  /** Le righe di banca scelte a mano; `null` vuol dire "nessuna". */
+  agganci: Array<{ riga: number; transaction_id: number | null }>;
+  categoriaInteressi: string;
+};
+
+/**
+ * Le decisioni dell'import. I movimenti non ci sono: il server rilegge lo stesso
+ * testo, cosi' l'anteprima e quello che si scrive non possono dividersi.
+ */
+export function scalableImportPayload(decisioni: ScalableDecisions) {
+  return {
+    testo: decisioni.testo,
+    utente: decisioni.utente,
+    raggruppamento: decisioni.strumenti.map((strumento) => ({
+      nome: strumento.nome.trim(), grafie: strumento.grafie })),
+    ticker: Object.fromEntries(decisioni.strumenti
+      .filter((strumento) => strumento.ticker.trim())
+      .map((strumento) => [strumento.nome.trim(), strumento.ticker.trim()])),
+    agganci: decisioni.agganci,
+    categoria_interessi: decisioni.categoriaInteressi || null,
+  };
+}

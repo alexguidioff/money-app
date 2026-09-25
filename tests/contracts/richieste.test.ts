@@ -5,7 +5,8 @@ import type { RetirementProfile } from '@/components/settings/retirement-profile
 import { accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, eventAttachPayload,
   eventPayload, expenseRulesPayload,
   goalMilestonePayload, goalPayload, incomeStreamPayload,
-  ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, splitPayload, transactionPayload } from '@/lib/payloads';
+  ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, scalableImportPayload,
+  scalablePreviewPayload, splitPayload, transactionPayload } from '@/lib/payloads';
 
 /*
  * I corpi che il frontend manda, costruiti dalle stesse funzioni che usano i
@@ -28,6 +29,18 @@ function modulo(campi: Record<string, string>): FormData {
 
 const oggi = new Date().toISOString().slice(0, 10);
 const annoProssimo = `${new Date().getFullYear() + 5}-01-01`;
+
+// L'elenco di Scalable, scritto qui come il seme del backend: nomi inventati,
+// cifre tonde, date vecchie. Fra le colonne c'e' il separatore vero
+// dell'interfaccia (U+2028), non uno spazio: e' l'unica differenza fra
+// l'incollare e l'esportare.
+const ELENCO_SCALABLE = [
+  'lunedì, 3 febbraio 2020', 'Piano di accumulo Fondo Alfa UCITS ETF 1C 10,00 az. €-200,00',
+  'martedì, 4 febbraio 2020', 'Piano di accumulo Fondo Alfa UCITS ETF Acc 5,00 az. €-120,00',
+  'mercoledì, 5 febbraio 2020', 'Deposito €300,00',
+  'giovedì, 6 febbraio 2020', 'Interesse €12,34',
+  'venerdì, 7 febbraio 2020', 'Commissione €1,00',
+].join('\n');
 
 // Lo stato del modulo profilo cosi' com'e' al salvataggio: e' quello che parte.
 const profilo: RetirementProfile = {
@@ -111,6 +124,21 @@ const richieste = [
     name: 'Ferie in montagna', notes: 'Settimana bianca', start_date: '2025-01-04', end_date: '2025-01-11' })) },
   { endpoint: 'eventAttach', case: 'aggancia il movimento a un evento', body: eventAttachPayload(1) },
   { endpoint: 'eventAttach', case: 'sgancia: il movimento resta dov\'era', body: eventAttachPayload(null) },
+  { endpoint: 'scalablePreview', case: 'elenco incollato', body: scalablePreviewPayload(ELENCO_SCALABLE) },
+  // Senza ticker: un ticker farebbe uscire la richiesta in rete, e il contratto
+  // prova la forma del corpo, non la fonte delle quotazioni.
+  { endpoint: 'scalableImport', case: 'raggruppamento, aggancio e categoria', body: scalableImportPayload({
+    testo: ELENCO_SCALABLE,
+    // L'utente e' quello che l'anteprima mostra, e il contratto lo fissa a un
+    // numero inventato (`contratti.py`): l'import rifiuta chi non e' l'utente
+    // della sessione, ed e' un controllo che si prova, non si aggira.
+    utente: 1,
+    // Due grafie sotto un nome solo: e' la conferma che l'anteprima chiede.
+    strumenti: [
+      { nome: 'Fondo Alfa UCITS ETF 1C', grafie: ['Fondo Alfa UCITS ETF 1C', 'Fondo Alfa UCITS ETF Acc'], ticker: '' },
+    ],
+    agganci: [{ riga: 6, transaction_id: null }],
+    categoriaInteressi: 'Salary' }) },
 ];
 
 it('i corpi delle richieste sono costruiti e scritti per il backend', () => {

@@ -96,6 +96,53 @@ test('import di un estratto conto CSV: anteprima, conto per tutte le righe, conf
   expect(bar).toEqual([['Expenses', 17], ['Transfers', 10]]);
 });
 
+// Un elenco di Scalable scritto come lo incolla l'interfaccia: le colonne di un
+// movimento sono separate da U+2028, non da spazi. Numeri tondi e nomi
+// inventati.
+const ELENCO_SCALABLE = [
+  'lunedì, 3 febbraio 2020',
+  'Piano di accumulo Fondo Alfa UCITS ETF 1C 10,00 az. €-100,00',
+  'martedì, 4 febbraio 2020',
+  'Piano di accumulo Fondo Alfa UCITS ETF Acc 5,00 az. €-60,00',
+  'mercoledì, 5 febbraio 2020',
+  'Deposito €300,00',
+  'giovedì, 6 febbraio 2020',
+  'Interesse €12,34',
+  'venerdì, 7 febbraio 2020',
+  // Un tipo che l'interfaccia non usa per i movimenti: si scarta e si dice.
+  'Commissione €1,00',
+].join('\n');
+
+test('import di un elenco Scalable: anteprima coi rifiuti, conferma, conti creati', async ({ page }) => {
+  await avvia(page);
+  await apri(page, 'Investimenti');
+  await page.getByRole('button', { name: 'Registro', exact: true }).click();
+  await page.getByRole('button', { name: 'Importa da Scalable' }).click();
+  const riquadro = page.getByRole('dialog');
+  await riquadro.getByRole('textbox').fill(ELENCO_SCALABLE);
+  await riquadro.getByRole('button', { name: 'Anteprima importazione' }).click();
+
+  await expect(riquadro.getByText('5 righe lette · 4 da importare · 1 rifiutate')).toBeVisible();
+  // Su chi si sta scrivendo: senza, un import fatto guardando lo schermo di
+  // un'altra persona finirebbe su quella persona.
+  await expect(riquadro.getByText(/^Stai importando su: /)).toBeVisible();
+  // La riga che il lettore non riconosce si dice col suo motivo: uno scarto
+  // silenzioso sarebbe denaro che sparisce senza che nessuno lo sappia.
+  await expect(riquadro.getByText('Tipo di movimento non riconosciuto')).toBeVisible();
+  // Due grafie dello stesso fondo restano una riga sola da confermare, ed e'
+  // quello che tiene insieme la posizione invece di sdoppiarla.
+  await expect(riquadro.getByLabel('Strumento')).toHaveCount(1);
+
+  await riquadro.getByRole('button', { name: /Conferma e aggiungi \(4\)/ }).click();
+  await expect(riquadro).toBeHidden();
+  await expect(page.getByText(/^Importati 4 movimenti, 1 righe rifiutate\.$/)).toBeVisible({ timeout: 20_000 });
+
+  // I tre conti dell'import: il contante del broker, i titoli, e quello dove
+  // finisce il denaro che in banca non e' mai arrivato.
+  const conti = (await (await page.request.get('/api/accounts')).json()) as { items: Array<{ name: string }> };
+  expect(conti.items.map((c) => c.name)).toEqual(expect.arrayContaining(['Scalable', 'Scalable investimenti', 'Versamenti non tracciati']));
+});
+
 test('export e reimport completo: i dati tornano uguali', async ({ page }, info) => {
   await avvia(page);
   await apri(page, 'Report');

@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { responseError } from '@/lib/download';
 import { messaggioErroreFire } from '@/lib/fire-errors';
 import { messaggioErroreRegola } from '@/lib/rule-errors';
+import { messaggioImportScalable, motivoRifiuto } from '@/lib/scalable-errors';
 import { translations, type TranslationKey } from '@/lib/translations';
 
 // Una `t` che restituisce il testo italiano: il test controlla quale chiave si
 // sceglie, con la frase vera, non una chiave qualunque.
 const t = (chiave: TranslationKey) => String(translations.it[chiave]);
+// Una `t` che riempie i segnaposto: i messaggi che nominano la riga si provano
+// con la frase vera, non col `{{row}}` letterale.
+const conParametri = (chiave: TranslationKey, params?: Record<string, string>) =>
+  String(translations.it[chiave]).replace(/\{\{(\w+)\}\}/g, (_, nome: string) => params?.[nome] ?? '');
 const risposta = (status: number, corpo: unknown) =>
   new Response(JSON.stringify(corpo), { status, headers: { 'Content-Type': 'application/json' } });
 
@@ -17,8 +22,6 @@ describe('messaggi d\'errore di import ed export', () => {
   });
 
   it('un movimento incompleto dice quali campi mancano, con i loro nomi', async () => {
-    const conParametri = (chiave: TranslationKey, params?: Record<string, string>) =>
-      String(translations.it[chiave]).replace(/\{\{(\w+)\}\}/g, (_, nome: string) => params?.[nome] ?? '');
     const corpo = { detail: { code: 'movementIncomplete', fields: ['destination', 'category'] } };
     expect(await responseError(risposta(422, corpo), conParametri)).toBe('Mancano dei campi obbligatori: Conto destinazione, Categoria.');
   });
@@ -67,5 +70,36 @@ describe('messaggi d\'errore delle regole di categorizzazione', () => {
     expect(await messaggioErroreRegola(new Response('<html>', { status: 502 }), t)).toBe(t('ruleSaveError'));
     expect(await messaggioErroreRegola(risposta(422, { detail: [{ msg: 'field required' }] }), t))
       .toBe(t('ruleSaveError'));
+  });
+});
+
+describe('messaggi dell\'import di Scalable', () => {
+  it('un motivo di scarto diventa la sua frase', () => {
+    // Il codice del lettore e' corto e non e' una chiave: la frase si compone.
+    expect(motivoRifiuto('coppiaInterna', t)).toBe(t('scalableReasonCoppiaInterna'));
+    expect(motivoRifiuto('rowUnbalanced', t)).toBe(t('scalableReasonRowUnbalanced'));
+    // Un motivo che non conosciamo non arriva a schermo cosi' com'e'.
+    expect(motivoRifiuto('', t)).toBe(t('scalableReasonRigaSconosciuta'));
+    expect(motivoRifiuto('qualcosaDiNuovo', t)).toBe(t('scalableReasonRigaSconosciuta'));
+  });
+
+  it('un fallimento riga per riga dice quale riga, e perche\'', async () => {
+    const corpo = { detail: { code: 'scalableRowFailed', row: 42, cause: 'rigaSenzaQuote' } };
+    expect(await messaggioImportScalable(risposta(422, corpo), conParametri))
+      .toBe(conParametri('scalableRowFailed', { row: '42', cause: t('scalableReasonRigaSenzaQuote') }));
+    // La quadratura si controlla dopo le righe, e la sua risposta porta il
+    // numero ma non un motivo: anche quella si legge.
+    expect(await messaggioImportScalable(risposta(422, { detail: { code: 'scalableRowUnbalanced', row: 7 } }), conParametri))
+      .toBe(conParametri('scalableRowFailed', { row: '7', cause: t('scalableReasonRowUnbalanced') }));
+  });
+
+  it('un elenco gia\' importato e un utente diverso hanno la loro frase', async () => {
+    // Sono due `detail` che portano gia' la chiave intera: `responseError` li sa
+    // leggere, e senza di lui si vedrebbe un "non riuscito" generico.
+    expect(await messaggioImportScalable(risposta(409, { detail: 'scalableAlreadyImported' }), t))
+      .toBe(t('scalableAlreadyImported'));
+    expect(await messaggioImportScalable(risposta(422, { detail: 'scalableUserMismatch' }), t))
+      .toBe(t('scalableUserMismatch'));
+    expect(await messaggioImportScalable(new Response('<html>', { status: 502 }), t)).toBe(t('scalableFailed'));
   });
 });
