@@ -70,6 +70,13 @@ def parse_date(date_str: str) -> str | None:
             return None
     pulito = re.sub(r'[^\d\-/.]', '', str(date_str).strip())
     for formato in DATE_FORMATS:
+        # Il formato compatto si prova solo su otto cifre. `%Y%m%d` davanti a
+        # "142026" non fallisce: prende "1420" come anno, "02" come mese e "06"
+        # come giorno, e restituisce il 6 febbraio 1420 con la faccia di uno che
+        # ha capito. Le date di sei cifre non esistono, e le cifre sparse di una
+        # riga qualunque non sono una data.
+        if formato == '%Y%m%d' and not (len(pulito) == 8 and pulito.isdigit()):
+            continue
         try:
             return datetime.strptime(pulito, formato).strftime('%Y-%m-%d')
         except ValueError:

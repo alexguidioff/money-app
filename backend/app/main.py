@@ -47,6 +47,7 @@ from .reports import excel_report, pdf_report
 from .pdf_importer import BankStatementParser
 from .csv_importer import CSVStatementParser
 from .fastbudget_import import leggi_backup
+from .scalable_import import VERSO_QUOTE, leggi_elenco
 from .statement_parsing import parse_amount, parse_date
 from .auth import middleware_utente, router as auth_router
 from .notifications import router as notifications_router
@@ -983,6 +984,664 @@ def import_batches(limit: int = 20, session: Session = Depends(get_session)):
         "reasons": json.loads(riga.rejected_reasons) if riga.rejected_reasons else {},
         "transactionCount": riga.transaction_count,
     } for riga in righe], "count": len(righe)}
+
+
+# ---------------------------------------------------------------------------
+# Import dell'elenco di Scalable
+#
+# L'elenco copiato dall'interfaccia della piattaforma non e' un estratto conto:
+# non ha categorie, non dice da quale banca arrivano i soldi, e le sue righe non
+# finiscono tutte in un movimento di conto - un acquisto diventa un'operazione
+# del ledger con un movimento di investimento che la finanzia. Per questo non
+# passa da `_salva_movimenti`, che scrive una riga per volta e tira avanti con
+# le altre: qui o si scrive tutto o non si scrive niente. Un depot importato a
+# meta' e' peggio di un depot vuoto, perche' le posizioni ci sono e i soldi che
+# le hanno comprate no, e non si sa piu' quale delle due cose manca.
+# ---------------------------------------------------------------------------
+
+# I tre conti che l'import crea se non ci sono gia'. Il primo e' il contante del
+# broker, il secondo i titoli: e' l'unico marcato broker, perche' e' l'unico che
+# puo' stare su un lato di un movimento di investimento. Il terzo e' il conto da
+# cui arrivano i versamenti che in banca non ci sono.
+#
+# Il terzo **sta nel patrimonio**, ed e' una scelta: il saldo di un conto qui si
+# ricava dai suoi movimenti, quindi un'uscita mai registrata lascia quel conto
+# piu' ricco del vero. Il conto non tracciato nasce a zero e va in negativo
+# esattamente di quella cifra, e il patrimonio torna quello giusto. Fuori dal
+# patrimonio (l'alternativa) quei versamenti verrebbero contati due volte: una
+# come soldi ancora in banca, una come valore del depot.
+CONTANTE_SCALABLE = "Scalable"
+TITOLI_SCALABLE = "Scalable investimenti"
+NON_TRACCIATO = "Versamenti non tracciati"
+
+NOTA_NON_TRACCIATO = ("Il denaro entrato e uscito dal conto titoli che non ha una riga in "
+                      "banca: questo conto parte da zero e tiene il conto di quella cifra "
+                      "netta, perche' quei soldi non sono mai passati da un conto tracciato.")
+NOTA_IMPORT = "Creato dall'import dell'elenco di Scalable"
+
+# Quanti giorni si guardano per proporre un aggancio a mano, quando quello
+# automatico - i cinque giorni con cui l'app riconosce i doppioni - non trova
+# niente. Un versamento a cavallo della fine del mese puo' essere contabilizzato
+# con qualche giorno di ritardo, e in banca la riga c'e' comunque: meglio
+# sceglierla a mano che dire che il denaro e' arrivato da fuori.
+FINESTRA_CANDIDATI = 15
+
+# Quanti ticker si propongono per strumento nella ricerca.
+CANDIDATI_TICKER = 5
+
+# Le quote si scrivono con otto decimali: un piano di accumulo ne compra
+# frazioni, e arrotondare a due farebbe sparire il pezzo che distingue due
+# posizioni.
+QUOTE_DECIMALI = Decimal("0.00000001")
+
+# La categoria degli interessi: quelli del contante di un conto titoli sono
+# proventi dell'investimento, non entrate da lavoro. E' una proposta, e chi
+# importa la puo' cambiare scegliendone un'altra fra quelle che l'app ha gia'.
+CATEGORIA_INTERESSI = "Investment Income"
+
+# Il nome che l'import da' al lotto: e' quello che permette di riconoscere un
+# secondo import e fermarlo prima che raddoppi tutto.
+LOTTO_SCALABLE = "scalable"
+
+# Le righe che parlano di contanti invece che di titoli: sono quelle che
+# diventano un movimento fra il contante del broker e la banca (o il conto non
+# tracciato). Da che parte va il denaro lo dice il **segno dell'importo**, non il
+# tipo: fra i versamenti ce n'e' uno negativo - la restituzione di un versamento -
+# che e' denaro che esce, e leggerlo dal tipo lo farebbe entrare.
+RIGHE_CONTANTI = frozenset({"Deposito", "Prelievo"})
+
+
+def _tipo_di_banca(importo: Decimal) -> str:
+    """Il tipo di riga di banca che corrisponde a un movimento verso il broker.
+
+    Il denaro che esce da un conto e' una spesa, quello che ci rientra
+    un'entrata: e' anche il controllo che impedisce a un'entrata dello stesso
+    importo di sembrare il pagamento di un versamento.
+    """
+    return "Expenses" if importo > 0 else "Income"
+
+# Le righe che parlano di titoli: sono quelle che diventano un'operazione del
+# ledger, con il movimento di investimento che la finanzia.
+TIPI_TITOLI = ("Piano di accumulo", "Acquisto", "Vendita")
+
+
+def _conto_dell_import(session: Session, nome: str) -> Account | None:
+    """Il conto dell'import, se esiste: si cerca per nome come lo cercano i movimenti."""
+    chiave = _chiave_conto(nome)
+    return next((conto for conto in session.scalars(select(Account)).all()
+                 if _chiave_conto(conto.name) == chiave), None)
+
+
+def _righe_di_banca(session: Session, giorno: date, importo: Decimal, tipo: str,
+                    esclusi: set[int]) -> list[Transaction]:
+    """Le righe di banca che possono essere lo stesso versamento, dalla piu' vicina.
+
+    Stesso importo e stesso verso, dentro la finestra dei candidati. Si guardano
+    solo i movimenti normali: un giroconto o un investimento e' gia' denaro
+    spostato verso un altro conto, e riscriverlo qui vorrebbe dire cambiare una
+    storia che qualcuno ha gia' scritto.
+    """
+    return sorted(session.scalars(select(Transaction).where(
+        REAL_MOVEMENT,
+        Transaction.transaction_type == tipo,
+        Transaction.amount == importo,
+        Transaction.occurred_on >= giorno - timedelta(days=FINESTRA_CANDIDATI),
+        Transaction.occurred_on <= giorno + timedelta(days=FINESTRA_CANDIDATI),
+        Transaction.id.not_in(esclusi or {-1}),
+    )).all(), key=lambda riga: (abs((riga.occurred_on - giorno).days), riga.id))
+
+
+def _aggancia_versamenti(session: Session, movimenti: list[dict]) -> None:
+    """A quale riga di banca corrisponde ogni versamento, e chi altro poteva essere.
+
+    L'aggancio e' uno a uno e si fa dal piu' vecchio: una riga di banca vale per
+    un versamento solo. Senza, tre versamenti da 600 nello stesso mese si
+    prenderebbero a vicenda la stessa riga, e il terzo resterebbe senza per un
+    motivo che non esiste.
+
+    Quello entro i cinque giorni con cui l'app riconosce i doppioni e' l'aggancio
+    automatico; gli altri restano fra i candidati, che l'anteprima mostra perche'
+    li scelga chi importa. La distanza in giorni si riporta sempre: una riga a
+    cinque giorni di distanza puo' essere la stessa cosa come puo' non esserlo, e
+    chi legge lo deve poter vedere.
+    """
+    esclusi: set[int] = set()
+    for movimento in sorted(movimenti, key=lambda r: (r["giorno"], r["riga"])):
+        if movimento["tipo"] not in RIGHE_CONTANTI:
+            continue
+        vicine = _righe_di_banca(session, movimento["giorno"], abs(movimento["importo"]),
+                                 _tipo_di_banca(movimento["importo"]), esclusi)
+        automatica = next((riga for riga in vicine
+                           if abs((riga.occurred_on - movimento["giorno"]).days) <= GIORNI_DUPLICATO), None)
+        if automatica is not None:
+            esclusi.add(automatica.id)
+        movimento["banca"] = automatica
+        movimento["candidati"] = [riga for riga in vicine if riga is not automatica]
+
+
+def _raggruppamento_effettivo(letto: dict, scelto: list | None) -> dict[str, str]:
+    """Da ogni grafia scritta nel testo al nome canonico dello strumento.
+
+    La proposta del lettore vale finche' chi importa non ne manda una sua: il
+    raggruppamento e' un'ipotesi, e l'unico che sa se due nomi sono lo stesso
+    fondo e' chi li ha comprati.
+    """
+    per_grafia = {grafia: strumento["nome"]
+                  for strumento in letto["strumenti"] for grafia in strumento["grafie"]}
+    for scelta in scelto or []:
+        nome = (scelta.nome or "").strip()
+        if not nome:
+            continue
+        for grafia in scelta.grafie or []:
+            per_grafia[grafia] = nome
+    return per_grafia
+
+
+def _strumenti_del_piano(movimenti: list[dict]) -> list[dict]:
+    """Gli strumenti del piano, con le quote finali di ciascuno.
+
+    Le quote finali - comprate meno vendute - sono l'unica prova che l'import non
+    ha perso pezzi: si confrontano con quelle che la piattaforma mostra oggi, e
+    sono nove numeri da guardare una volta.
+    """
+    per_nome: dict[str, list[dict]] = defaultdict(list)
+    for movimento in movimenti:
+        if movimento["quote"] is not None:
+            per_nome[movimento["nome"]].append(movimento)
+    fuori = []
+    for nome, righe in per_nome.items():
+        righe = sorted(righe, key=lambda r: (r["giorno"], r["riga"]))
+        fuori.append({
+            "nome": nome,
+            "grafie": sorted({r["nome_scritto"] for r in righe}),
+            "quote": sum((r["quote"] * VERSO_QUOTE.get(r["tipo"], 1) for r in righe),
+                         Decimal(0)).quantize(QUOTE_DECIMALI),
+            "righe": len(righe),
+            "prima": righe[0]["giorno"].isoformat(),
+            "ultima": righe[-1]["giorno"].isoformat(),
+        })
+    return sorted(fuori, key=lambda strumento: strumento["nome"].casefold())
+
+
+def _quadratura_scalable(movimenti: list[dict]) -> dict:
+    """Quanto vale il depot alla fine di questo import, per conto.
+
+    Il contante che resta e' **la somma degli importi come sono scritti**: il
+    segno dell'importo e' il verso del denaro, ed e' la cifra con cui il testo
+    chiude da solo - ed e' la prova che non manca nessuna riga. I titoli sono il
+    capitale versato, cioe' il saldo del conto broker e non il suo valore (il
+    guadagno lo aggiunge il motore leggendo i prezzi): sono l'opposto della somma
+    dei movimenti sui titoli, perche' quello che esce dal contante entra li'.
+
+    Non dipende dagli agganci di banca: che il denaro sia arrivato da un conto
+    tracciato o da fuori, sul conto del broker arriva lo stesso.
+    """
+    contante = sum((r["importo"] for r in movimenti), Decimal(0))
+    titoli = -sum((r["importo"] for r in movimenti if r["tipo"] in TIPI_TITOLI), Decimal(0))
+    # Il denaro arrivato (o tornato) da fuori: e' l'opposto del saldo del conto
+    # non tracciato, che nasce a zero e si muove di questa cifra.
+    fuori = sum((r["importo"] for r in movimenti
+                 if r["tipo"] in RIGHE_CONTANTI and r["banca"] is None), Decimal(0))
+    return {"contante": float(contante.quantize(Decimal("0.01"))),
+            "titoli": float(titoli.quantize(Decimal("0.01"))),
+            "fuori": float(fuori.quantize(Decimal("0.01"))),
+            "nonTracciato": float((-fuori).quantize(Decimal("0.01")))}
+
+
+def _piano_scalable(session: Session, testo: str, *, raggruppamento: list | None = None,
+                    agganci: list | None = None) -> dict:
+    """Che cosa questo testo diventerebbe nell'app: riga per riga, prima di scrivere.
+
+    Serve all'anteprima e al salvataggio, che lo chiamano con lo stesso testo: il
+    salvataggio rilegge il testo invece di ricevere le righe dal browser, cosi'
+    l'anteprima e quello che si scrive non possono raccontare due cose diverse.
+    Quello che il browser rimanda sono le decisioni - come si raggruppano le
+    grafie, quale riga di banca corrisponde a un versamento, che ticker hanno gli
+    strumenti - non i movimenti.
+    """
+    letto = leggi_elenco(testo)
+    if not letto["movimenti"]:
+        raise HTTPException(status_code=422, detail="scalableNothingToImport")
+    per_grafia = _raggruppamento_effettivo(letto, raggruppamento)
+    movimenti = []
+    for movimento in letto["movimenti"]:
+        nome_scritto = movimento["nome"]
+        movimenti.append({
+            **movimento,
+            "nome_scritto": nome_scritto,
+            "nome": per_grafia.get(nome_scritto, nome_scritto) or nome_scritto,
+            # Il prezzo non sta nel testo: si ricava dall'importo diviso le quote,
+            # che sono arrotondate a due decimali. Resta un numero approssimato, e
+            # si vede nell'anteprima invece di essere spacciato per quello vero.
+            "prezzo": ((abs(movimento["importo"]) / movimento["quote"]).quantize(QUOTE_DECIMALI)
+                       if movimento["quote"] else None),
+            "banca": None,
+            "candidati": [],
+        })
+    _aggancia_versamenti(session, movimenti)
+    _applica_scelte(session, movimenti, agganci)
+
+    conti = {nome: _conto_dell_import(session, nome)
+             for nome in (CONTANTE_SCALABLE, TITOLI_SCALABLE, NON_TRACCIATO)}
+    quadratura = _quadratura_scalable(movimenti)
+    return {"utente": current_user_id(), "movimenti": movimenti, "rifiuti": letto["rifiuti"],
+            "strumenti": _strumenti_del_piano(movimenti), "quadratura": quadratura,
+            "conti": [{"nome": nome, "broker": nome == TITOLI_SCALABLE,
+                       "esiste": conto is not None,
+                       "saldo": (_saldo_di_import(nome, quadratura) if conto is None
+                                 else float(conto.current_balance or 0))}
+                      for nome, conto in conti.items()],
+            "versamenti": _conteggio_versamenti(movimenti)}
+
+
+def _saldo_di_import(nome: str, quadratura: dict) -> float:
+    """Il saldo che il conto avra' alla fine: contante, titoli, o il negativo fuori."""
+    return {CONTANTE_SCALABLE: quadratura["contante"], TITOLI_SCALABLE: quadratura["titoli"],
+            NON_TRACCIATO: quadratura["nonTracciato"]}[nome]
+
+
+def _conteggio_versamenti(movimenti: list[dict]) -> dict:
+    """Quanti versamenti e rientri, quanti hanno la riga di banca, quanti no."""
+    versamenti = [r for r in movimenti if r["tipo"] in RIGHE_CONTANTI]
+    return {"totali": len(versamenti), "conRiga": sum(1 for r in versamenti if r["banca"] is not None),
+            "daFuori": sum(1 for r in versamenti if r["banca"] is None),
+            "importoFuori": float(sum((r["importo"] for r in versamenti
+                                       if r["banca"] is None), Decimal(0)).quantize(Decimal("0.01")))}
+
+
+def _applica_scelte(session: Session, movimenti: list[dict], agganci: list | None) -> None:
+    """Le righe di banca scelte a mano, che vincono su quelle automatiche.
+
+    Una scelta esplicita puo' togliere una riga a un versamento che l'aveva avuta
+    in automatico: l'automatico e' un'ipotesi, la scelta di una persona no. Due
+    scelte esplicite sulla stessa riga invece si rifiutano, perche' scrivere la
+    stessa uscita su due versamenti la conterebbe due volte.
+    """
+    decisi: dict[int, dict] = {}
+    for scelta in agganci or []:
+        movimento = next((r for r in movimenti if r["riga"] == scelta.riga), None)
+        if movimento is None or movimento["tipo"] not in RIGHE_CONTANTI:
+            continue
+        if scelta.transaction_id is None:
+            movimento["banca"] = None
+        else:
+            if any(r["banca"] is not None and r["banca"].id == scelta.transaction_id
+                   for r in decisi.values()):
+                raise HTTPException(status_code=422,
+                                    detail={"code": "scalableLinkReused", "row": movimento["riga"]})
+            riga = session.get(Transaction, scelta.transaction_id)
+            if (riga is None or riga.transaction_type != _tipo_di_banca(movimento["importo"])
+                    or abs(riga.amount) != abs(movimento["importo"])):
+                raise HTTPException(status_code=422,
+                                    detail={"code": "scalableLinkInvalid", "row": movimento["riga"]})
+            movimento["banca"] = riga
+        decisi[movimento["riga"]] = movimento
+    presi = {r["banca"].id for r in decisi.values() if r["banca"] is not None}
+    for movimento in movimenti:
+        if movimento["riga"] not in decisi and movimento["banca"] is not None and movimento["banca"].id in presi:
+            movimento["banca"] = None
+
+
+def _ticker_candidati(nome: str) -> list[dict]:
+    """I ticker che la ricerca propone per uno strumento, se la fonte risponde.
+
+    La fonte e' un servizio esterno: se non c'e', l'anteprima mostra lo strumento
+    senza proposte invece di non mostrare niente. Il ticker si scrive anche a
+    mano, quindi non saperlo adesso non blocca l'import.
+    """
+    try:
+        return [{"symbol": match.symbol, "name": match.name, "exchange": match.exchange,
+                 "type": match.quote_type}
+                for match in search_yahoo_symbols(nome, limit=CANDIDATI_TICKER)]
+    except MarketDataError:
+        return []
+
+
+def _riga_di_banca_da_mostrare(riga: Transaction, giorno: date) -> dict:
+    """Una riga di banca come si legge in anteprima, con quanto dista dal versamento.
+
+    La distanza si riporta sempre: un aggancio a cinque giorni non e' la stessa
+    cosa di uno a zero, e chi legge deve poterlo vedere invece di fidarsi.
+    """
+    return {"id": riga.id, "date": riga.occurred_on.isoformat(), "amount": float(abs(riga.amount)),
+            "account": riga.account_name, "details": riga.details,
+            "gapDays": abs((riga.occurred_on - giorno).days)}
+
+
+def _versamento_da_mostrare(movimento: dict) -> dict:
+    """Un versamento col suo aggancio e con le righe di banca che potevano essere sue."""
+    riga = movimento["banca"]
+    return {"row": movimento["riga"], "date": movimento["giorno"].isoformat(),
+            "kind": movimento["tipo"], "amount": float(abs(movimento["importo"])),
+            "matched": riga is not None,
+            "gapDays": abs((riga.occurred_on - movimento["giorno"]).days) if riga else None,
+            "bank": _riga_di_banca_da_mostrare(riga, movimento["giorno"]) if riga else None,
+            "candidates": [_riga_di_banca_da_mostrare(candidata, movimento["giorno"])
+                           for candidata in movimento["candidati"]]}
+
+
+class ScalablePreviewPayload(BaseModel):
+    testo: str = ""
+
+
+class ScalableRaggruppamento(BaseModel):
+    """Come si chiama uno strumento, e con quali nomi e' scritto nel testo."""
+
+    nome: str
+    grafie: List[str] = []
+
+
+class ScalableAggancio(BaseModel):
+    """La riga di banca scelta per un versamento. Assente vuol dire "nessuna"."""
+
+    riga: int
+    transaction_id: int | None = None
+
+
+class ScalableImportPayload(BaseModel):
+    """Le decisioni di chi importa, non i movimenti: il testo si rilegge qui."""
+
+    testo: str = ""
+    # L'utente su cui si sta scrivendo. Obbligatorio e dichiarato: l'import scrive
+    # sull'utente della sessione, e senza dirlo un import fatto per errore mentre
+    # si guarda lo schermo di un'altra persona finirebbe su quella persona.
+    utente: int | None = None
+    raggruppamento: List[ScalableRaggruppamento] | None = None
+    ticker: Dict[str, str] = {}
+    agganci: List[ScalableAggancio] | None = None
+    categoria_interessi: str | None = None
+
+
+@app.post("/api/import/scalable/preview")
+def scalable_preview(payload: ScalablePreviewPayload, session: Session = Depends(get_session)):
+    """Che cosa diventerebbe un elenco di Scalable, senza scrivere niente.
+
+    La rotta e' ``def`` e non ``async def``: la ricerca dei ticker aspetta una
+    fonte esterna, e aspettarla dentro una rotta asincrona fermerebbe tutto il
+    server invece di questa sola richiesta.
+    """
+    piano = _piano_scalable(session, payload.testo)
+    utente = session.get(User, piano["utente"])
+    categorie = sorted(nomi_categorie(session).values())
+    interessi = [r["importo"] for r in piano["movimenti"] if r["tipo"] == "Interesse"]
+    per_tipo: dict[str, int] = defaultdict(int)
+    for movimento in piano["movimenti"]:
+        per_tipo[movimento["tipo"]] += 1
+    return {
+        "user": {"id": piano["utente"], "username": utente.username if utente else None,
+                 "displayName": utente.display_name if utente else None},
+        "counts": {"read": len(piano["movimenti"]) + len(piano["rifiuti"]),
+                   "importable": len(piano["movimenti"]), "rejected": len(piano["rifiuti"]),
+                   "byType": dict(per_tipo)},
+        "deposits": piano["versamenti"],
+        # I versamenti uno per uno, con la riga di banca che hanno preso e con
+        # quelle che potevano essere la loro: e' l'unica cosa che l'utente
+        # decide, ed e' anche l'unica che l'anteprima non puo' dedurre da sola.
+        "bankLinks": [_versamento_da_mostrare(movimento) for movimento in piano["movimenti"]
+                      if movimento["tipo"] in RIGHE_CONTANTI],
+        "rejected": [{"row": rifiuto["riga"], "text": rifiuto["testo"], "reason": rifiuto["motivo"]}
+                     for rifiuto in piano["rifiuti"]],
+        "instruments": [{**strumento, "candidati": _ticker_candidati(strumento["nome"])}
+                        for strumento in piano["strumenti"]],
+        "accounts": piano["conti"],
+        "interest": {"rows": len(interessi), "amount": float(sum(interessi, Decimal(0))),
+                     "category": CATEGORIA_INTERESSI, "categories": categorie},
+        "totals": piano["quadratura"],
+    }
+
+
+def _conto_scalable(session: Session, nome: str, saldo: Decimal, *, broker: bool = False,
+                    nota: str = NOTA_IMPORT) -> Account:
+    """Il conto dell'import, creandolo se non c'e' con il saldo che avra' alla fine.
+
+    Il saldo si scrive **alla nascita** ed e' quello finale, non zero: e' il saldo
+    *dichiarato* del conto, quello che la riconciliazione confronta con la somma
+    dei movimenti (e che il report legge), e metterlo a zero lo farebbe sembrare
+    un conto mai usato. La somma dei movimenti che stiamo per scrivere arriva
+    esattamente a questa cifra, quindi la riconciliazione resta verde.
+
+    Un conto che c'e' gia' non si tocca: il suo saldo e' quello che qualcuno ha
+    scritto, e sovrascriverlo con un numero calcolato adesso sarebbe una
+    correzione che nessuno ha chiesto.
+    """
+    conto = _conto_dell_import(session, nome)
+    if conto is not None:
+        return conto
+    conto = _conto_nuovo(nome, "asset", BASE_CURRENCY, Decimal("0"),
+                         counts_in_net_worth=True, is_liquid=False, notes=nota, is_broker=broker)
+    session.add(conto)
+    session.flush()
+    conto.current_balance = saldo.quantize(Decimal("0.01"))
+    return conto
+
+
+def _strumento_scalable(session: Session, nome: str, ticker: str | None) -> InvestmentInstrument:
+    """Lo strumento del ledger, creandolo o completandogli il ticker.
+
+    Il legame fra uno strumento e le sue righe e' per nome, non per
+    identificatore: uno strumento che esiste gia' non si rinomina - le sue righe
+    resterebbero orfane - e gli si scrive solo il ticker, se non ne aveva uno.
+    """
+    strumento = session.scalar(select(InvestmentInstrument).where(
+        func.lower(InvestmentInstrument.name) == nome.casefold()))
+    if strumento is None:
+        strumento = InvestmentInstrument()
+        _apply_instrument(strumento, InstrumentPayload(name=nome, provider_symbol=ticker))
+        _autofill_from_source(strumento)
+        session.add(strumento)
+    elif ticker and not (strumento.provider_symbol or "").strip():
+        strumento.provider_symbol = ticker.strip().upper()
+        _autofill_from_source(strumento)
+    session.flush()
+    return strumento
+
+
+def _operazione_gia_importata(session: Session, nome: str, tipo: str, giorno: date,
+                              importo: Decimal, quote: Decimal) -> bool:
+    """Vero se questa operazione del ledger c'e' gia' **ed e' gia' collegata**.
+
+    Collegata vuol dire che il denaro e' gia' passato di qui: riscriverlo lo
+    conterebbe due volte, ed e' la seconda rete di questo import (la prima e' il
+    lotto). Una riga del ledger **senza** collegamento invece non si tocca: le
+    manca ancora il movimento che l'ha pagata, e questo import glielo scrive.
+    """
+    esistente = operazione_gia_presente(session, InvestmentTxPayload(
+        name=nome, transaction_type=tipo, amount=float(importo), occurred_on=giorno.isoformat(),
+        units=float(quote) if quote is not None else None))
+    if esistente is None:
+        return False
+    return session.scalar(select(TransactionLedgerLink.id)
+                          .where(TransactionLedgerLink.ledger_id == esistente.id).limit(1)) is not None
+
+
+def _titolo_e_movimento(session: Session, movimento: dict, conti: dict[str, Account]) -> None:
+    """Un acquisto o una vendita: l'operazione del ledger e il movimento che la paga.
+
+    E' la stessa forma che l'app scrive a mano creando un movimento con le sue
+    righe di ledger, e riusa lo stesso scrittore: due strade per la stessa cosa
+    divergono il giorno che una cambia.
+
+    Il verso dei due lati la dice il **segno dell'importo**: comprando il denaro
+    esce dal contante del broker ed entra nei titoli, vendendo torna indietro. Il
+    tipo dice che cosa diventa l'operazione nel ledger (un piano di accumulo e'
+    una compravendita, una vendita e' una vendita), e se i due non sono d'accordo
+    la quadratura del gruppo se ne accorge e la riga si rifiuta: e' l'unico modo
+    di non scrivere un acquisto pagato da nessuno.
+    """
+    nome = movimento["nome"]
+    compra = movimento["tipo"] != "Vendita"
+    arriva = movimento["importo"] > 0
+    contante, titoli = conti[CONTANTE_SCALABLE], conti[TITOLI_SCALABLE]
+    if _operazione_gia_importata(session, nome, "Buy" if compra else "Sell", movimento["giorno"],
+                                 abs(movimento["importo"]), movimento["quote"]):
+        movimento["saltata"] = True
+        return
+    tx = Transaction()
+    _apply_transaction_payload(tx, TransactionPayload(
+        occurred_on=movimento["giorno"].isoformat(), transaction_type="Investment",
+        amount=float(abs(movimento["importo"])),
+        account_name=(titoli if arriva else contante).name,
+        destination_name=(contante if arriva else titoli).name,
+        details=f'{movimento["tipo"]} {movimento["nome_scritto"]}'), session)
+    session.add(tx)
+    session.flush()
+    solo_investimenti_si_collegano(tx)
+    righe = _materialize_linked_ledger(session, tx, [LinkedLedgerRow(
+        name=nome, transaction_type="Buy" if compra else "Sell", units=float(abs(movimento["quote"])),
+        price=float(abs(movimento["prezzo"] or abs(movimento["importo"]))),
+        amount=float(abs(movimento["importo"])), currency=BASE_CURRENCY)])
+    for riga in righe:
+        session.add(TransactionLedgerLink(transaction_id=tx.id, ledger_id=riga.id))
+    session.flush()
+    movimento["movimento"] = tx
+
+
+def _versamento_o_interesse(session: Session, movimento: dict, conti: dict[str, Account],
+                           categoria: str) -> None:
+    """Un versamento, un prelievo o un interesse: soldi fra due conti, o un'entrata.
+
+    Da che parte va il denaro lo dice il **segno dell'importo**: la piattaforma
+    scrive in negativo quello che esce, e il tipo non basta - c'e' un versamento
+    negativo, la restituzione di un versamento, che esce come i prelievi.
+
+    Un versamento che ha gia' la sua riga in banca **non ne crea una seconda**: la
+    riga che c'e' cambia tipo e prende il conto d'arrivo. E' quello che rende
+    visibile che quei soldi non sono stati spesi, e senza, il patrimonio
+    conterebbe due volte la stessa cosa - il denaro speso e il valore del depot.
+    La riga di banca resta con l'importo che aveva (potrebbe essere in franchi) e
+    il conto d'arrivo porta quanto arriva davvero: le due cifre sono la stessa
+    cosa in due valute diverse, ed e' quello che il campo della destinazione dice.
+    """
+    contante = conti[CONTANTE_SCALABLE]
+    importo = float(abs(movimento["importo"]))
+    arriva = movimento["importo"] > 0
+    banca = movimento["banca"]
+    if movimento["tipo"] == "Interesse":
+        tx = Transaction()
+        _apply_transaction_payload(tx, TransactionPayload(
+            occurred_on=movimento["giorno"].isoformat(),
+            transaction_type=("Income" if arriva else "Expenses"),
+            amount=importo, account_name=contante.name, category=categoria,
+            details=f"Interessi {CONTANTE_SCALABLE}"), session)
+    elif banca is not None:
+        # La data resta quella della banca: e' il giorno in cui i soldi si sono
+        # mossi davvero, e spostarla riscriverebbe il saldo di un conto che
+        # qualcuno ha gia' guardato.
+        tx = banca
+        _apply_transaction_payload(tx, TransactionPayload(
+            occurred_on=banca.occurred_on.isoformat(), transaction_type="Transfers",
+            amount=float(abs(banca.amount)),
+            account_name=(banca.account_name if arriva else contante.name),
+            destination_name=(contante.name if arriva else banca.account_name),
+            destination_amount=(importo if arriva else float(abs(banca.amount))),
+            details=banca.details), session)
+    else:
+        fuori = conti[NON_TRACCIATO]
+        tx = Transaction()
+        _apply_transaction_payload(tx, TransactionPayload(
+            occurred_on=movimento["giorno"].isoformat(), transaction_type="Transfers",
+            amount=importo,
+            account_name=(fuori.name if arriva else contante.name),
+            destination_name=(contante.name if arriva else fuori.name),
+            details=(f"Versamento verso {CONTANTE_SCALABLE}" if arriva
+                     else f"Rientro da {CONTANTE_SCALABLE}")), session)
+    if tx.id is None:
+        session.add(tx)
+    session.flush()
+    movimento["movimento"] = tx
+
+
+def _scrivi_scalable(session: Session, piano: dict, payload: ScalableImportPayload) -> dict:
+    """Scrive il piano: conti, strumenti, operazioni del ledger e movimenti di conto.
+
+    Tutto dentro la transazione della richiesta: il primo errore ferma l'import e
+    non lascia niente a meta'. Un elenco importato a meta' non si sa piu'
+    rileggere, perche' le righe gia' scritte non si distinguono da quelle che
+    c'erano prima.
+
+    L'ordine e' quello della storia - dal piu' vecchio - perche' il contante puo'
+    andare sotto zero in qualche giorno (si compra a T e si accredita a T+2) e le
+    righe si leggono meglio nell'ordine in cui sono successe.
+    """
+    quadratura = piano["quadratura"]
+    conti = {CONTANTE_SCALABLE: _conto_scalable(session, CONTANTE_SCALABLE, Decimal(str(quadratura["contante"]))),
+             TITOLI_SCALABLE: _conto_scalable(session, TITOLI_SCALABLE, Decimal(str(quadratura["titoli"])),
+                                              broker=True),
+             NON_TRACCIATO: _conto_scalable(session, NON_TRACCIATO, Decimal(str(quadratura["nonTracciato"])),
+                                            nota=NOTA_NON_TRACCIATO)}
+    creati = {nome: conto.id for nome, conto in conti.items()}
+    for strumento in piano["strumenti"]:
+        _strumento_scalable(session, strumento["nome"],
+                            (payload.ticker or {}).get(strumento["nome"]))
+
+    categoria = (payload.categoria_interessi or "").strip() or CATEGORIA_INTERESSI
+    for movimento in sorted(piano["movimenti"], key=lambda r: (r["giorno"], r["riga"])):
+        try:
+            if movimento["tipo"] in TIPI_TITOLI:
+                _titolo_e_movimento(session, movimento, conti)
+            else:
+                _versamento_o_interesse(session, movimento, conti, categoria)
+        except HTTPException as errore:
+            # L'errore dice **quale riga** ha fallito: senza, un elenco di 415
+            # righe che non si importa e' un elenco da rileggere tutto a mano.
+            raise HTTPException(status_code=errore.status_code,
+                                detail={"code": "scalableRowFailed", "row": movimento["riga"],
+                                        "cause": errore.detail}) from errore
+        movimento.setdefault("saltata", False)
+
+    for movimento in piano["movimenti"]:
+        if movimento["tipo"] in TIPI_TITOLI and not movimento["saltata"]:
+            quadra = quadratura_gruppo(session, movimento["movimento"].id)
+            if not quadra["balanced"]:
+                raise HTTPException(status_code=422, detail={
+                    "code": "scalableRowUnbalanced", "row": movimento["riga"]})
+
+    per_motivo: dict[str, int] = defaultdict(int)
+    for rifiuto in piano["rifiuti"]:
+        per_motivo[rifiuto["motivo"]] += 1
+    importati = [r for r in piano["movimenti"] if not r["saltata"]]
+    session.add(ImportBatch(kind=LOTTO_SCALABLE, source_name="Elenco Scalable",
+                            transaction_count=len(importati), account_count=len(creati),
+                            rows_accepted=len(importati), rows_rejected=len(piano["rifiuti"]),
+                            rejected_reasons=json.dumps(per_motivo)))
+    session.flush()
+    return {"success": True, "accounts": creati, "instruments": len(piano["strumenti"]),
+            "movements": len(importati),
+            "skipped": len(piano["movimenti"]) - len(importati),
+            "rejected": len(piano["rifiuti"]), "totals": quadratura}
+
+
+@app.post("/api/import/scalable")
+def import_scalable(payload: ScalableImportPayload, session: Session = Depends(get_session)):
+    """Importa un elenco di Scalable: conti, strumenti, ledger e movimenti di conto.
+
+    Il browser non rimanda le righe: rimanda il testo e le sue decisioni, e il
+    server rilegge. Cosi' l'anteprima e quello che si scrive non possono dire due
+    cose diverse, ed e' la stessa ragione per cui i doppioni dell'app sono una
+    classe sola che legge l'archivio una volta.
+
+    Un secondo import dello stesso elenco si rifiuta e basta: non c'e' un modo di
+    rifarlo che non rischi di contare due volte i soldi, perche' le righe di
+    banca che il primo import ha convertito non si riconoscono piu' come sue.
+    Chi ha cancellato a mano quello di prima cancella anche la sua riga in
+    ``import_batches``, ed e' l'unico modo di dire "l'ho disfatto" senza
+    indovinare.
+    """
+    if payload.utente is None or payload.utente != current_user_id():
+        raise HTTPException(status_code=422, detail="scalableUserMismatch")
+    gia_fatto = session.scalar(select(ImportBatch.id)
+                               .where(ImportBatch.kind == LOTTO_SCALABLE).limit(1))
+    if gia_fatto is not None:
+        raise HTTPException(status_code=409, detail="scalableAlreadyImported")
+    piano = _piano_scalable(session, payload.testo, raggruppamento=payload.raggruppamento,
+                            agganci=payload.agganci)
+    try:
+        esito = _scrivi_scalable(session, piano, payload)
+        session.commit()
+    except HTTPException:
+        session.rollback()
+        raise
+    return esito
 
 
 # ---------------------------------------------------------------------------
