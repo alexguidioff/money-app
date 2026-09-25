@@ -143,6 +143,19 @@ test('import di un elenco Scalable: anteprima coi rifiuti, conferma, conti creat
   expect(conti.items.map((c) => c.name)).toEqual(expect.arrayContaining(['Scalable', 'Scalable investimenti', 'Versamenti non tracciati']));
 });
 
+test('Quotazioni: il bottone per scaricare lo storico dei prezzi c\'e\'', async ({ page }) => {
+  // Il rendimento (TWR) resta vuoto finche' manca una quotazione di fine mese,
+  // e i mesi passati li scrive solo questa rotta: l'aggiornamento salva la
+  // quotazione di adesso e basta. Senza un bottone, chi legge "manca una
+  // quotazione di fine mese" non ha dove chiedere il pezzo che manca.
+  // Non si preme: chiamerebbe la fonte per davvero, un minuto di rete dentro
+  // il gate. Che la richiesta parta lo dice il codice, non questa prova.
+  await avvia(page);
+  await apri(page, 'Investimenti');
+  await page.getByRole('button', { name: 'Quotazioni', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Scarica lo storico prezzi' })).toBeVisible();
+});
+
 test('export e reimport completo: i dati tornano uguali', async ({ page }, info) => {
   await avvia(page);
   await apri(page, 'Report');

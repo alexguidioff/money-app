@@ -4673,7 +4673,7 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
   const [createError, setCreateError] = useState('');
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [checks, setChecks] = useState<Record<number, { ok: boolean; text: string }>>({});
-  const [busy, setBusy] = useState<number | 'refresh' | null>(null);
+  const [busy, setBusy] = useState<number | 'refresh' | 'backfill' | null>(null);
   const [summary, setSummary] = useState('');
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [searchFor, setSearchFor] = useState<number | null>(null);
@@ -4760,7 +4760,32 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
     } finally { setBusy(null); }
   }
 
+  async function backfillAll() {
+    // L'aggiornamento salva solo la quotazione di adesso: i mesi passati li
+    // scrive questa, ed e' l'unica strada. Senza, la card Rendimento resta
+    // vuota e chi guarda non ha dove chiedere il pezzo che manca.
+    setBusy('backfill'); setSummary(''); setRefreshFailed(false);
+    try {
+      const response = await fetch(`${apiUrl}/api/investments/backfill-history`, { method: 'POST' });
+      if (!response.ok) throw new Error('backfill-history');
+      const result = await response.json() as {
+        stored: Array<{ symbol: string; points: number }>;
+        errors: Array<{ code?: string }>;
+      };
+      setRefreshFailed(result.errors.length > 0);
+      setSummary(t('historyBackfilled', {
+        ok: result.stored.filter((voce) => voce.points > 0).length, ko: result.errors.length }));
+      await onSaved();
+    } catch {
+      setRefreshFailed(true);
+      setSummary(t('cannotReachQuoteSource'));
+    } finally { setBusy(null); }
+  }
+
   const configured = rows.filter((row) => (row.providerSymbol || '').trim()).length;
+  // Le due cose toccano la stessa fonte e la seconda dura un minuto: una per
+  // volta, e mentre una gira l'altra aspetta.
+  const quoteBusy = busy === 'refresh' || busy === 'backfill';
 
   return <Card className="border-black/6 bg-white shadow-sm">
     <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -4769,9 +4794,14 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
         <p className="mt-1 text-xs text-[#5e6c68]">{t('instrumentTickersSubtitle', { configured, total: rows.length })}</p>
       </div>
       <div className="flex flex-col items-end gap-1">
-        <Button type="button" variant="outline" disabled={busy === 'refresh'} onClick={() => void refreshAll()}>
-          <RefreshCw className={`size-4 ${busy === 'refresh' ? 'animate-spin' : ''}`} />{t('refreshQuotes')}
-        </Button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="outline" disabled={quoteBusy} onClick={() => void refreshAll()}>
+            <RefreshCw className={`size-4 ${busy === 'refresh' ? 'animate-spin' : ''}`} />{t('refreshQuotes')}
+          </Button>
+          <Button type="button" variant="outline" disabled={quoteBusy} onClick={() => void backfillAll()}>
+            <Download className="size-4" />{t('backfillHistory')}
+          </Button>
+        </div>
         {summary && <span role={refreshFailed ? 'alert' : undefined} className={`text-xs ${refreshFailed ? 'text-[#a94f3a]' : 'text-[#237056]'}`}>{summary}</span>}
       </div>
     </CardHeader>
