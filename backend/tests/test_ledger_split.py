@@ -19,8 +19,12 @@ from sqlalchemy.orm import Session
 from app import main
 from app.calculation_engine import investment_positions
 from app.core_routes import investments_ledger
-from app.database import Base
-from app.models import InvestmentTransaction, InvestmentTransactionDetail
+from app.database import Base, reset_current_user, set_current_user
+from app.models import InvestmentInstrument, InvestmentTransaction, InvestmentTransactionDetail
+
+# Scrivere un'operazione crea anche il suo strumento. L'utente e' un numero
+# inventato: senza, l'id lo leggerebbe dal database vero.
+UTENTE = 7
 
 
 def _riga(id: int, giorno: int, tipo: str, *, nome: str = "ETF", importo: str = "0",
@@ -96,9 +100,11 @@ class ValidazioneSplitTests(unittest.TestCase):
     dal motore farebbe credere di aver corretto una posizione ancora sbagliata."""
 
     def setUp(self) -> None:
+        self.addCleanup(reset_current_user, set_current_user(UTENTE))
         self.engine = create_engine("sqlite://")
         Base.metadata.create_all(self.engine, tables=[InvestmentTransaction.__table__,
-                                                      InvestmentTransactionDetail.__table__])
+                                                      InvestmentTransactionDetail.__table__,
+                                                      InvestmentInstrument.__table__])
         self.session = Session(self.engine)
         self.session.add(InvestmentTransaction(name="ETF", transaction_type="Buy", amount=Decimal("1000"),
                                                units=Decimal("100"), price=Decimal("10"),

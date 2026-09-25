@@ -1415,12 +1415,21 @@ def _conto_scalable(session: Session, nome: str, saldo: Decimal, *, broker: bool
     return conto
 
 
-def _strumento_scalable(session: Session, nome: str, ticker: str | None) -> InvestmentInstrument:
-    """Lo strumento del ledger, creandolo o completandogli il ticker.
+def _strumento_del_ledger(session: Session, nome: str, ticker: str | None) -> InvestmentInstrument:
+    """Lo strumento che una riga di ledger nomina, creandolo o completandogli il ticker.
 
     Il legame fra uno strumento e le sue righe e' per nome, non per
     identificatore: uno strumento che esiste gia' non si rinomina - le sue righe
     resterebbero orfane - e gli si scrive solo il ticker, se non ne aveva uno.
+
+    La chiama **ogni scrittore di righe di ledger**, e non solo l'import: senza,
+    uno strumento nasceva solo dalla scheda Quotazioni, mentre il campo del
+    registro promette gia' il contrario ("verra' creato con questo nome"). Chi
+    scriveva un'operazione e non passava da Quotazioni restava con una riga senza
+    anagrafica: nessun ticker, nessun prezzo, e la scheda Strumenti - che legge
+    le posizioni, cioe' proprio quelle righe - continuava a dire che gli
+    strumenti nascono dalle operazioni del registro. Ognuna delle due schede
+    mandava all'altra, e nessuna delle due chiudeva il giro.
     """
     strumento = session.scalar(select(InvestmentInstrument).where(
         func.lower(InvestmentInstrument.name) == nome.casefold()))
@@ -1571,8 +1580,8 @@ def _scrivi_scalable(session: Session, piano: dict, payload: ScalableImportPaylo
                                             nota=NOTA_NON_TRACCIATO)}
     creati = {nome: conto.id for nome, conto in conti.items()}
     for strumento in piano["strumenti"]:
-        _strumento_scalable(session, strumento["nome"],
-                            (payload.ticker or {}).get(strumento["nome"]))
+        _strumento_del_ledger(session, strumento["nome"],
+                              (payload.ticker or {}).get(strumento["nome"]))
 
     categoria = (payload.categoria_interessi or "").strip() or CATEGORIA_INTERESSI
     for movimento in sorted(piano["movimenti"], key=lambda r: (r["giorno"], r["riga"])):
@@ -3439,6 +3448,7 @@ def _apply_investment_tx(tx: InvestmentTransaction, payload: InvestmentTxPayload
         tx.price = _to_decimal(payload.price, "price")
     else:
         tx.price = None
+    _strumento_del_ledger(session, tx.name, tx.ticker)
 
 
 def operazione_gia_presente(session: Session, payload: InvestmentTxPayload) -> InvestmentTransaction | None:
@@ -3588,6 +3598,9 @@ def _materialize_linked_ledger(session: Session, tx: Transaction, rows: list[Lin
             raise HTTPException(status_code=422, detail=f"transaction_type ledger non valido: {row.transaction_type}")
         if not row.name or not row.name.strip():
             raise HTTPException(status_code=422, detail="name strumento obbligatorio per ogni riga ledger")
+        # Anche da qui: e' l'altra porta da cui una riga di ledger nasce (il
+        # movimento con le sue righe, e l'import di un elenco).
+        _strumento_del_ledger(session, row.name, None)
         itx = InvestmentTransaction(
             occurred_on=tx.occurred_on,
             name=row.name.strip(),

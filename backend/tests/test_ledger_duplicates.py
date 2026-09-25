@@ -9,15 +9,21 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
 from app import main
-from app.database import Base
-from app.models import InvestmentTransaction, InvestmentTransactionDetail
+from app.database import Base, reset_current_user, set_current_user
+from app.models import InvestmentInstrument, InvestmentTransaction, InvestmentTransactionDetail
 
+# Scrivere un'operazione crea anche il suo strumento: l'anagrafica serve a
+# questi test come serve all'app. L'utente e' un numero inventato - senza,
+# l'id lo leggerebbe dal database vero.
+UTENTE = 7
 
-TABELLE = [InvestmentTransaction.__table__, InvestmentTransactionDetail.__table__]
+TABELLE = [InvestmentTransaction.__table__, InvestmentTransactionDetail.__table__,
+           InvestmentInstrument.__table__]
 
 
 class LedgerDuplicateTests(unittest.TestCase):
     def setUp(self) -> None:
+        self.addCleanup(reset_current_user, set_current_user(UTENTE))
         self.engine = create_engine("sqlite://")
         Base.metadata.create_all(self.engine, tables=TABELLE)
         self.session = Session(self.engine)
