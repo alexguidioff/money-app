@@ -6,10 +6,20 @@ from app.calculation_engine import amortization_schedule, cape_stock_weight, cal
 
 
 class CalculationEngineTests(TestCase):
-    def test_effective_date_shifts_late_income(self):
+    def test_effective_date_shifts_late_movements(self):
         self.assertEqual(effective_date(date(2026, 7, 27), "Income", "Active", 20), date(2026, 8, 1))
         self.assertEqual(effective_date(date(2026, 7, 19), "Income", "Active", 20), date(2026, 7, 19))
-        self.assertEqual(effective_date(date(2026, 7, 27), "Expenses", "Active", 20), date(2026, 7, 27))
+        # Anche le uscite: la spesa del 30 appartiene al mese dopo come lo
+        # stipendio del 27, ed e' quello che rende leggibile l'elenco.
+        self.assertEqual(effective_date(date(2026, 7, 27), "Expenses", "Active", 20), date(2026, 8, 1))
+        self.assertEqual(effective_date(date(2026, 7, 27), "expenses", "Active", 20), date(2026, 8, 1))
+        # Dicembre scivola sull'anno dopo, e il 31 dicembre e' il caso che lo
+        # dimostra: senza, il mese di competenza sarebbe il 13.
+        self.assertEqual(effective_date(date(2026, 12, 31), "Expenses", "Active", 20), date(2027, 1, 1))
+        # Giroconti, investimenti e debiti no: non sono ne' spese ne' incassi.
+        self.assertEqual(effective_date(date(2026, 7, 27), "Transfers", "Active", 20), date(2026, 7, 27))
+        self.assertEqual(effective_date(date(2026, 7, 27), "Investment", "Active", 20), date(2026, 7, 27))
+        self.assertEqual(effective_date(date(2026, 7, 27), "Income", "Inactive", 20), date(2026, 7, 27))
 
     def test_account_balance_matches_excel_sign_rules_and_transfers(self):
         transactions = [

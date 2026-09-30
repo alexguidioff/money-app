@@ -290,7 +290,7 @@ def prepara_account(user_id: int) -> None:
     }
     etichette = {
         "header_color": "Colore principale",
-        "late_income_shift": "Shift entrate tardive", "late_income_day": "Giorno dello shift",
+        "late_income_shift": "Sposta i movimenti di fine mese", "late_income_day": "Giorno dello shift",
         "savings_default_category": "Categoria di default del risparmio",
         "net_worth_currencies": "Valute nel patrimonio",
         "cost_basis_method": "Metodo di carico",
