@@ -2570,7 +2570,12 @@ function MoneyDashboardInner() {
   return (
     <main className="min-h-screen bg-[var(--money-page)] text-[#17211f]" >
       <div className="min-h-screen lg:grid lg:grid-cols-[244px_1fr]">
-        <aside className={`fixed inset-y-0 left-0 z-40 flex w-[244px] flex-col bg-[var(--money-sidebar)] px-4 py-5 text-white transition-transform lg:visible lg:translate-x-0 ${menuOpen ? 'visible translate-x-0' : 'invisible -translate-x-full'}`}>
+        {/* `overflow-y-auto`: le voci del menu piu' il riquadro di stato e il
+            profilo sono piu' alti di uno schermo di portatile o di telefono, e
+            senza scorrimento le ultime - Impostazioni in testa - restavano
+            tagliate fuori, irraggiungibili: una cosa che si vede ieri e oggi
+            non c'e' piu' e non si capisce perche'. */}
+        <aside className={`fixed inset-y-0 left-0 z-40 flex w-[244px] flex-col overflow-y-auto bg-[var(--money-sidebar)] px-4 py-5 text-white transition-transform lg:visible lg:translate-x-0 ${menuOpen ? 'visible translate-x-0' : 'invisible -translate-x-full'}`}>
           <div className="mb-8 flex items-center justify-between px-2">
             <div className="flex items-center gap-3">
               <div className="grid size-10 place-items-center rounded-xl bg-[var(--money-accent)] text-[var(--money-on-accent)]">

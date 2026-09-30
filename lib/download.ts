@@ -54,15 +54,33 @@ export function messaggioDaErrore(error: unknown, predefinito: TranslationKey, t
   return error instanceof MessaggioUtente ? error.message : t(predefinito);
 }
 
+/**
+ * Fa scaricare un file. Il download lo fa il browser, navigando all'indirizzo.
+ *
+ * Prima il file si scaricava per intero in memoria e si consegnava a un `<a>`
+ * creato qui con un blob. Quel modo dipende dal fatto che il clic sull'ancora
+ * avvenga *mentre* vale ancora il gesto dell'utente: dopo un `await` lungo -
+ * e un file grosso su una linea lenta lo e' - alcuni browser lo ignorano, e
+ * non lo dicono: non succede niente e basta. Il sintomo e' "non riesco a
+ * scaricare il backup", identico su computer e telefono.
+ *
+ * Con la navigazione il file entra nella lista dei download del browser, che
+ * e' anche l'unico posto dove si vede che sta scaricando. Il server manda gia'
+ * `Content-Disposition: attachment`, quindi la pagina non viene lasciata.
+ *
+ * Il controllo che il file ci sia prima di partire serve a dare un errore
+ * tradotto invece di una pagina di JSON: con `HEAD` il server non manda il
+ * corpo, quindi costa niente.
+ */
 export async function downloadFile(url: string, filename: string, t: (key: TranslationKey) => string) {
-  const response = await fetch(url);
-  if (!response.ok) throw new MessaggioUtente(await responseError(response, t));
-  const blobUrl = URL.createObjectURL(await response.blob());
+  const testa = await fetch(url, { method: 'HEAD' });
+  if (!testa.ok) throw new MessaggioUtente(await responseError(testa, t));
   const link = document.createElement('a');
-  link.href = blobUrl;
+  link.href = url;
   link.download = filename;
+  // Nel documento ci va: un clic su un'ancora fuori dal documento e' un'altra
+  // cosa che i browser possono ignorare in silenzio.
   document.body.appendChild(link);
   link.click();
   link.remove();
-  setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
 }
