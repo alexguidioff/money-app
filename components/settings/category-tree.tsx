@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { iconaCategoria } from '@/lib/category-icons';
 import { useI18n } from '@/lib/i18n-context';
 import type { TranslationKey } from '@/lib/translations';
 
@@ -83,6 +84,11 @@ export function CategoryTreeCard({ apiUrl, onChanged }: { apiUrl: string; onChan
   const [nuova, setNuova] = useState<Record<string, string>>({ expense: '', income: '' });
   const [sotto, setSotto] = useState<number | null>(null);
   const [figlia, setFiglia] = useState('');
+  // I rami aperti, per id. Chiusi di partenza: con quindici radici che ne
+  // contengono sessanta, l'elenco aperto per intero era una pagina da scorrere
+  // per trovare una voce, che e' esattamente il motivo per cui si finiva per
+  // non usarlo. Chi apre un ramo lo lascia aperto per il resto della visita.
+  const [aperti, setAperti] = useState<ReadonlySet<number>>(() => new Set());
   const [errore, setErrore] = useState('');
   const [inCorso, setInCorso] = useState(false);
 
@@ -144,7 +150,13 @@ export function CategoryTreeCard({ apiUrl, onChanged }: { apiUrl: string; onChan
     const corpo = parentId === null ? { name: pulito, scope: verso } : { name: pulito, parentId };
     if (await chiama('/api/categories', 'POST', corpo)) {
       if (parentId === null) setNuova((corrente) => ({ ...corrente, [verso]: '' }));
-      else { setFiglia(''); setSotto(null); }
+      else {
+        setFiglia(''); setSotto(null);
+        // Il ramo si apre su quello che si e' appena scritto: chi ha appena
+        // creato una voce la sta cercando, e trovarla chiusa dentro un ramo
+        // chiuso sembrerebbe non averla creata.
+        setAperti((correnti) => new Set(correnti).add(parentId));
+      }
     }
   }
 
@@ -178,6 +190,16 @@ export function CategoryTreeCard({ apiUrl, onChanged }: { apiUrl: string; onChan
   async function cancella(riga: CategoryRow) {
     if (!window.confirm(t('catConfirmDelete', { name: riga.name }))) return;
     await chiama(`/api/categories/${riga.id}`, 'DELETE');
+  }
+
+  /** Apre o chiude un ramo. La copia e' nuova a ogni giro: un insieme mutato
+   * sul posto non farebbe ridisegnare niente. */
+  function alterna(id: number) {
+    setAperti((correnti) => {
+      const prossimi = new Set(correnti);
+      if (!prossimi.delete(id)) prossimi.add(id);
+      return prossimi;
+    });
   }
 
   const usi = (riga: CategoryRow) => [
@@ -283,16 +305,28 @@ export function CategoryTreeCard({ apiUrl, onChanged }: { apiUrl: string; onChan
           <ul className="space-y-2">
             {radici.map((radice) => {
               const figlie = delVerso.filter((figlio) => figlio.parentId === radice.id);
+              const aperta = aperti.has(radice.id);
               return <li key={radice.id} className="overflow-hidden rounded-xl border border-black/[0.07]">
                 {/* La radice ha lo sfondo e il nome in grassetto: si vede che e'
                     il contenitore, non una voce come le altre. */}
                 <div className="group flex items-center gap-1.5 bg-[#f6f8f6] px-2.5 py-1.5">
+                  {/* La freccia c'e' solo dove c'e' qualcosa da aprire; dove non
+                      c'e', resta lo spazio, cosi' i nomi delle radici sono tutti
+                      allineati e non sembrano di due elenchi diversi. */}
+                  {figlie.length > 0
+                    ? <Button type="button" variant="ghost" size="icon" className="size-6 shrink-0 text-[#5e6c68]"
+                              aria-expanded={aperta} aria-label={t(aperta ? 'catCollapse' : 'catExpand', { name: radice.name })}
+                              onClick={() => alterna(radice.id)}>
+                        {aperta ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                      </Button>
+                    : <span aria-hidden className="size-6 shrink-0" />}
+                  {iconaCategoria(radice.name) && <span aria-hidden className="shrink-0 text-[15px] leading-none">{iconaCategoria(radice.name)}</span>}
                   {nome(radice, true)}
                   {usi(radice) && <span className="shrink-0 text-[11px] text-[#5e6c68]">{usi(radice)}</span>}
                   {classificazione(radice)}
                   {azioni(radice, radici)}
                 </div>
-                {figlie.length > 0 && <ul className="divide-y divide-black/[0.04]">
+                {figlie.length > 0 && aperta && <ul className="divide-y divide-black/[0.04]">
                   {figlie.map((sotto_voce) => <li key={sotto_voce.id}
                       className="group flex items-center gap-1.5 py-1.5 pr-2.5 pl-2.5">
                     {/* La linea verticale dice a colpo d'occhio che questa riga

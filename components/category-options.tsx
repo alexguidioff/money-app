@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { iconaCategoria } from '@/lib/category-icons';
 import { useI18n } from '@/lib/i18n-context';
 
 /** Un ramo dell'albero come lo manda il server: la radice e i nomi dei figli. */
@@ -38,7 +39,10 @@ export function CategoryOptions({ names, tree }: { names: string[]; tree: Catego
         // non direbbe perche' non si puo' scegliere.
         <option key={`padre-${radice.name}`} value={radice.name} disabled={!sceglibile}
                 title={sceglibile ? undefined : t('catChooseChild', { name: radice.name })}>
-          {radice.name}
+          {/* L'icona davanti al nome, come nell'elenco del budget: e' la stessa
+              categoria, e due elenchi che la mostrano in due modi diversi
+              facevano sembrare due cose diverse. */}
+          {iconaCategoria(radice.name) ? `${iconaCategoria(radice.name)} ${radice.name}` : radice.name}
         </option>,
         // Spazi fissi e non normali: in una tendina gli spazi normali vengono
         // compressi e l'indentazione sparisce.
