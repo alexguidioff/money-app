@@ -5,15 +5,19 @@ are read or changed; all test tables are created in money_import_test_<uuid>.
 """
 import os
 import unittest
+from datetime import date
+from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy import create_engine, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import Base, set_current_user, reset_current_user
 from app.interchange import build_export
 from app.interchange_import import import_data
-from app.models import User, Transaction, TransactionLedgerLink, InvestmentTransaction, InvestmentTransactionDetail
+from app.models import (BudgetPlan, Category, User, Transaction, TransactionLedgerLink,
+                        InvestmentTransaction, InvestmentTransactionDetail)
 from tests.categorie_fixture import categoria
 from tests.test_interchange_roundtrip import _populate
 
@@ -94,3 +98,52 @@ class PostgresInterchangeTests(unittest.TestCase):
             with admin.begin() as conn:
                 conn.execute(text(f'DROP SCHEMA "{schema}"'))
             admin.dispose()
+
+
+@unittest.skipUnless(os.getenv("MONEY_TEST_POSTGRES") == "1", "requires isolated PostgreSQL schema")
+class PostgresBudgetCurrencyTests(unittest.TestCase):
+    """Il vincolo che porta la valuta: due piani nella stessa categoria.
+
+    Su SQLite non si prova - i vincoli di una tabella che esiste non si
+    alterano - e la cosa da escludere non e' un'eccezione di troppo ma quella di
+    meno: senza la valuta nel vincolo, il piano in franchi di una categoria che
+    ha gia' quello in euro morirebbe con un 409, e dall'interfaccia non si
+    ripara.
+    """
+
+    def setUp(self):
+        self.schema = "money_import_test_" + uuid4().hex
+        self.engine = create_engine(os.environ["DATABASE_ADMIN_URL"],
+                                    connect_args={"options": "-csearch_path=" + self.schema})
+        with self.engine.begin() as conn:
+            conn.execute(text(f'CREATE SCHEMA "{self.schema}"'))
+        Base.metadata.create_all(self.engine)
+
+    def tearDown(self):
+        Base.metadata.drop_all(self.engine)
+        with self.engine.begin() as conn:
+            conn.execute(text(f'DROP SCHEMA "{self.schema}" CASCADE'))
+        self.engine.dispose()
+
+    def test_due_valute_convivono_e_la_terza_volta_no(self):
+        with Session(self.engine) as session:
+            session.add(Category(user_id=1, name="Casa", position=0, active=True))
+            session.commit()
+            categoria = session.scalar(select(Category.id))
+            for valuta in ("EUR", "CHF"):
+                session.add(BudgetPlan(user_id=1, period=date(2026, 1, 1), budget_type="Expenses",
+                                       category_id=categoria, amount=Decimal("100"), currency=valuta))
+            session.commit()
+            self.assertEqual(sorted(session.scalars(select(BudgetPlan.currency)).all()), ["CHF", "EUR"])
+            session.add(BudgetPlan(user_id=1, period=date(2026, 1, 1), budget_type="Expenses",
+                                   category_id=categoria, amount=Decimal("1"), currency="EUR"))
+            with self.assertRaises(IntegrityError):
+                session.commit()
+
+    def test_il_vincolo_si_chiama_come_lo_cerca_la_migrazione(self):
+        # Il nome scritto a mano: se cambiasse, la migrazione aggiungerebbe un
+        # vincolo nuovo a ogni avvio su un database che ne ha gia' uno uguale.
+        with self.engine.begin() as conn:
+            nome = conn.scalar(text("SELECT conname FROM pg_constraint WHERE conrelid = 'budget_plans'::regclass"
+                                    " AND contype = 'u'"))
+        self.assertEqual(nome, "budget_plans_period_type_category_currency_key")

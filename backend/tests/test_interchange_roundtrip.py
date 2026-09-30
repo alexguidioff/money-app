@@ -50,6 +50,11 @@ def _populate(session: Session) -> None:
                             recurrence_parent_id=template.id))
     session.add(BudgetPlan(period=date(2026, 3, 1), budget_type="Expenses",
                            category_id=alimentari.id, amount=Decimal("750.00")))
+    # La stessa categoria in franchi: due righe, non una riscritta. Se la valuta
+    # non attraversasse il file, questa tornerebbe in euro e il vincolo
+    # rifiuterebbe la seconda riga invece di affiancarla.
+    session.add(BudgetPlan(period=date(2026, 3, 1), budget_type="Expenses",
+                           category_id=alimentari.id, amount=Decimal("120.00"), currency="CHF"))
     session.add(Goal(name="Fondo emergenza", starting_amount=Decimal("0"), target_amount=Decimal("10000"),
                      start_date=date(2026, 1, 1), target_date=date(2027, 1, 1)))
     ledger = InvestmentTransaction(occurred_on=date(2026, 1, 15), ticker="VWCE.DE", name="Vanguard All-World",
@@ -144,7 +149,10 @@ class InterchangeRoundTripTests(unittest.TestCase):
         self.assertEqual(figlio.parent_id, padre.id)
         self.assertEqual(self.target.scalar(select(Transaction).where(Transaction.is_recurring_template.is_(False))).category_id,
                          self.target.scalar(select(Category.id).where(Category.name == "Stipendio")))
-        self.assertEqual(self.target.scalar(select(BudgetPlan)).category_id, padre.id)
+        piani = self.target.scalars(select(BudgetPlan).order_by(BudgetPlan.currency)).all()
+        self.assertEqual([piano.category_id for piano in piani], [padre.id, padre.id])
+        self.assertEqual([(piano.currency, piano.amount) for piano in piani],
+                         [("CHF", Decimal("120.00")), ("EUR", Decimal("750.00"))])
 
     def test_effective_date_is_recomputed_not_copied(self) -> None:
         """La competenza non viaggia nel file: si ricava dalle impostazioni.

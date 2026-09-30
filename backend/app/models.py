@@ -281,7 +281,13 @@ class Category(Base):
 
 class BudgetPlan(Base):
     __tablename__ = "budget_plans"
-    __table_args__ = (UniqueConstraint("user_id", "period", "budget_type", "category_id"),)
+    # Il vincolo ha un nome scritto a mano, e non e' un vezzo: quello generato
+    # da SQLAlchemy per cinque colonne fa 64 caratteri, e Postgres tronca gli
+    # identificatori a 63. Il nome memorizzato sarebbe "…_currency_ke", su cui
+    # nessun controllo di idempotenza puo' contare - e la migrazione un
+    # controllo di idempotenza lo fa.
+    __table_args__ = (UniqueConstraint("user_id", "period", "budget_type", "category_id", "currency",
+                                       name="budget_plans_period_type_category_currency_key"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, index=True, default=current_user_id)
@@ -291,6 +297,10 @@ class BudgetPlan(Base):
     # budget, e la radice adesso si legge dall'albero.
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(16, 2), default=0)
+    # La valuta del piano. Per la stessa categoria e lo stesso mese ci stanno
+    # una riga in euro e una in franchi, e ognuna si confronta con i movimenti
+    # della sua valuta: e' il motivo per cui la valuta sta anche nel vincolo.
+    currency: Mapped[str] = mapped_column(String(3), default="EUR", server_default=text("'EUR'"))
 
 
 class Goal(Base):

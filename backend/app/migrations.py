@@ -89,6 +89,15 @@ def tracked_changes(engine: Engine) -> None:
             # I conti che c'erano erano tutti in euro: il default li lascia
             # esattamente com'erano, e nessun numero gia' mostrato si muove.
             conn.execute(text("ALTER TABLE accounts ADD COLUMN currency VARCHAR(3) NOT NULL DEFAULT 'EUR'"))
+        if inspect(conn).has_table("budget_plans"):
+            budget_cols = {c["name"] for c in inspect(conn).get_columns("budget_plans")}
+            if "currency" not in budget_cols:
+                # I piani che c'erano erano tutti in euro, perche' un piano in
+                # un'altra valuta non si poteva nemmeno scrivere: il default li
+                # lascia com'erano e i budget gia' mostrati non si muovono.
+                conn.execute(text("ALTER TABLE budget_plans ADD COLUMN currency VARCHAR(3) "
+                                  "NOT NULL DEFAULT 'EUR'"))
+            _vincolo_budget_per_valuta(conn)
         if "source_group" in account_cols:
             # Il gruppo 'financial' voleva dire due cose insieme: "e' un
             # investimento" e "il suo valore lo dice il ledger". La prima e'
@@ -576,6 +585,41 @@ def _colonne_di(conn, tabella: str) -> set[str]:
             if inspect(conn).has_table(tabella) else set())
 
 
+def _vincolo_budget_per_valuta(conn) -> None:
+    """Un piano per categoria, periodo, tipo **e valuta**: il vincolo di prima
+    con la valuta dentro.
+
+    Il vincolo vecchio non si affianca, si toglie: vieta di avere insieme il
+    piano in euro e quello in franchi della stessa categoria, che e' tutto
+    quello che questa modifica serve a fare. Se ne sopravvivesse uno,
+    l'inserimento della seconda valuta morirebbe con un 409 che dall'interfaccia
+    non si capisce.
+
+    Si riconosce **per colonne e non per nome**, e non e' pignoleria: su un
+    database nato con ``create_all`` il vincolo si chiama
+    ``budget_plans_user_id_period_budget_type_category_id_key``, su uno migrato
+    ``budget_plans_period_budget_type_category_id_key``, e la migrazione che
+    l'aveva messo controllava solo il secondo nome. Su un database possono
+    quindi coesistere tutti e due, e cercarne uno solo lascerebbe vivo l'altro.
+
+    Su SQLite non si fa niente: i vincoli non si alterano, e i test creano le
+    tabelle con ``create_all``, che il nome nuovo ce l'ha gia'.
+    """
+    if conn.dialect.name != "postgresql":
+        return
+    if "currency" not in _colonne_di(conn, "budget_plans"):
+        return
+    nuovo = "budget_plans_period_type_category_currency_key"
+    vecchie = {"user_id", "period", "budget_type", "category_id"}
+    vincoli = inspect(conn).get_unique_constraints("budget_plans")
+    for vincolo in vincoli:
+        if {colonna.strip('"') for colonna in vincolo["column_names"]} == vecchie:
+            conn.execute(text(f'ALTER TABLE budget_plans DROP CONSTRAINT IF EXISTS "{vincolo["name"]}"'))
+    if nuovo not in {vincolo["name"] for vincolo in vincoli}:
+        conn.execute(text(f"ALTER TABLE budget_plans ADD CONSTRAINT {nuovo} "
+                          "UNIQUE (user_id, period, budget_type, category_id, currency)"))
+
+
 def _albero_delle_categorie(conn) -> None:
     """Crea le categorie dai nomi scritti nelle colonne, e collega i riferimenti.
 
@@ -658,14 +702,10 @@ def _albero_delle_categorie(conn) -> None:
                          {"padre": radice, "u": user_id, "n": nome})
 
     # Il vincolo che c'era sui budget (uno per categoria e periodo) resta, sulla
-    # colonna nuova: su Postgres si puo' aggiungere a una tabella esistente, e su
-    # un database appena creato l'ha gia' messo ``create_all``.
-    if conn.dialect.name == "postgresql" and "category_id" in _colonne_di(conn, "budget_plans"):
-        nomi = {vincolo["name"] for vincolo in inspect(conn).get_unique_constraints("budget_plans")}
-        if "budget_plans_period_budget_type_category_id_key" not in nomi:
-            conn.execute(text("ALTER TABLE budget_plans ADD CONSTRAINT "
-                              "budget_plans_period_budget_type_category_id_key "
-                              "UNIQUE (user_id, period, budget_type, category_id)"))
+    # colonna nuova: se ne occupa ``_vincolo_budget_per_valuta``, che gira a
+    # ogni avvio da ``tracked_changes``. Non si rimette qui: questa funzione
+    # passa solo quando il database ha ancora le colonne di testo, e su un
+    # database gia' migrato il vincolo non verrebbe mai toccato.
 
 
 # Tabelle i cui dati appartengono a una persona.
@@ -717,8 +757,9 @@ VINCOLI = [
 ]
 # Il terzo vincolo era quello dei budget, uno per categoria e periodo: nominava
 # la colonna di testo ``category``, che l'ultimo passo dell'albero toglie. Il
-# vincolo equivalente su ``category_id`` lo mette ``_albero_delle_categorie``,
-# e su un database nato dopo l'albero l'ha gia' messo ``create_all``.
+# vincolo equivalente su ``category_id`` e valuta lo mette
+# ``_vincolo_budget_per_valuta``, e su un database nato col modello attuale
+# l'ha gia' messo ``create_all``.
 
 # Indici unici su singola colonna, da rifare includendo l'utente.
 INDICI_UNICI = [

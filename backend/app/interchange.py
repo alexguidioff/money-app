@@ -34,7 +34,7 @@ from .models import (Account, AccountValuation, AppSetting, BudgetPlan, Category
                      LiabilityProfile, LiabilityTransactionDetail, LookupOption, Note, Transaction, TransactionEvent,
                      TransactionLedgerLink)
 
-FORMAT_VERSION = "1.15"
+FORMAT_VERSION = "1.16"
 
 
 def _cell(value: Any) -> Any:
@@ -81,7 +81,10 @@ SHEETS: dict[str, tuple[Any, list[str]]] = {
                                 # conto: senza, un ripristino riporterebbe in euro
                                 # i movimenti di un conto in franchi.
                                 "currency"]),
-    "Budget": (BudgetPlan, ["id", "period", "budget_type", "category_id", "amount"]),
+    # La valuta del piano: senza, un ripristino rimetterebbe in euro il piano
+    # in franchi della stessa categoria - e le due righe sono due righe, quindi
+    # la seconda sovrascriverebbe la prima invece di affiancarsi.
+    "Budget": (BudgetPlan, ["id", "period", "budget_type", "category_id", "amount", "currency"]),
     "Obiettivi": (Goal, ["id", "name", "starting_amount", "target_amount", "start_date", "target_date", "completed_at", "kind", "target_account"]),
     # Sotto gli obiettivi, e con il loro id dentro: una tappa senza il suo
     # obiettivo non e' importabile, quindi il foglio viene dopo quello che

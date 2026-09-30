@@ -153,6 +153,11 @@ def _read_sheet(workbook, title: str, model, columns: list[str], version: str = 
     # un file rotto, non un campo nuovo.
     if title == "Movimenti" and tuple(int(parte) for parte in version.split(".")) < (1, 15):
         additions["currency"] = "EUR"
+    # La valuta del piano di budget e' nata con la 1.16: i piani scritti prima
+    # erano tutti in euro, perche' un piano in un'altra valuta non si poteva
+    # nemmeno scrivere a mano. Leggerli con quel valore non li cambia.
+    if title == "Budget" and tuple(int(parte) for parte in version.split(".")) < (1, 16):
+        additions["currency"] = "EUR"
     # I ripieghi dipendono dall'entita': "kind" non ha lo stesso significato
     # per un obiettivo e per un debito. I file 1.6 non avevano questi campi.
     legacy_additions = {
