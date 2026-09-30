@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { NumeroField } from '@/components/ui/numero-field';
 import { useI18n } from '@/lib/i18n-context';
 import { COUNTRIES, countryByCode, countryLabel } from '@/lib/data/countries';
 import { messaggioErroreFire } from '@/lib/fire-errors';
@@ -175,21 +176,21 @@ export function RetirementProfileForm({ apiUrl, onSaved }: { apiUrl: string; onS
               )}
             </Field>
             <Field label={t('fireProfileRetirementAge')} unit={t('fireProfileYears')}>
-              <Input type="number" min={18} max={100} value={profile.targetRetirementAge}
-                onChange={(e) => setProfile({ ...profile, targetRetirementAge: Number(e.target.value) })} className="h-10 bg-white" />
+              <NumeroField min={18} max={100} value={profile.targetRetirementAge}
+                onChange={(numero) => setProfile({ ...profile, targetRetirementAge: numero })} className="h-10 bg-white" />
             </Field>
             <Field label={t('fireProfileRealReturn')} unit={`% (${t('fireProfileReal')})`}>
-              <Input type="number" step="0.1" min={-50} max={50} value={profile.realReturn}
-                onChange={(e) => setProfile({ ...profile, realReturn: Number(e.target.value) })} className="h-10 bg-white" />
+              <NumeroField step="0.1" min={-50} max={50} value={profile.realReturn}
+                onChange={(numero) => setProfile({ ...profile, realReturn: numero })} className="h-10 bg-white" />
             </Field>
             <Field label={t('fireReturnVolatility')} unit="%">
-              <Input type="number" step="0.5" min={0} max={100} value={profile.returnVolatility}
-                onChange={(e) => setProfile({ ...profile, returnVolatility: Number(e.target.value) })} className="h-10 bg-white" />
+              <NumeroField step="0.5" min={0} max={100} value={profile.returnVolatility}
+                onChange={(numero) => setProfile({ ...profile, returnVolatility: numero })} className="h-10 bg-white" />
               <span className="block text-[10px] font-normal text-[#5e6c68]">{t('fireReturnVolatilityHelp')}</span>
             </Field>
             <Field label={t('fireProfileWithdrawalRate')} unit={`% (${t('fireProfileReal')})`}>
-              <Input type="number" step="0.1" min={0.1} max={100} value={profile.withdrawalRate}
-                onChange={(e) => setProfile({ ...profile, withdrawalRate: Number(e.target.value) })} className="h-10 bg-white" />
+              <NumeroField step="0.1" min={0.1} max={100} value={profile.withdrawalRate}
+                onChange={(numero) => setProfile({ ...profile, withdrawalRate: numero })} className="h-10 bg-white" />
             </Field>
             <Field label={t('fireProfileWithdrawalTax')} unit="%" hint={t('fireProfileNominal')}>
               <Input type="number" step="0.1" min={0} max={99.9} value={profile.withdrawalTaxRate || ''}
@@ -211,8 +212,8 @@ export function RetirementProfileForm({ apiUrl, onSaved }: { apiUrl: string; onS
               </Field>
             )}
             <Field label={t('fireProfileInflation')} unit="%" hint={t('fireProfileInflationHint')}>
-              <Input type="number" step="0.1" min={0} max={50} value={profile.inflation}
-                onChange={(e) => setProfile({ ...profile, inflation: Number(e.target.value) })} className="h-10 bg-white" />
+              <NumeroField step="0.1" min={0} max={50} value={profile.inflation}
+                onChange={(numero) => setProfile({ ...profile, inflation: numero })} className="h-10 bg-white" />
             </Field>
             <Field label={t('fireProfileLeanExpenses')} hint={t('fireProfileLeanHint')}>
               <Input type="number" min={0} step="0.01" value={profile.leanAnnualExpenses ?? ''}

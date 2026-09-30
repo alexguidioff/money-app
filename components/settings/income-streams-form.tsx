@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { NumeroField } from '@/components/ui/numero-field';
 import { useI18n } from '@/lib/i18n-context';
 import { COUNTRIES, countryLabel } from '@/lib/data/countries';
 import { messaggioErroreFire } from '@/lib/fire-errors';
@@ -200,15 +201,15 @@ function StreamEditor({ t, lang, initial, busy, onCancel, onSave }: {
         <div className="space-y-1.5">
           <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
             {t('fireStreamsAmount')} (€)
-            <Input type="number" min={0} step="0.01" value={values.amount}
-              onChange={(e) => setValues({ ...values, amount: Number(e.target.value) })} className="h-10 bg-white" />
+            <NumeroField min={0} step="0.01" value={values.amount}
+              onChange={(numero) => setValues({ ...values, amount: numero })} className="h-10 bg-white" />
           </label>
           <span className="block leading-4 text-[11px] text-[#5e6c68]">{t('fireStreamsAmountHint')}</span>
         </div>
         <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
           {t('fireStreamsStartAge')} ({t('fireProfileYears')})
-          <Input type="number" min={18} max={100} value={values.startAge}
-            onChange={(e) => setValues({ ...values, startAge: Number(e.target.value) })} className="h-10 bg-white" />
+          <NumeroField min={18} max={100} value={values.startAge}
+            onChange={(numero) => setValues({ ...values, startAge: numero })} className="h-10 bg-white" />
         </label>
         <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
           {t('fireStreamsCountry')}

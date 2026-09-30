@@ -73,6 +73,7 @@ import {
 } from '@/components/ui/dialog';
 import { ImportHistoryCard } from '@/components/import-history-card';
 import { Input } from '@/components/ui/input';
+import { NumeroField } from '@/components/ui/numero-field';
 import { TabStrip } from '@/components/ui/tab-strip';
 import { PDFImportPreview, type BackupAccountRow, type PDFTransaction, type ImportTemplateRow, type ModelliDiMappatura } from '@/components/ui/pdf-import-preview';
 import { RefundPicker } from '@/components/ui/refund-picker';
@@ -5175,7 +5176,7 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
           </div>
           {tipoProfilo === 'term_loan' && <div className="space-y-2 rounded-xl border border-black/8 p-3">
             <div><p className="text-xs font-semibold text-[#52615d]">{t('plannedDrawdowns')}</p><p className="text-[11px] text-[#5e6c68]">{t('plannedDrawdownsHint')}</p></div>
-            {drawdowns.map((row, index) => <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2"><Input aria-label={t('date')} required type="date" value={row.occurredOn} onChange={(event) => setDrawdowns((values) => values.map((value, position) => position === index ? { ...value, occurredOn: event.target.value } : value))} /><Input aria-label={t('amount')} required min="0.01" step="0.01" type="number" value={row.amount} onChange={(event) => setDrawdowns((values) => values.map((value, position) => position === index ? { ...value, amount: Number(event.target.value) } : value))} /><Button aria-label={t('delete')} type="button" variant="ghost" size="icon" disabled={drawdowns.length === 1} onClick={() => setDrawdowns((values) => values.filter((_, position) => position !== index))}><Trash2 className="size-4" /></Button></div>)}
+            {drawdowns.map((row, index) => <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2"><Input aria-label={t('date')} required type="date" value={row.occurredOn} onChange={(event) => setDrawdowns((values) => values.map((value, position) => position === index ? { ...value, occurredOn: event.target.value } : value))} /><NumeroField aria-label={t('amount')} required min="0.01" step="0.01" value={row.amount} onChange={(numero) => setDrawdowns((values) => values.map((value, position) => position === index ? { ...value, amount: numero } : value))} /><Button aria-label={t('delete')} type="button" variant="ghost" size="icon" disabled={drawdowns.length === 1} onClick={() => setDrawdowns((values) => values.filter((_, position) => position !== index))}><Trash2 className="size-4" /></Button></div>)}
             <Button type="button" size="sm" variant="outline" onClick={() => setDrawdowns((values) => [...values, { occurredOn: values.at(-1)?.occurredOn ?? today, amount: 0 }])}><Plus className="size-4" />{t('addDrawdown')}</Button>
           </div>}
           <div className="grid grid-cols-2 gap-3">
