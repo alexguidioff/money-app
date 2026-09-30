@@ -627,6 +627,99 @@ def _net_worth_breakdown(session: Session, year: int, month: int | None,
     }
 
 
+# Quanti giorni guarda la card "spese degli ultimi giorni" della Panoramica.
+GIORNI_SPESA_RECENTE = 7
+
+
+def _ultimo_utilizzo(session: Session) -> dict[str, str]:
+    """L'ultimo giorno in cui ogni conto si e' mosso, per nome del conto.
+
+    Un conto si usa anche quando il denaro ci **arriva**: un versamento sul
+    conto titoli e' un uso del conto titoli, e guardare solo la partenza lo
+    lascerebbe fermo all'ultima volta che ci si e' pagato qualcosa. Quindi si
+    guardano tutti e due i lati del movimento.
+
+    Il giorno e' quello vero (`occurred_on`), non quello di competenza: la
+    domanda e' "quando l'ho usato l'ultima volta", e la competenza e' la
+    convenzione del budget che sposta le spese di fine mese al mese dopo - da
+    li' un conto usato ieri risulterebbe usato il mese prossimo.
+
+    Per nome e non per id perche' e' cosi' che i conti si nominano in tutta
+    l'interfaccia, e il saldo di questa card arriva da `/api/accounts`, che
+    parla per nome.
+    """
+    ultimi: dict[str, date] = {}
+    for colonna in (Transaction.account_name, Transaction.destination_name):
+        righe = session.execute(
+            select(colonna, func.max(Transaction.occurred_on))
+            .where(REAL_MOVEMENT, func.trim(func.coalesce(colonna, "")) != "")
+            .group_by(colonna)).all()
+        for nome, giorno in righe:
+            if giorno and (nome not in ultimi or giorno > ultimi[nome]):
+                ultimi[nome] = giorno
+    return {nome: giorno.isoformat() for nome, giorno in ultimi.items()}
+
+
+def _spese_ultimi_giorni(session: Session, giorni: int = GIORNI_SPESA_RECENTE) -> list[dict[str, Any]]:
+    """Giorno per giorno, quanto e' uscito negli ultimi giorni. Dal piu' vecchio.
+
+    E' la cassa, non la competenza: conta il giorno in cui il denaro e' uscito
+    (`occurred_on`), non quello in cui il movimento pesa sul budget. Una spesa
+    del 30 spostata a ottobre resta qui il 30 - e' il giorno in cui i soldi sono
+    usciti, che e' la domanda di questa card.
+
+    Gli acquisti di ETF contano come uscite. Il denaro esce davvero, e chi
+    guarda questa card sta chiedendo quanto ha speso, non quanto ha consumato:
+    comprare quote non e' una spesa corrente, ma quei soldi sul conto non ci
+    sono piu'. Un acquisto **gia' collegato** a un movimento di banca invece non
+    si conta: quel movimento e' di tipo Expenses ed e' gia' nella somma, e
+    contarlo due volte farebbe uscire una cifra che non c'e'.
+    """
+    oggi = date.today()
+    inizio = oggi - timedelta(days=giorni - 1)
+    per_giorno: dict[date, float] = defaultdict(float)
+
+    def _somma(righe: Iterable[Any]) -> None:
+        for giorno, importo in righe:
+            per_giorno[giorno] += float(importo or 0)
+
+    # Il totale di un giorno in euro: ogni riga al cambio del suo giorno e della
+    # sua valuta, come fanno budget e riepiloghi.
+    def somma_in_euro(importo: Any, valuta: Any, giorno: Any) -> Any:
+        return func.sum(_in_euro(importo, valuta, giorno))
+
+    _somma(session.execute(
+        select(Transaction.occurred_on, somma_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on))
+        .where(REAL_MOVEMENT, BUDGET_MOVEMENT, Transaction.transaction_type == "Expenses",
+               Transaction.occurred_on >= inizio, Transaction.occurred_on <= oggi)
+        .group_by(Transaction.occurred_on)).all())
+    # Un rimborso non pesa sul budget (quindi non e' in `BUDGET_MOVEMENT`) ma i
+    # soldi sono rientrati: si toglie dal giorno in cui sono rientrati. Se il
+    # rimborso arriva dopo la finestra, qui non si sottrae niente - ed e' giusto,
+    # perche' in quei sette giorni erano davvero usciti.
+    Originale = aliased(Transaction, name="originale")
+    _somma([(giorno, -importo) for giorno, importo in session.execute(
+        select(Transaction.occurred_on, somma_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on))
+        .join(Originale, Transaction.refund_of_id == Originale.id)
+        .where(REAL_MOVEMENT, Transaction.refund_of_id.is_not(None),
+               Originale.transaction_type == "Expenses",
+               Transaction.occurred_on >= inizio, Transaction.occurred_on <= oggi)
+        .group_by(Transaction.occurred_on)).all()])
+
+    acquisti = session.execute(
+        select(InvestmentTransaction.id, InvestmentTransaction.occurred_on,
+               _in_euro(InvestmentTransaction.amount, InvestmentTransaction.currency, InvestmentTransaction.occurred_on))
+        .where(InvestmentTransaction.transaction_type == "Buy",
+               InvestmentTransaction.occurred_on >= inizio, InvestmentTransaction.occurred_on <= oggi)).all()
+    collegati = set(session.scalars(select(TransactionLedgerLink.ledger_id).where(
+        TransactionLedgerLink.ledger_id.in_([riga[0] for riga in acquisti]))).all()) if acquisti else set()
+    _somma((giorno, importo) for id_acquisto, giorno, importo in acquisti if id_acquisto not in collegati)
+
+    return [{"date": (inizio + timedelta(days=passo)).isoformat(),
+             "amount": round(per_giorno.get(inizio + timedelta(days=passo), 0.0), 2)}
+            for passo in range(giorni)]
+
+
 @router.get("/api/summary")
 def summary(
     year: int = Query(ge=2000, le=2100),
@@ -672,6 +765,12 @@ def summary(
     return {
         "projection": stima,
         "goalCoverage": copertura,
+        # I due pezzi della Panoramica che non parlano del periodo scelto ma di
+        # oggi: l'ultimo uso di ogni conto e le uscite degli ultimi giorni. Non
+        # dipendono da `year`/`month` e si calcolano una volta sola, anche quando
+        # `compare_to` fa girare il resto due volte.
+        "accountsLastUsed": _ultimo_utilizzo(session),
+        "recentExpenses": _spese_ultimi_giorni(session),
         "income": core["income"], "expenses": core["expenses"], "savings": core["savings"],
         "netWorthDetail": net_worth_info,
         "netWorthComparison": net_worth_comparison,

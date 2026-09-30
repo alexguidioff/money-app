@@ -123,6 +123,14 @@ export type Summary = {
   daysPassed: number;
   periodCompletion: number;
   savingsRate: number | null;
+  // L'ultimo giorno in cui ogni conto si e' mosso, per nome del conto. Sono i
+  // conti che il riepilogo porta con se' perche' la Panoramica li disegna: il
+  // saldo arriva da `/api/accounts`, che parla per nome.
+  accountsLastUsed: Record<string, string>;
+  // Quanto e' uscito giorno per giorno negli ultimi giorni, dal piu' vecchio:
+  // e' la cassa, non la competenza, e conta anche gli acquisti di investimento.
+  // Quanti giorni lo decide il backend, e la card lo dice col numero che riceve.
+  recentExpenses: Array<{ date: string; amount: number }>;
   comparison: {
     period: string;
     periodYear: number;
@@ -749,6 +757,11 @@ const fallbackSummary: Summary = {
   daysPassed: 31,
   periodCompletion: 1,
   savingsRate: 0.64,
+  // Vuoti: sono i due pezzi che si vedono solo a risposta arrivata, e un
+  // campione inventato qui lampeggerebbe per un istante su una schermata che
+  // sta per dire i numeri veri.
+  accountsLastUsed: {},
+  recentExpenses: [],
   comparison: null,
 };
 
@@ -1052,6 +1065,9 @@ function MoneyDashboardInner() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [newTransactionOpen, setNewTransactionOpen] = useState(false);
   const [movementAccount, setMovementAccount] = useState('');
+  // Il conto da proporre quando il modulo si apre da un conto preciso (il
+  // riquadro dei conti della Panoramica). Vedi `apriMovimentoSu`.
+  const contoProposto = useRef('');
   const [movementDestination, setMovementDestination] = useState('');
   // Quanto arriva dall'altra parte, mentre lo si scrive: serve solo a mostrare
   // il cambio che ne risulta, prima di salvare.
@@ -1396,7 +1412,10 @@ function MoneyDashboardInner() {
   useEffect(() => activeSection === 'Movimenti' ? caricaAmbito(['categoryRules']) : undefined,
     [activeSection, caricaAmbito]);
   // La Panoramica ha il suo, e anche il confronto con il periodo precedente.
-  useEffect(() => activeSection === 'Panoramica' && overviewView === 'panoramica' ? caricaAmbito(['overview']) : undefined,
+  // `ledger` insieme a `overview`: la Panoramica disegna anche i saldi dei
+  // conti, che stanno in `/api/accounts`, e senza quello la card dei conti
+  // restava vuota finche' non si passava da Patrimonio.
+  useEffect(() => activeSection === 'Panoramica' && overviewView === 'panoramica' ? caricaAmbito(['overview', 'ledger']) : undefined,
     [activeSection, overviewView, caricaAmbito, overviewYear, overviewMonth, overviewCompareTo, panoramicaRetryKey]);
   // L'analisi pure.
   useEffect(() => activeSection === 'Panoramica' && overviewView === 'analisi' ? caricaAmbito(['analysis']) : undefined,
@@ -2143,6 +2162,20 @@ function MoneyDashboardInner() {
     setNewTransactionOpen(true);
   }
 
+  /**
+   * Il modulo del movimento nuovo con **quel** conto gia' scelto.
+   *
+   * Un ref e non uno stato perche' chi lo legge e' l'effetto che sceglie il
+   * conto nel modulo: mettendolo fra le sue dipendenze, l'effetto girerebbe una
+   * seconda volta a modulo gia' aperto - e la seconda volta riporterebbe il
+   * conto dove l'utente l'ha appena spostato. Si consuma la' sotto, cosi' il
+   * pulsante "Nuovo movimento" apre il modulo vuoto come ha sempre fatto.
+   */
+  function apriMovimentoSu(conto: string) {
+    openNewTransaction();
+    contoProposto.current = conto;
+  }
+
   function openTransfer(destination = '', suggestion?: { principal: number; interest: number }) {
     setSaveError('');
     setTransferSource('');
@@ -2501,7 +2534,11 @@ function MoneyDashboardInner() {
   // in modifica dal conto del movimento. Un effetto solo invece di ricordarsene
   // nei tre punti da cui il dialogo si apre.
   useEffect(() => {
-    if (newTransactionOpen) setMovementAccount(formTransaction?.accountName ?? '');
+    if (!newTransactionOpen) return;
+    setMovementAccount(formTransaction?.accountName ?? contoProposto.current);
+    // Il conto proposto vale per questa apertura sola: la prossima dal
+    // pulsante "Nuovo movimento" deve trovare il modulo vuoto.
+    contoProposto.current = '';
   }, [newTransactionOpen, formTransaction?.accountName]);
   // Il conto d'arrivo: stesso motivo del conto di partenza, piu' uno suo. Il
   // secondo importo ha senso solo fra conti in valute diverse, e per saperlo
@@ -2757,6 +2794,17 @@ function MoneyDashboardInner() {
                 <MetricCard title={t('savings')} value={summary.savings} change={formatComparisonChange(t, formatEuro, monthNames, summary.comparison?.savingsDelta, summary.comparison)} delta={summary.comparison?.savingsDelta} icon={PiggyBank} tone="saving" />
               </>}
             </div>
+
+            {/* La homepage dentro la Panoramica: il periodo in un anello, i
+                soldi su ogni conto e le uscite degli ultimi giorni. Stanno
+                subito sotto i tre totali perche' sono la stessa risposta vista
+                da vicino - il mese, i conti, e questi ultimi giorni. */}
+            {summaryLoaded && <div className="mb-5 grid gap-4 xl:grid-cols-3">
+              <FlowDonutCard income={summary.income} expenses={summary.expenses} />
+              <HomeAccountsCard accounts={accounts} lastUsed={summary.accountsLastUsed}
+                                onPick={apriMovimentoSu} onAllAccounts={() => navigate('Patrimonio')} />
+              <HomeRecentSpendingCard days={summary.recentExpenses} />
+            </div>}
 
             <div className="mb-5 grid gap-4 xl:grid-cols-[1.4fr_1fr]">
               {!summaryLoaded ? <SkeletonNetWorthCard /> : <NetWorthCard detail={summary.netWorthDetail} comparison={summary.netWorthComparison} />}
@@ -7007,6 +7055,158 @@ function BalanceSheetChart({ apiUrl, primoAnno }: { apiUrl: string; primoAnno: n
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * Il periodo in un anello: quanto e' entrato contro quanto e' uscito.
+ *
+ * Non ripete solo i tre numeri delle card qui sopra: quelli si leggono, questo
+ * si guarda - la proporzione fra entrate e uscite si vede prima di leggerla, ed
+ * e' la ragione per cui una homepage ce l'ha. I due lati sono lo stesso giro di
+ * cerchio diviso in due, quindi la somma e' sempre il totale del periodo e non
+ * c'e' nessuna scala da spiegare.
+ *
+ * Verde e rosso sono quelli delle card sopra (`MetricCard`) e delle barre degli
+ * ultimi giorni: la stessa cosa ha lo stesso colore in tutta la pagina.
+ */
+function FlowDonutCard({ income, expenses }: { income: number; expenses: number }) {
+  const { t, formatEuro } = useI18n();
+  const somma = income + expenses;
+  // Un periodo senza ne' entrate ne' uscite resta un anello vuoto invece di
+  // saltare: la card dice "zero e zero", che e' un'informazione.
+  const quotaEntrate = somma > 0 ? income / somma : 0;
+  const RAGGIO = 42;
+  const giro = 2 * Math.PI * RAGGIO;
+  const righe = [
+    { etichetta: t('income'), valore: income, colore: '#237056' },
+    { etichetta: t('expenses'), valore: expenses, colore: '#a94f3a' },
+    { etichetta: t('savings'), valore: income - expenses, colore: '#5e6c68' },
+  ];
+  return <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <CardContent className="flex items-center gap-5 p-5">
+      {/* `-rotate-90`: un cerchio disegnato con `stroke-dasharray` parte dalle
+          tre in punto, e l'anello deve partire dalle dodici. */}
+      <svg viewBox="0 0 100 100" className="size-[104px] shrink-0 -rotate-90"
+           role="img" aria-label={`${t('homeFlow')}: ${t('income')} ${formatEuro(income)}, ${t('expenses')} ${formatEuro(expenses)}`}>
+        <circle cx="50" cy="50" r={RAGGIO} fill="none" stroke="#eef0ec" strokeWidth="14" />
+        {somma > 0 && <>
+          <circle cx="50" cy="50" r={RAGGIO} fill="none" stroke="#237056" strokeWidth="14"
+                  strokeDasharray={`${giro * quotaEntrate} ${giro}`} />
+          <circle cx="50" cy="50" r={RAGGIO} fill="none" stroke="#a94f3a" strokeWidth="14"
+                  strokeDasharray={`${giro * (1 - quotaEntrate)} ${giro}`} strokeDashoffset={-giro * quotaEntrate} />
+        </>}
+      </svg>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-[#5e6c68]">{t('homeFlow')}</p>
+        <dl className="mt-2 space-y-1.5">
+          {righe.map((riga) => <div key={riga.etichetta} className="flex items-baseline justify-between gap-3">
+            <dt className="flex min-w-0 items-center gap-2 text-xs text-[#5e6c68]">
+              <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: riga.colore }} />
+              <span className="truncate">{riga.etichetta}</span>
+            </dt>
+            <dd className="shrink-0 text-sm font-semibold tabular-nums">{formatEuro(riga.valore)}</dd>
+          </div>)}
+        </dl>
+      </div>
+    </CardContent>
+  </Card>;
+}
+
+/** Quanti conti si vedono prima di doverli andare a cercare in Patrimonio. */
+const CONTI_IN_EVIDENZA = 6;
+
+/**
+ * I soldi su ciascun conto, e quando quel conto si e' mosso l'ultima volta.
+ *
+ * Ogni riga apre il modulo del movimento nuovo con **quel** conto gia' scelto:
+ * il gesto che si fa guardando questa card e' "qui ci va un movimento", e
+ * sceglierlo una seconda volta in una tendina da cinquanta voci e' il modo in
+ * cui quel gesto non si fa.
+ *
+ * I conti si leggono nella loro valuta (`formatMoney`): un saldo in franchi
+ * accanto a uno in euro senza la sigla e' la cifra sbagliata, non un dettaglio.
+ * I debiti restano fuori - sono un'altra pagina e un altro segno - e chi ne ha
+ * piu' di `CONTI_IN_EVIDENZA` li trova tutti in Patrimonio.
+ */
+function HomeAccountsCard({ accounts, lastUsed, onPick, onAllAccounts }: { accounts: Account[]; lastUsed: Record<string, string>; onPick: (account: string) => void; onAllAccounts: () => void }) {
+  const { t, formatMoney, formatDate } = useI18n();
+  const righe = accounts
+    .filter((conto) => conto.isActive !== false && conto.group !== 'liability')
+    // Prima quelli usati di recente: sono quelli su cui si sta lavorando. Chi
+    // non si e' mai mosso viene dopo, dal conto piu' ricco.
+    .map((conto) => ({ conto, usato: lastUsed[conto.name] ?? null }))
+    .sort((sinistra, destra) => (destra.usato ?? '').localeCompare(sinistra.usato ?? '')
+                             || destra.conto.value - sinistra.conto.value);
+  const mostrati = righe.slice(0, CONTI_IN_EVIDENZA);
+  return <Card className="flex flex-col border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <CardHeader className="pb-2">
+      <CardTitle className="text-[17px]">{t('homeAccounts')}</CardTitle>
+      <p className="text-xs leading-5 text-[#5e6c68]">{t('homeAccountsHint')}</p>
+    </CardHeader>
+    <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+      {mostrati.length === 0
+        ? <p className="px-4 pb-2 text-xs text-[#5e6c68]">{t('noAccount')}</p>
+        : <ul className="divide-y divide-black/[0.04]">
+            {mostrati.map(({ conto, usato }) => <li key={conto.id}>
+              <button type="button" onClick={() => onPick(conto.name)}
+                      className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition hover:bg-[#f6f8f6]">
+                <span className="min-w-0">
+                  <span className="block truncate text-sm text-[#2f3a37]">{conto.name}</span>
+                  <span className="block truncate text-[11px] text-[#5e6c68]">{usato
+                    ? `${t('homeLastUsed')} ${formatDate(`${usato}T12:00:00`)}`
+                    : t('homeNeverUsed')}</span>
+                </span>
+                <span className="shrink-0 text-sm font-semibold tabular-nums">{formatMoney(conto.value, conto.currency)}</span>
+              </button>
+            </li>)}
+          </ul>}
+      {righe.length > mostrati.length && <button type="button" onClick={onAllAccounts}
+        className="mt-auto flex items-center justify-end gap-1 border-t border-black/[0.04] px-4 py-2 text-[11px] text-[#5e6c68] transition hover:text-[#2f3a37]">
+        {t('allAccounts')}<ChevronRight className="size-3.5" />
+      </button>}
+    </CardContent>
+  </Card>;
+}
+
+/**
+ * Le uscite degli ultimi giorni, giorno per giorno.
+ *
+ * `days` arriva dal backend con la finestra che ha deciso lui (compreso oggi) e
+ * con gli acquisti di investimento dentro: qui non si ricalcola niente, si
+ * disegna quello che c'e'. Il numero di giorni sta nel titolo perche' e' il
+ * dato a dirlo, non una costante ripetuta in due posti.
+ *
+ * Le altezze sono proporzionali al giorno piu' alto della finestra: sono sette
+ * giorni vicini, e una scala fissa non li mostrerebbe mai (o sempre) tutti
+ * schiacciati in basso. Un giorno con il segno meno - un rimborso piu' grande
+ * di quello che si e' speso - resta a zero in altezza e dice la sua cifra
+ * accanto: una barra sotto lo zero non esiste, e inventarle un verso sarebbe
+ * un'altra cosa da spiegare.
+ */
+function HomeRecentSpendingCard({ days }: { days: Summary['recentExpenses'] }) {
+  const { t, formatEuro, formatCompactEuro, formatDate } = useI18n();
+  const massimo = Math.max(...days.map((giorno) => giorno.amount), 0);
+  return <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <CardHeader className="pb-2">
+      <CardTitle className="text-[17px]">{t('homeRecentSpending', { days: days.length })}</CardTitle>
+      <p className="text-xs leading-5 text-[#5e6c68]">{t('homeRecentSpendingHint')}</p>
+    </CardHeader>
+    <CardContent>
+      <ul className="flex items-end gap-1.5">
+        {days.map((giorno) => <li key={giorno.date} title={`${formatDate(`${giorno.date}T12:00:00`)}: ${formatEuro(giorno.amount)}`}
+                                  className="flex min-w-0 flex-1 flex-col items-center gap-1">
+          <span className="h-4 truncate text-[10px] tabular-nums text-[#5e6c68]">
+            {giorno.amount ? formatCompactEuro(giorno.amount) : ''}
+          </span>
+          <span className="flex h-24 w-full items-end">
+            <span className="w-full rounded-t-md bg-[#a94f3a]/85"
+                  style={{ height: massimo > 0 ? `${Math.max(giorno.amount, 0) / massimo * 100}%` : '0%' }} />
+          </span>
+          <span className="text-[10px] text-[#5e6c68]">{formatDate(`${giorno.date}T12:00:00`, { day: '2-digit', month: '2-digit' })}</span>
+        </li>)}
+      </ul>
+    </CardContent>
+  </Card>;
 }
 
 function MetricCard({ title, titleHint, value, valueLabel, change, delta, icon: Icon, tone, featured = false }: { title: string; titleHint?: string; value: number; valueLabel?: string; change: string; delta?: number; icon: typeof ArrowDownRight; tone: 'income' | 'expense' | 'saving' | 'worth'; featured?: boolean }) {
