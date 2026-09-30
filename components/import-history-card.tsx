@@ -47,28 +47,28 @@ export function ImportHistoryCard({ apiUrl, versione }: { apiUrl: string; versio
   const motivo = (codice: string) => t(Object.hasOwn(translations.it, codice) ? codice as TranslationKey : 'statementRowInvalid');
 
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
       <button type="button" aria-expanded={aperto} onClick={() => setAperto((corrente) => !corrente)} className="w-full text-left">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-[17px]">
-            <ChevronDown className={`size-4 shrink-0 text-black/35 transition ${aperto ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`size-4 shrink-0 text-[var(--money-velo)]/35 transition ${aperto ? 'rotate-180' : ''}`} />
             {t('importHistory')}
           </CardTitle>
-          <p className="mt-1 text-xs text-[#5e6c68]">{t('importHistoryHint')}</p>
+          <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('importHistoryHint')}</p>
         </CardHeader>
       </button>
       {aperto && <CardContent className="px-3 sm:px-6">
-        {righe === null ? <p className="py-8 text-center text-sm text-[#5e6c68]">{t('updating')}</p>
-          : !righe.length ? <p className="py-8 text-center text-sm text-[#5e6c68]">{t('importHistoryEmpty')}</p>
-            : <div className="divide-y divide-black/5">{righe.map((riga) => <div key={riga.id} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-3.5">
+        {righe === null ? <p className="py-8 text-center text-sm text-[var(--money-testo-tenue)]">{t('updating')}</p>
+          : !righe.length ? <p className="py-8 text-center text-sm text-[var(--money-testo-tenue)]">{t('importHistoryEmpty')}</p>
+            : <div className="divide-y divide-[var(--money-velo)]/5">{righe.map((riga) => <div key={riga.id} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-3.5">
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                  <span className="rounded-full bg-[#f4f5f1] px-2 py-0.5 text-[10px] font-normal text-[#5e6c68]">
+                  <span className="rounded-full bg-[var(--money-superficie-hover)] px-2 py-0.5 text-[10px] font-normal text-[var(--money-testo-tenue)]">
                     {t(riga.kind === 'interchange' ? 'importHistoryInterchange' : 'importHistoryStatement')}
                   </span>
                   <span className="truncate">{riga.sourceName}</span>
                 </span>
-                <span className="mt-1 block text-xs text-[#5e6c68]">
+                <span className="mt-1 block text-xs text-[var(--money-testo-tenue)]">
                   {riga.importedAt ? formatDate(riga.importedAt, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
                 </span>
               </span>
@@ -77,11 +77,11 @@ export function ImportHistoryCard({ apiUrl, versione }: { apiUrl: string; versio
                   sono entrate e quante no - con il motivo, che e' la parte su
                   cui si puo' ancora fare qualcosa. */}
               {riga.kind === 'interchange'
-                ? <span className="text-sm tabular-nums text-[#52615d]">{t('importHistoryRestored', { count: riga.transactionCount })}</span>
-                : <span className="min-w-0 flex-1 text-xs text-[#52615d]">
+                ? <span className="text-sm tabular-nums text-[var(--money-testo-muto)]">{t('importHistoryRestored', { count: riga.transactionCount })}</span>
+                : <span className="min-w-0 flex-1 text-xs text-[var(--money-testo-muto)]">
                   <span className="text-sm tabular-nums">{t('importHistoryAccepted', { count: riga.accepted })}</span>
-                  {riga.rejected > 0 && <span className="text-sm tabular-nums text-[#a94f3a]"> · {t('importHistoryRejected', { count: riga.rejected })}</span>}
-                  {Object.entries(riga.reasons).map(([codice, quante]) => <span key={codice} className="block text-[#5e6c68]">{motivo(codice)} ({quante})</span>)}
+                  {riga.rejected > 0 && <span className="text-sm tabular-nums text-[var(--money-allarme)]"> · {t('importHistoryRejected', { count: riga.rejected })}</span>}
+                  {Object.entries(riga.reasons).map(([codice, quante]) => <span key={codice} className="block text-[var(--money-testo-tenue)]">{motivo(codice)} ({quante})</span>)}
                 </span>}
             </div>)}</div>}
       </CardContent>}

@@ -122,18 +122,18 @@ export function SharedTotalsView({ apiUrl, year, month }: { apiUrl: string; year
     expenses: somma.expenses + p.totals.expenses,
   }), { netWorth: 0, savings: 0, income: 0, expenses: 0 }), [totals]);
 
-  if (totalsLoading) return <p className="py-16 text-center text-sm text-[#5e6c68]">{t('loading')}</p>;
+  if (totalsLoading) return <p className="py-16 text-center text-sm text-[var(--money-testo-tenue)]">{t('loading')}</p>;
 
   if (totalsError) {
-    return <Card className="border-[#efc4b8] bg-[#fff6f3] shadow-sm"><CardContent className="py-14 text-center"><p role="alert" className="text-sm font-medium text-[#a94f3a]">{t('sharedLoadError')}</p><Button type="button" variant="outline" className="mt-4" onClick={() => { void loadTotals(); void loadTrend(); }}>{t('retry')}</Button></CardContent></Card>;
+    return <Card className="border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-velo)] shadow-sm"><CardContent className="py-14 text-center"><p role="alert" className="text-sm font-medium text-[var(--money-allarme)]">{t('sharedLoadError')}</p><Button type="button" variant="outline" className="mt-4" onClick={() => { void loadTotals(); void loadTrend(); }}>{t('retry')}</Button></CardContent></Card>;
   }
 
   if (!totals || totals.people.length === 0) {
     return (
-      <Card className="border-black/6 bg-white shadow-sm">
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
         <CardContent className="py-14 text-center">
-          <p className="text-sm font-medium text-[#173b33]">{t('sharedEmptyTitle')}</p>
-          <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-[#5e6c68]">{t('sharedEmptyHint')}</p>
+          <p className="text-sm font-medium text-[var(--money-marca)]">{t('sharedEmptyTitle')}</p>
+          <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-[var(--money-testo-tenue)]">{t('sharedEmptyHint')}</p>
         </CardContent>
       </Card>
     );
@@ -148,38 +148,38 @@ export function SharedTotalsView({ apiUrl, year, month }: { apiUrl: string; year
 
   const riga = (etichetta: string, valore: string, tono?: 'positivo' | 'negativo') => (
     <div className="flex items-baseline justify-between gap-3 py-1.5">
-      <span className="text-xs text-[#5e6c68]">{etichetta}</span>
+      <span className="text-xs text-[var(--money-testo-tenue)]">{etichetta}</span>
       <span className={`text-sm font-semibold tabular-nums ${
-        tono === 'positivo' ? 'text-[#237056]' : tono === 'negativo' ? 'text-[#a94f3a]' : 'text-[#173b33]'
+        tono === 'positivo' ? 'text-[var(--money-ok)]' : tono === 'negativo' ? 'text-[var(--money-allarme)]' : 'text-[var(--money-marca)]'
       }`}>{valore}</span>
     </div>
   );
 
   return (
     <div className="space-y-5">
-      <p className="text-xs text-[#5e6c68]">{t('sharedSubtitle')}</p>
+      <p className="text-xs text-[var(--money-testo-tenue)]">{t('sharedSubtitle')}</p>
 
       {totals.people.length > 1 && (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {([['netWorthNet', totaleFamiglia.netWorth], ['saved', totaleFamiglia.savings],
              ['income', totaleFamiglia.income], ['expenses', totaleFamiglia.expenses]] as const).map(([chiave, valore]) => (
-            <Card key={chiave} className="border-black/6 bg-white shadow-sm">
+            <Card key={chiave} className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
               <CardContent className="p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5e6c68]">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--money-testo-tenue)]">
                   {t('sharedFamily')} · {t(chiave)}
                 </p>
-                <p className="mt-1 text-xl font-semibold tabular-nums text-[#173b33]">{formatEuro(valore)}</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-[var(--money-marca)]">{formatEuro(valore)}</p>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
 
-      <Card className="border-black/6 bg-white shadow-sm">
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
         <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0">
           <div>
             <CardTitle className="text-[17px]">{t('sharedTrendTitle')}</CardTitle>
-            <p className="mt-1 text-xs text-[#5e6c68]">{t('sharedTrendSubtitle')}</p>
+            <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('sharedTrendSubtitle')}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <TabStrip variant="pillole" label={t('sharedMetricSelector')} value={metric} onChange={setMetric} options={metriche} />
@@ -190,7 +190,7 @@ export function SharedTotalsView({ apiUrl, year, month }: { apiUrl: string; year
           </div>
         </CardHeader>
         <CardContent>
-          {trendLoading ? <p className="flex h-[320px] items-center justify-center text-sm text-[#5e6c68]">{t('loading')}</p> : trendError ? <div className="flex h-[320px] flex-col items-center justify-center text-center"><p role="alert" className="text-sm text-[#a94f3a]">{t('sharedLoadError')}</p><Button type="button" variant="outline" className="mt-4" onClick={() => void loadTrend()}>{t('retry')}</Button></div> : <>
+          {trendLoading ? <p className="flex h-[320px] items-center justify-center text-sm text-[var(--money-testo-tenue)]">{t('loading')}</p> : trendError ? <div className="flex h-[320px] flex-col items-center justify-center text-center"><p role="alert" className="text-sm text-[var(--money-allarme)]">{t('sharedLoadError')}</p><Button type="button" variant="outline" className="mt-4" onClick={() => void loadTrend()}>{t('retry')}</Button></div> : <>
           <fieldset className="mb-3 flex flex-wrap gap-1.5">
             <legend className="sr-only">{t('sharedLinesSelector')}</legend>
             {linee.map((linea) => {
@@ -203,7 +203,7 @@ export function SharedTotalsView({ apiUrl, year, month }: { apiUrl: string; year
                     return dopo;
                   })}
                   className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
-                    attiva ? 'border-black/10 text-[#173b33]' : 'border-black/6 text-[#a3adaa]'}`}>
+                    attiva ? 'border-[var(--money-velo)]/10 text-[var(--money-marca)]' : 'border-[var(--money-velo)]/6 text-[var(--money-testo-spento)]'}`}>
                   <span className="size-2.5 rounded-full" style={{ backgroundColor: attiva ? linea.colore : '#cbd2ce' }} />
                   {linea.etichetta}
                 </button>
@@ -230,7 +230,7 @@ export function SharedTotalsView({ apiUrl, year, month }: { apiUrl: string; year
         {totals.people.map((persona, indice) => {
           const totali = persona.totals;
           return (
-            <Card key={persona.id} className="border-black/6 bg-white shadow-sm">
+            <Card key={persona.id} className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2.5 text-[17px]">
                   <span className="flex size-7 items-center justify-center rounded-full text-xs font-semibold text-white"
@@ -240,7 +240,7 @@ export function SharedTotalsView({ apiUrl, year, month }: { apiUrl: string; year
                   {persona.displayName}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="divide-y divide-black/5">
+              <CardContent className="divide-y divide-[var(--money-velo)]/5">
                 <div className="pb-2">
                   {riga(t('income'), formatEuro(totali.income))}
                   {riga(t('expenses'), formatEuro(totali.expenses))}

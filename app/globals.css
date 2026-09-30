@@ -70,23 +70,23 @@ button {
 
 :root {
   --background: var(--money-page, #f4f3ef);
-  --foreground: #17211f;
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
+  --foreground: var(--money-testo);
+  --card: var(--money-superficie);
+  --card-foreground: var(--money-testo);
+  --popover: var(--money-superficie);
+  --popover-foreground: var(--money-testo);
   --primary: var(--money-deep, #173b33);
   --primary-foreground: #ffffff;
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  --secondary: var(--money-superficie-hover);
+  --secondary-foreground: var(--money-testo);
+  --muted: var(--money-superficie-hover);
+  --muted-foreground: var(--money-testo-muto);
+  --accent: var(--money-superficie-hover);
+  --accent-foreground: var(--money-testo);
+  --destructive: #a94f3a;
   --border: #e5e5df;
   --input: #dedfd9;
-  --ring: #5c8f82;
+  --ring: var(--money-anello);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -101,32 +101,66 @@ button {
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* La tavolozza dell'app, di giorno.
+     Prima questi colori erano scritti a mano dentro le classi (`text-[#5e6c68]`,
+     `bg-white`): tanti quanti sono, e ognuno una decisione presa una volta e
+     mai piu' ritrovata. Qui hanno un nome, e la notte li ridefinisce tutti
+     insieme. Cambiarne uno qui li cambia dappertutto: e' il punto.
+     Le prove di leggibilita' stanno in tests/unit/contrasto.test.ts, che legge
+     questo file: se un valore notturno scende sotto 4,5:1, il gate lo dice. */
+  --money-testo: #17211f;           /* titoli e testo corrente */
+  --money-testo-tenue: #5e6c68;     /* il corpo del testo */
+  --money-testo-muto: #52615d;      /* etichette, didascalie */
+  --money-testo-spento: #a3adaa;    /* spento: fuori dalla prova di contrasto */
+  --money-icona: #8c9a95;           /* icone decorative, accanto a un testo */
+  --money-superficie: #ffffff;      /* il fondo di una card */
+  --money-superficie-tenue: #fafaf8;/* un riquadro dentro la card */
+  --money-superficie-hover: #f4f5f1;/* riga sotto il mouse, binario di una barra */
+  --money-linea: #dfe4e1;           /* la riga di un pixel */
+  --money-velo: #000000;            /* bordi e ombre traslucide: di notte e' bianco */
+  --money-anello: #5c8f82;          /* anello di fuoco dei campi */
+  --money-marca: #173b33;           /* il colore del tema quando e' testo */
+  --money-ok: #237056;              /* entrate */
+  --money-ok-tenue: #eaf5ef;
+  --money-ok-bordo: #cfe6dc;
+  --money-allarme: #a94f3a;         /* uscite, errori */
+  --money-allarme-hover: #8f4530;
+  --money-allarme-tenue: #fce9e3;
+  --money-allarme-velo: #fff6f3;    /* il fondo dei riquadri d'errore */
+  --money-allarme-bordo: #f4d8ce;
+  --money-attenzione: #7d6119;      /* da tenere d'occhio */
+  --money-attenzione-tenue: #f2efdb;
+  --money-attenzione-bordo: #f0e2c2;
+  --money-risparmio: #4a63b4;
+  --money-risparmio-tenue: #edf0ff;
+  --money-investimento: #6b57a8;
+  --money-investimento-tenue: #efeaf9;
+  --money-barra: #6d8ff4;           /* il riempimento di una barra */
+  --money-dato: #c9a99b;            /* il dato che manca, dentro un grafico */
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+/* La notte: stessi nomi, stessi accenti (il giallo, il viola, il verde del
+   tema restano quelli), ma i fondi si abbassano e i testi si alzano. Le sei
+   pagine tinteggiate stanno in fondo, una per tema: il tema lo sa
+   `data-tema`, che scrive applyTheme. */
+html.dark {
+  --foreground: var(--money-testo);
+  --card: var(--money-superficie);
+  --card-foreground: var(--money-testo);
+  --popover: var(--money-superficie-tenue);
+  --popover-foreground: var(--money-testo);
+  --primary-foreground: #ffffff;
+  --secondary: var(--money-superficie-hover);
+  --secondary-foreground: var(--money-testo);
+  --muted: var(--money-superficie-hover);
+  --muted-foreground: var(--money-testo-muto);
+  --accent: var(--money-superficie-hover);
+  --accent-foreground: var(--money-testo);
+  --destructive: #e58e76;
+  --border: #3a3935;
+  --input: #3a3935;
+  --ring: var(--money-anello);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -135,7 +169,45 @@ button {
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  --money-testo: #e9ece9;
+  --money-testo-tenue: #b9c2be;
+  --money-testo-muto: #9aa39f;
+  --money-testo-spento: #707875;
+  --money-icona: #707875;
+  --money-superficie: #1e1d1a;
+  --money-superficie-tenue: #242320;
+  --money-superficie-hover: #2b2a26;
+  --money-linea: #3a3935;
+  --money-velo: #ffffff;
+  --money-anello: #7dbfae;
+  --money-marca: #8fdcae;
+  --money-ok: #63c199;
+  --money-ok-tenue: #16261f;
+  --money-ok-bordo: #2d4f42;
+  --money-allarme: #e58e76;
+  --money-allarme-hover: #f2a08b;
+  --money-allarme-tenue: #331d17;
+  --money-allarme-velo: #2a1a15;
+  --money-allarme-bordo: #55332a;
+  --money-attenzione: #d9b45e;
+  --money-attenzione-tenue: #2c2716;
+  --money-attenzione-bordo: #4d4128;
+  --money-risparmio: #93a7ee;
+  --money-risparmio-tenue: #171b2e;
+  --money-investimento: #b3a2e8;
+  --money-investimento-tenue: #201b31;
+  --money-barra: #86a2f8;
+  --money-dato: #6d5f59;
+  --money-page: #1a1917;           /* ripiego, se il tema non e' ancora noto */
 }
+
+html.dark[data-tema='Yellow'] { --money-page: #16150d; }
+html.dark[data-tema='Orange'] { --money-page: #1a1310; }
+html.dark[data-tema='Green'] { --money-page: #101810; }
+html.dark[data-tema='Light Blue'] { --money-page: #0f1518; }
+html.dark[data-tema='Blue'] { --money-page: #101319; }
+html.dark[data-tema='Purple'] { --money-page: #14101a; }
 
 @layer base {
   * {

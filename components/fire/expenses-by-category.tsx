@@ -66,29 +66,29 @@ export function ExpensesByCategory({ apiUrl }: { apiUrl: string }) {
   }
 
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
       <CardHeader>
         <CardTitle className="text-[17px]">{t('fireExpensesByCategoryTitle')}</CardTitle>
-        <p className="mt-1 text-xs text-[#5e6c68]">{t('fireExpensesByCategorySubtitle')}</p>
+        <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('fireExpensesByCategorySubtitle')}</p>
       </CardHeader>
       <CardContent className="space-y-3">
-        {stato === 'loading' && <p className="text-sm text-[#5e6c68]">{t('loading')}</p>}
-        {stato === 'noProfile' && <p className="text-sm text-[#5e6c68]">{t('fireExpensesCategoryNoProfile')}</p>}
-        {stato === 'error' && <p role="alert" className="text-sm text-[#a94f3a]">{t('fireExpensesCategoryLoadError')}</p>}
-        {stato === 'ready' && data && !data.applies && <p className="text-sm text-[#5e6c68]">{t('fireExpensesCategoryCustom')}</p>}
+        {stato === 'loading' && <p className="text-sm text-[var(--money-testo-tenue)]">{t('loading')}</p>}
+        {stato === 'noProfile' && <p className="text-sm text-[var(--money-testo-tenue)]">{t('fireExpensesCategoryNoProfile')}</p>}
+        {stato === 'error' && <p role="alert" className="text-sm text-[var(--money-allarme)]">{t('fireExpensesCategoryLoadError')}</p>}
+        {stato === 'ready' && data && !data.applies && <p className="text-sm text-[var(--money-testo-tenue)]">{t('fireExpensesCategoryCustom')}</p>}
         {stato === 'ready' && data?.applies && (rows.length === 0
-          ? <p className="text-sm text-[#5e6c68]">{t('fireExpensesCategoryEmpty')}</p>
+          ? <p className="text-sm text-[var(--money-testo-tenue)]">{t('fireExpensesCategoryEmpty')}</p>
           : <>
-            <ul className="divide-y divide-black/5 rounded-xl border border-black/6 bg-white">
+            <ul className="divide-y divide-[var(--money-velo)]/5 rounded-xl border border-[var(--money-velo)]/6 bg-[var(--money-superficie)]">
               {rows.map((r) => (
                 <li key={r.category} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <span className="min-w-[120px] flex-1">
-                    <span className="block text-sm font-medium text-[#3a4a46]">{r.category}</span>
-                    <span className="block text-xs tabular-nums text-[#5e6c68]">{t('fireExpensesCategoryPerYear', { amount: formatEuro(r.amount) })}</span>
+                    <span className="block text-sm font-medium text-[var(--money-testo)]">{r.category}</span>
+                    <span className="block text-xs tabular-nums text-[var(--money-testo-tenue)]">{t('fireExpensesCategoryPerYear', { amount: formatEuro(r.amount) })}</span>
                   </span>
                   <select value={r.mode} aria-label={r.category}
                     onChange={(e) => update(r.category, { mode: e.target.value as Mode })}
-                    className="h-9 rounded-lg border border-input bg-white px-2 text-sm outline-none focus:border-ring">
+                    className="h-9 rounded-lg border border-input bg-[var(--money-superficie)] px-2 text-sm outline-none focus:border-ring">
                     <option value="stay">{t('fireExpensesCategoryStay')}</option>
                     <option value="drop">{t('fireExpensesCategoryDrop')}</option>
                     <option value="change">{t('fireExpensesCategoryChange')}</option>
@@ -97,16 +97,16 @@ export function ExpensesByCategory({ apiUrl }: { apiUrl: string }) {
                     <Input type="number" min={0} step="0.01" aria-label={t('fireExpensesCategoryNewAmount')}
                       placeholder={t('fireExpensesCategoryNewAmount')} value={r.newAmount ?? ''}
                       onChange={(e) => update(r.category, { newAmount: e.target.value === '' ? null : Number(e.target.value) })}
-                      className="h-9 w-36 bg-white" />
+                      className="h-9 w-36 bg-[var(--money-superficie)]" />
                   )}
                 </li>
               ))}
             </ul>
-            <p className="text-sm font-medium tabular-nums text-[#3a4a46]">
+            <p className="text-sm font-medium tabular-nums text-[var(--money-testo)]">
               {t('fireExpensesRetirementTotal', { retirement: formatEuro(anteprima), today: formatEuro(data.referenceExpenses) })}
             </p>
             {outcome && (
-              <p role="status" className={`rounded-xl border px-4 py-2 text-sm ${outcome.ok ? 'border-[#cfe6dc] bg-[#e5f3ed] text-[#237056]' : 'border-[#f4d8ce] bg-[#fce9e3] text-[#a94f3a]'}`}>
+              <p role="status" className={`rounded-xl border px-4 py-2 text-sm ${outcome.ok ? 'border-[var(--money-ok-bordo)] bg-[var(--money-ok-tenue)] text-[var(--money-ok)]' : 'border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-tenue)] text-[var(--money-allarme)]'}`}>
                 {outcome.message}
               </p>
             )}

@@ -109,10 +109,10 @@ export function AccountSettings({ apiUrl, account, onChanged }: {
   }
 
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
       <CardHeader>
         <CardTitle className="text-[17px]">{t('account')}</CardTitle>
-        <p className="text-xs leading-5 text-[#5e6c68]">{t('accountSubtitle')}</p>
+        <p className="text-xs leading-5 text-[var(--money-testo-tenue)]">{t('accountSubtitle')}</p>
       </CardHeader>
       <CardContent className="space-y-5">
         <label className="flex items-start gap-3">
@@ -124,14 +124,14 @@ export function AccountSettings({ apiUrl, account, onChanged }: {
             className="mt-0.5 size-4 accent-[var(--money-primary)]"
           />
           <span>
-            <span className="block text-sm font-medium text-[#173b33]">{t('shareTotals')}</span>
-            <span className="mt-0.5 block text-xs leading-5 text-[#5e6c68]">{t('shareTotalsHint')}</span>
-            {erroreCondivisione && <span role="alert" className="mt-1 block text-xs text-[#a94f3a]">{erroreCondivisione}</span>}
+            <span className="block text-sm font-medium text-[var(--money-marca)]">{t('shareTotals')}</span>
+            <span className="mt-0.5 block text-xs leading-5 text-[var(--money-testo-tenue)]">{t('shareTotalsHint')}</span>
+            {erroreCondivisione && <span role="alert" className="mt-1 block text-xs text-[var(--money-allarme)]">{erroreCondivisione}</span>}
           </span>
         </label>
 
-        <form onSubmit={savePassword} className="space-y-2.5 border-t border-black/6 pt-4">
-          <p className="text-sm font-medium text-[#173b33]">
+        <form onSubmit={savePassword} className="space-y-2.5 border-t border-[var(--money-velo)]/6 pt-4">
+          <p className="text-sm font-medium text-[var(--money-marca)]">
             {account.hasPassword ? t('changePassword') : t('setPassword')}
           </p>
           {/* Due campi password uno sotto l'altro, senza etichetta visibile: il
@@ -141,37 +141,37 @@ export function AccountSettings({ apiUrl, account, onChanged }: {
           {account.hasPassword && (
             <Input type="password" value={current} onChange={(event) => setCurrent(event.target.value)}
                    placeholder={t('currentPassword')} aria-label={t('currentPassword')}
-                   className="h-10 bg-white" autoComplete="current-password" />
+                   className="h-10 bg-[var(--money-superficie)]" autoComplete="current-password" />
           )}
           <Input type="password" value={next} onChange={(event) => setNext(event.target.value)}
                  placeholder={t('newPassword')} aria-label={t('newPassword')}
-                 className="h-10 bg-white" autoComplete="new-password" />
+                 className="h-10 bg-[var(--money-superficie)]" autoComplete="new-password" />
           {/* La regola sta scritta sotto il campo: il pulsante e' spento finche'
               la password non arriva a sei caratteri, e senza questa riga non si
               sa perche'. E' la stessa frase dell'errore, cosi' le due non
               possono dire due numeri diversi. */}
-          <span className="block text-xs text-[#5e6c68]">{t('passwordTooShort')}</span>
+          <span className="block text-xs text-[var(--money-testo-tenue)]">{t('passwordTooShort')}</span>
           <Button type="submit" disabled={busy || next.length < 6}
                   className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">
             {account.hasPassword ? t('changePassword') : t('setPassword')}
           </Button>
           {outcome && (
-            <p className={`text-xs ${outcome.ok ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>{outcome.message}</p>
+            <p className={`text-xs ${outcome.ok ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'}`}>{outcome.message}</p>
           )}
         </form>
 
-        <div className="border-t border-black/6 pt-4">
+        <div className="border-t border-[var(--money-velo)]/6 pt-4">
           {cancellazione ? (
             <div className="space-y-2.5">
-              <p className="text-sm font-medium text-[#a94f3a]">{t('deleteAccount')}</p>
-              <p className="text-xs leading-5 text-[#5e6c68]">{t('deleteAccountHint')}</p>
+              <p className="text-sm font-medium text-[var(--money-allarme)]">{t('deleteAccount')}</p>
+              <p className="text-xs leading-5 text-[var(--money-testo-tenue)]">{t('deleteAccountHint')}</p>
               <Input value={conferma} onChange={(event) => setConferma(event.target.value)}
                      placeholder={t('deleteAccountConfirm', { name: account.displayName })}
-                     className="h-10 bg-white" />
+                     className="h-10 bg-[var(--money-superficie)]" />
               <div className="flex flex-wrap gap-2">
                 <Button type="button" disabled={busy || !conferma.trim()}
                         onClick={() => void cancellaAccount()}
-                        className="bg-[#a65b49] text-white hover:bg-[#8f4d3d]">
+                        className="bg-[var(--money-allarme)] text-white hover:bg-[var(--money-allarme-hover)]">
                   {busy ? t('deleteAccountBusy') : t('deleteAccount')}
                 </Button>
                 <Button type="button" variant="outline" disabled={busy}
@@ -179,11 +179,11 @@ export function AccountSettings({ apiUrl, account, onChanged }: {
                   {t('cancel')}
                 </Button>
               </div>
-              {erroreCancellazione && <p className="text-xs text-[#a94f3a]">{erroreCancellazione}</p>}
+              {erroreCancellazione && <p className="text-xs text-[var(--money-allarme)]">{erroreCancellazione}</p>}
             </div>
           ) : (
             <button type="button" onClick={() => setCancellazione(true)}
-                    className="text-xs font-medium text-[#a94f3a] hover:underline">
+                    className="text-xs font-medium text-[var(--money-allarme)] hover:underline">
               {t('deleteAccount')}
             </button>
           )}

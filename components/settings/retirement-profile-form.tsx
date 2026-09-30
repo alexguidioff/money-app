@@ -149,56 +149,56 @@ export function RetirementProfileForm({ apiUrl, onSaved }: { apiUrl: string; onS
   const countryName = countryLabel(profile.country, lang);
 
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
       <CardHeader>
         <CardTitle className="text-[17px]">{t('fireProfileTitle')}</CardTitle>
-        <p className="mt-1 text-xs text-[#5e6c68]">{t('fireProfileSubtitle')}</p>
+        <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('fireProfileSubtitle')}</p>
       </CardHeader>
       <CardContent>
         <form onSubmit={save} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label={t('fireProfileBirthYear')} unit={t('fireProfileYears')}>
               <Input type="number" min={1900} max={2100} value={profile.birthYear || ''}
-                onChange={(e) => setProfile({ ...profile, birthYear: e.target.value === '' ? 0 : Number(e.target.value) })} className="h-10 bg-white" />
+                onChange={(e) => setProfile({ ...profile, birthYear: e.target.value === '' ? 0 : Number(e.target.value) })} className="h-10 bg-[var(--money-superficie)]" />
             </Field>
             <Field label={t('fireProfileCountry')}>
               <select value={profile.country} onChange={(e) => onCountryChange(e.target.value)}
-                className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring">
+                className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm outline-none focus:border-ring">
                 {COUNTRIES.map((c) => (
                   <option key={c.code} value={c.code}>{countryLabel(c.code, lang)}</option>
                 ))}
               </select>
               {country && (
                 <a href={country.simulatorUrl} target="_blank" rel="noopener noreferrer"
-                  className="mt-1 inline-block text-xs text-[#237056] underline">
+                  className="mt-1 inline-block text-xs text-[var(--money-ok)] underline">
                   {t('fireProfileCountrySimulator')} ({countryName})
                 </a>
               )}
             </Field>
             <Field label={t('fireProfileRetirementAge')} unit={t('fireProfileYears')}>
               <NumeroField min={18} max={100} value={profile.targetRetirementAge}
-                onChange={(numero) => setProfile({ ...profile, targetRetirementAge: numero })} className="h-10 bg-white" />
+                onChange={(numero) => setProfile({ ...profile, targetRetirementAge: numero })} className="h-10 bg-[var(--money-superficie)]" />
             </Field>
             <Field label={t('fireProfileRealReturn')} unit={`% (${t('fireProfileReal')})`}>
               <NumeroField step="0.1" min={-50} max={50} value={profile.realReturn}
-                onChange={(numero) => setProfile({ ...profile, realReturn: numero })} className="h-10 bg-white" />
+                onChange={(numero) => setProfile({ ...profile, realReturn: numero })} className="h-10 bg-[var(--money-superficie)]" />
             </Field>
             <Field label={t('fireReturnVolatility')} unit="%">
               <NumeroField step="0.5" min={0} max={100} value={profile.returnVolatility}
-                onChange={(numero) => setProfile({ ...profile, returnVolatility: numero })} className="h-10 bg-white" />
-              <span className="block text-[10px] font-normal text-[#5e6c68]">{t('fireReturnVolatilityHelp')}</span>
+                onChange={(numero) => setProfile({ ...profile, returnVolatility: numero })} className="h-10 bg-[var(--money-superficie)]" />
+              <span className="block text-[10px] font-normal text-[var(--money-testo-tenue)]">{t('fireReturnVolatilityHelp')}</span>
             </Field>
             <Field label={t('fireProfileWithdrawalRate')} unit={`% (${t('fireProfileReal')})`}>
               <NumeroField step="0.1" min={0.1} max={100} value={profile.withdrawalRate}
-                onChange={(numero) => setProfile({ ...profile, withdrawalRate: numero })} className="h-10 bg-white" />
+                onChange={(numero) => setProfile({ ...profile, withdrawalRate: numero })} className="h-10 bg-[var(--money-superficie)]" />
             </Field>
             <Field label={t('fireProfileWithdrawalTax')} unit="%" hint={t('fireProfileNominal')}>
               <Input type="number" step="0.1" min={0} max={99.9} value={profile.withdrawalTaxRate || ''}
-                onChange={(e) => setProfile({ ...profile, withdrawalTaxRate: e.target.value === '' ? 0 : Number(e.target.value) })} className="h-10 bg-white" />
+                onChange={(e) => setProfile({ ...profile, withdrawalTaxRate: e.target.value === '' ? 0 : Number(e.target.value) })} className="h-10 bg-[var(--money-superficie)]" />
             </Field>
             <Field label={t('fireProfileExpenseBasis')}>
               <select value={profile.expenseBasis} onChange={(e) => setProfile({ ...profile, expenseBasis: e.target.value as RetirementProfile['expenseBasis'] })}
-                className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring">
+                className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm outline-none focus:border-ring">
                 <option value="last_year">{t('fireProfileExpenseBasisLastYear')}</option>
                 <option value="average">{t('fireProfileExpenseBasisAverage')}</option>
                 <option value="median">{t('fireProfileExpenseBasisMedian')}</option>
@@ -208,26 +208,26 @@ export function RetirementProfileForm({ apiUrl, onSaved }: { apiUrl: string; onS
             {profile.expenseBasis === 'custom' && (
               <Field label={t('fireProfileCustomExpenses')} unit="€">
                 <Input type="number" min={0} step="0.01" value={profile.customAnnualExpenses ?? ''}
-                  onChange={(e) => setProfile({ ...profile, customAnnualExpenses: e.target.value === '' ? null : Number(e.target.value) })} className="h-10 bg-white" />
+                  onChange={(e) => setProfile({ ...profile, customAnnualExpenses: e.target.value === '' ? null : Number(e.target.value) })} className="h-10 bg-[var(--money-superficie)]" />
               </Field>
             )}
             <Field label={t('fireProfileInflation')} unit="%" hint={t('fireProfileInflationHint')}>
               <NumeroField step="0.1" min={0} max={50} value={profile.inflation}
-                onChange={(numero) => setProfile({ ...profile, inflation: numero })} className="h-10 bg-white" />
+                onChange={(numero) => setProfile({ ...profile, inflation: numero })} className="h-10 bg-[var(--money-superficie)]" />
             </Field>
             <Field label={t('fireProfileLeanExpenses')} hint={t('fireProfileLeanHint')}>
               <Input type="number" min={0} step="0.01" value={profile.leanAnnualExpenses ?? ''}
-                onChange={(e) => setProfile({ ...profile, leanAnnualExpenses: e.target.value === '' ? null : Number(e.target.value) })} className="h-10 bg-white" />
+                onChange={(e) => setProfile({ ...profile, leanAnnualExpenses: e.target.value === '' ? null : Number(e.target.value) })} className="h-10 bg-[var(--money-superficie)]" />
             </Field>
           </div>
           <Field label={t('fireProfileNotes')}>
             <textarea value={profile.notes}
               onChange={(e) => setProfile({ ...profile, notes: e.target.value })}
-              className="min-h-[64px] w-full rounded-lg border border-input bg-white px-3 py-2 text-sm outline-none focus:border-ring" />
+              className="min-h-[64px] w-full rounded-lg border border-input bg-[var(--money-superficie)] px-3 py-2 text-sm outline-none focus:border-ring" />
           </Field>
-          {error && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#a94f3a]">{error}</p>}
+          {error && <p role="alert" className="rounded-xl border border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-tenue)] px-4 py-2 text-sm text-[var(--money-allarme)]">{error}</p>}
           {outcome && (
-            <p role="status" className={`rounded-xl border px-4 py-2 text-sm ${outcome.ok ? 'border-[#cfe6dc] bg-[#e5f3ed] text-[#237056]' : 'border-[#f4d8ce] bg-[#fce9e3] text-[#a94f3a]'}`}>
+            <p role="status" className={`rounded-xl border px-4 py-2 text-sm ${outcome.ok ? 'border-[var(--money-ok-bordo)] bg-[var(--money-ok-tenue)] text-[var(--money-ok)]' : 'border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-tenue)] text-[var(--money-allarme)]'}`}>
               {outcome.message}
             </p>
           )}
@@ -244,11 +244,11 @@ export function RetirementProfileForm({ apiUrl, onSaved }: { apiUrl: string; onS
 
 function Field({ label, unit, hint, children }: { label: string; unit?: string; hint?: string; children: React.ReactNode }) {
   return (
-    <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
+    <label className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">
       <span className="flex items-baseline gap-1.5">
         {label}
-        {unit && <span className="text-[10px] font-normal text-[#5e6c68]">({unit})</span>}
-        {hint && <span className="text-[10px] font-normal text-[#5e6c68]">· {hint}</span>}
+        {unit && <span className="text-[10px] font-normal text-[var(--money-testo-tenue)]">({unit})</span>}
+        {hint && <span className="text-[10px] font-normal text-[var(--money-testo-tenue)]">· {hint}</span>}
       </span>
       {children}
     </label>

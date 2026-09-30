@@ -28,7 +28,7 @@ export function PageHelp({ titolo, testo, dipendenza }: {
         aria-expanded={aperto}
         aria-label={t('helpAria')}
         title={t('helpAria')}
-        className="ml-2 inline-flex size-5 items-center justify-center rounded-full text-[#a3adaa] transition hover:bg-black/5 hover:text-[#3d4a47]"
+        className="ml-2 inline-flex size-5 items-center justify-center rounded-full text-[var(--money-testo-spento)] transition hover:bg-[var(--money-velo)]/5 hover:text-[var(--money-testo)]"
       >
         <HelpCircle className="size-[18px]" />
       </button>
@@ -41,17 +41,17 @@ export function PageHelp({ titolo, testo, dipendenza }: {
           {/* Le spiegazioni sono elenchi: gli a capo si rispettano, e un testo
               lungo scorre dentro il riquadro invece di uscire dallo schermo,
               anche su un telefono. */}
-          <span className="absolute left-0 top-8 z-50 block max-h-[70vh] w-[24rem] max-w-[calc(100vw-2.5rem)] overflow-y-auto rounded-xl border border-black/7 bg-white p-4 text-left shadow-xl">
+          <span className="absolute left-0 top-8 z-50 block max-h-[70vh] w-[24rem] max-w-[calc(100vw-2.5rem)] overflow-y-auto rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] p-4 text-left shadow-xl">
             <span className="flex items-start justify-between gap-3">
-              <span className="text-sm font-semibold text-[#173b33]">{t(titolo)}</span>
+              <span className="text-sm font-semibold text-[var(--money-marca)]">{t(titolo)}</span>
               <button type="button" onClick={() => setAperto(false)} aria-label={t('close')}
-                      className="text-[#a3adaa] transition hover:text-[#3d4a47]">
+                      className="text-[var(--money-testo-spento)] transition hover:text-[var(--money-testo)]">
                 <X className="size-3.5" />
               </button>
             </span>
-            <span className="mt-2 block whitespace-pre-line text-xs leading-5 text-[#52615d]">{t(testo)}</span>
+            <span className="mt-2 block whitespace-pre-line text-xs leading-5 text-[var(--money-testo-muto)]">{t(testo)}</span>
             {dipendenza && (
-              <span className="mt-2.5 block whitespace-pre-line rounded-lg bg-[#f4f5f1] px-3 py-2 text-xs leading-5 text-[#5e6c68]">
+              <span className="mt-2.5 block whitespace-pre-line rounded-lg bg-[var(--money-superficie-hover)] px-3 py-2 text-xs leading-5 text-[var(--money-testo-tenue)]">
                 {t(dipendenza)}
               </span>
             )}

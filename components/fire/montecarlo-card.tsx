@@ -35,17 +35,17 @@ export function MonteCarloCard({ dati }: { dati: MonteCarloPayload }) {
   const sorrSuCento = dati.sorr.value === null ? null : Math.floor(dati.sorr.value * 100);
   const coloreSorr = sorrSuCento === null ? '#5e6c68' : sorrSuCento >= 90 ? '#237056' : sorrSuCento >= 75 ? '#7d6119' : '#a94f3a';
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
       <CardContent className="p-5">
         <p className="text-2xl font-semibold tabular-nums" style={{ color: colore }}>
           {t('fireSuccessRate', { count: suCento })}
         </p>
-        <p className="mt-1 text-xs text-[#5e6c68]">
+        <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">
           {t('fireSuccessDetail', { paths: formatNumber(dati.paths),
             volatility: formatNumber(dati.volatility * 100, { maximumFractionDigits: 1 }) })}
         </p>
         {dati.medianDepletionAge !== null && (
-          <p className="mt-2 text-xs text-[#a94f3a]">{t('fireDepletionMedian', { age: dati.medianDepletionAge })}</p>
+          <p className="mt-2 text-xs text-[var(--money-allarme)]">{t('fireDepletionMedian', { age: dati.medianDepletionAge })}</p>
         )}
         {/* La media dei rendimenti nasconde proprio il rischio che conta: due
             piani con la stessa media finiscono lontanissimi se i primi anni di
@@ -61,8 +61,8 @@ export function MonteCarloCard({ dati }: { dati: MonteCarloPayload }) {
             reggono ma non con quale margine: fra restare a galla e chiudere con
             venti volte il necessario c'e' una differenza che il solo "99 su
             100" nasconde. */}
-        {dati.atHorizon && <div className="mt-4 border-t border-black/[0.06] pt-3">
-          <p className="text-[11px] uppercase tracking-wide text-[#5e6c68]">
+        {dati.atHorizon && <div className="mt-4 border-t border-[var(--money-velo)]/[0.06] pt-3">
+          <p className="text-[11px] uppercase tracking-wide text-[var(--money-testo-tenue)]">
             {t('fireHorizonTitle', { age: dati.atHorizon.age })}
           </p>
           <dl className="mt-1.5 grid grid-cols-3 gap-2 text-center">
@@ -70,7 +70,7 @@ export function MonteCarloCard({ dati }: { dati: MonteCarloPayload }) {
                ['fireHorizonMid', dati.atHorizon.p50, '#3d4a47'],
                ['fireHorizonHigh', dati.atHorizon.p90, '#237056']] as const).map(([chiave, valore, tinta]) => (
               <div key={chiave}>
-                <dt className="text-[10px] uppercase tracking-wide text-[#5e6c68]">{t(chiave)}</dt>
+                <dt className="text-[10px] uppercase tracking-wide text-[var(--money-testo-tenue)]">{t(chiave)}</dt>
                 <dd className="text-sm font-semibold tabular-nums" style={{ color: tinta }}>{formatCompactEuro(valore)}</dd>
               </div>))}
           </dl>

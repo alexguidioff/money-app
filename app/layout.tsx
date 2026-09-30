@@ -33,6 +33,14 @@ export const viewport: Viewport = {
   viewportFit: 'contain',
 };
 
+// La modalita' notte e il tema sono scelte di questo browser, e a saperlo e'
+// solo localStorage: leggerlo dopo l'idratazione vorrebbe dire disegnare la
+// pagina chiara e scurirla un istante dopo, a ogni apertura. Questo poche
+// righe girano prima del primo pixel. Le chiavi sono le stesse di
+// applyTheme (components/money-dashboard.tsx), e i colori della notte stanno
+// in globals.css: qui si dice solo *che* e' notte.
+const SCRIPT_MODALITA = `try{var d=document.documentElement,t=localStorage.getItem('money-tema');if(t)d.dataset.tema=t;if(localStorage.getItem('money-notte')==='si')d.classList.add('dark');}catch(e){}`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -40,6 +48,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="it">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_MODALITA }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

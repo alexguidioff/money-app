@@ -37,6 +37,8 @@ import { Flame,
   LayoutDashboard,
   LineChart as LineChartIcon,
   Menu,
+  Moon,
+  Sun,
   Gauge,
   Pencil,
   PiggyBank,
@@ -817,19 +819,43 @@ const THEMES: Record<string, Theme> = {
 // non usa il giallo lo vedeva lampeggiare finche' le impostazioni non arrivavano.
 const CHIAVE_TEMA = 'money-tema';
 
+// La notte, per lo stesso motivo: e' una scelta di questo browser, come il
+// tema, e non un'impostazione del conto (un conto non ha una modalita').
+const CHIAVE_NOTTE = 'money-notte';
+
 // Le variabili vanno sull'elemento radice: i dialoghi sono montati in un
 // portale fuori dall'albero della pagina e altrimenti non le erediterebbero.
-function applyTheme(colorName: string): void {
-  try { window.localStorage.setItem(CHIAVE_TEMA, colorName); } catch { /* solo un di piu' */ }
+// `data-tema` serve alla notte: le sei pagine tinteggiate stanno in CSS, una
+// per tema, e senza il nome del tema non saprebbero quale scegliere.
+function applyTheme(colorName: string, notte: boolean): void {
+  try {
+    window.localStorage.setItem(CHIAVE_TEMA, colorName);
+    window.localStorage.setItem(CHIAVE_NOTTE, notte ? 'si' : 'no');
+  } catch { /* solo un di piu' */ }
   const theme = THEMES[colorName] ?? THEMES.Yellow;
   const root = document.documentElement;
+  root.dataset.tema = colorName in THEMES ? colorName : 'Yellow';
+  root.classList.toggle('dark', notte);
   root.style.setProperty('--money-sidebar', theme.sidebar);
   root.style.setProperty('--money-primary', theme.primary);
   root.style.setProperty('--money-primary-hover', theme.hover);
   root.style.setProperty('--money-deep', theme.deep);
   root.style.setProperty('--money-accent', theme.accent);
   root.style.setProperty('--money-on-accent', theme.onAccent);
-  root.style.setProperty('--money-page', theme.page);
+  // Il colore del tema quando diventa testo: di giorno e' quello scuro, di
+  // notte non si leggerebbe piu' e prende l'accento.
+  root.style.setProperty('--money-marca', notte ? theme.accent : theme.deep);
+  // La pagina di notte la scrive il CSS, che sa anche lui di che tema si
+  // tratta: scritta qui, l'inline vincerebbe sulla regola notturna.
+  if (notte) root.style.removeProperty('--money-page');
+  else root.style.setProperty('--money-page', theme.page);
+}
+
+// La modalita' accesa, letta prima di disegnare: se il primo giro dicesse
+// "giorno" e solo dopo leggesse la scelta, la pagina lampeggerebbe chiara a
+// ogni apertura.
+function notteIniziale(): boolean {
+  try { return window.localStorage.getItem(CHIAVE_NOTTE) === 'si'; } catch { return false; }
 }
 
 
@@ -863,9 +889,9 @@ function ControlRow({ control, onOpenBudget }: { control: Summary['control']; on
   // Nessun budget nel periodo: non c'e' niente da tenere sotto controllo.
   if (!control.spentPercent && !control.overBudgetCategories) return null;
   const stile = {
-    ok: { classe: 'border-[#cfe6dc] bg-[#eaf5ef] text-[#237056]', titolo: t('controlOk') },
-    watch: { classe: 'border-[#f0e2c2] bg-[#fdf6ec] text-[#7d6119]', titolo: t('controlWatch') },
-    over: { classe: 'border-[#f4d8ce] bg-[#fce9e3] text-[#a94f3a]', titolo: t('controlOver') },
+    ok: { classe: 'border-[var(--money-ok-bordo)] bg-[var(--money-ok-tenue)] text-[var(--money-ok)]', titolo: t('controlOk') },
+    watch: { classe: 'border-[var(--money-attenzione-bordo)] bg-[var(--money-attenzione-tenue)] text-[var(--money-attenzione)]', titolo: t('controlWatch') },
+    over: { classe: 'border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-tenue)] text-[var(--money-allarme)]', titolo: t('controlOver') },
   }[control.level];
   const dettaglio = control.overBudgetCategories > 0
     ? t('controlDetailWithCategories', { spent: control.spentPercent, time: control.timePercent, count: control.overBudgetCategories })
@@ -1018,6 +1044,7 @@ function MoneyDashboardInner() {
   const [analysisCategoryType, setAnalysisCategoryType] = useState<'Income' | 'Expenses' | 'Savings'>('Expenses');
   const [analysisCategory, setAnalysisCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [notte, setNotte] = useState(notteIniziale);
   const [summary, setSummary] = useState(fallbackSummary);
   const [summaryLoaded, setSummaryLoaded] = useState(false);
   // La pagina Movimenti si ricarica da sola la sua pagina di dati: da qui le si
@@ -1488,8 +1515,8 @@ function MoneyDashboardInner() {
     if (!tema) {
       try { tema = window.localStorage.getItem(CHIAVE_TEMA) ?? ''; } catch { tema = ''; }
     }
-    if (tema) applyTheme(tema);
-  }, [settingsData.settings.header_color]);
+    if (tema) applyTheme(tema, notte);
+  }, [settingsData.settings.header_color, notte]);
 
   async function handleSaveTransaction(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2605,7 +2632,7 @@ function MoneyDashboardInner() {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--money-page)] text-[#17211f]" >
+    <main className="min-h-screen bg-[var(--money-page)] text-[var(--money-testo)]" >
       <div className="min-h-screen lg:grid lg:grid-cols-[244px_1fr]">
         {/* `overflow-y-auto`: le voci del menu piu' il riquadro di stato e il
             profilo sono piu' alti di uno schermo di portatile o di telefono, e
@@ -2682,12 +2709,12 @@ function MoneyDashboardInner() {
         {menuOpen && <button className="fixed inset-0 z-30 bg-black/35 lg:hidden" aria-label={t('closeMenu')} onClick={() => setMenuOpen(false)} />}
 
         <section className="min-w-0 lg:col-start-2">
-          <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-black/5 bg-[var(--money-page)]/90 px-4 backdrop-blur-xl sm:px-7 lg:px-9">
+          <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-[var(--money-velo)]/5 bg-[var(--money-page)]/90 px-4 backdrop-blur-xl sm:px-7 lg:px-9">
             <div className="flex items-center gap-3">
-              <Button variant="outline" size="icon" className="border-black/8 bg-white lg:hidden" onClick={() => setMenuOpen(true)} aria-label={t('openMenu')}><Menu className="size-5" /></Button>
+              <Button variant="outline" size="icon" className="border-[var(--money-velo)]/8 bg-[var(--money-superficie)] lg:hidden" onClick={() => setMenuOpen(true)} aria-label={t('openMenu')}><Menu className="size-5" /></Button>
               <div className="relative hidden sm:block">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-black/35" />
-                <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') navigate('Movimenti'); }} className="h-10 w-64 rounded-xl border border-black/7 bg-white/70 pl-10 pr-3 text-sm outline-none transition placeholder:text-black/35 focus:border-[#5c8f82] focus:bg-white" placeholder={t('searchPlaceholder')} />
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--money-velo)]/35" />
+                <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') navigate('Movimenti'); }} className="h-10 w-64 rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)]/70 pl-10 pr-3 text-sm outline-none transition placeholder:text-[var(--money-velo)]/35 focus:border-[var(--money-anello)] focus:bg-[var(--money-superficie)]" placeholder={t('searchPlaceholder')} />
               </div>
             </div>
             <div className="relative flex items-center gap-2">
@@ -2696,29 +2723,39 @@ function MoneyDashboardInner() {
                   l'app stava caricando. Ora la rotellina c'e' sempre; la parola
                   resta nascosta alla vista ma non a chi legge lo schermo, che
                   altrimenti annuncerebbe un riquadro vuoto. */}
-              {inCorso > 0 && <span role="status" className="mr-1 flex items-center gap-1.5 rounded-lg bg-white/70 px-2.5 py-1.5 text-xs text-[#5e6c68]">
+              {inCorso > 0 && <span role="status" className="mr-1 flex items-center gap-1.5 rounded-lg bg-[var(--money-superficie)]/70 px-2.5 py-1.5 text-xs text-[var(--money-testo-tenue)]">
                 <RefreshCw className="size-3.5 animate-spin" /><span className="sr-only sm:not-sr-only">{t('updating')}</span>
               </span>}
-              <Button aria-label={t('notifications')} aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((value) => !value); setProfileOpen(false); }} variant="outline" size="icon" className="relative border-black/7 bg-white/70"><Bell className="size-[18px]" />{notifications.length > 0 && <span className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-[#a94f3a] px-1 text-[10px] font-semibold leading-4 text-white">{notifications.length}</span>}</Button>
-              <button aria-label={t('profile')} aria-expanded={profileOpen} onClick={() => { setProfileOpen((value) => !value); setNotificationsOpen(false); }} className="ml-1 flex items-center gap-2 rounded-xl p-1.5 pr-2 hover:bg-black/5"><span className="grid size-8 place-items-center rounded-lg bg-[var(--money-accent)] text-xs font-bold text-[#18342e]">{initials}</span><ChevronDown className="size-4 text-black/45" /></button>
+              <Button aria-label={t('notifications')} aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((value) => !value); setProfileOpen(false); }} variant="outline" size="icon" className="relative border-[var(--money-velo)]/7 bg-[var(--money-superficie)]/70"><Bell className="size-[18px]" />{notifications.length > 0 && <span className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-[var(--money-allarme)] px-1 text-[10px] font-semibold leading-4 text-white">{notifications.length}</span>}</Button>
+              <button aria-label={t('profile')} aria-expanded={profileOpen} onClick={() => { setProfileOpen((value) => !value); setNotificationsOpen(false); }} className="ml-1 flex items-center gap-2 rounded-xl p-1.5 pr-2 hover:bg-[var(--money-velo)]/5"><span className="grid size-8 place-items-center rounded-lg bg-[var(--money-accent)] text-xs font-bold text-[#18342e]">{initials}</span><ChevronDown className="size-4 text-[var(--money-velo)]/45" /></button>
               {notificationsOpen && <NotificationsPanel items={notifications} onDismiss={dismissNotification} onDismissAll={dismissAllNotifications} />}
-              {profileOpen && <div className="absolute right-0 top-12 w-56 rounded-xl border border-black/7 bg-white p-2 shadow-xl">
-                <div className="px-3 py-2"><p className="text-sm font-semibold">{displayName}</p><p className="text-xs text-[#5e6c68]">{t('personalArchive')}</p></div>
+              {profileOpen && <div className="absolute right-0 top-12 w-56 rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] p-2 shadow-xl">
+                <div className="px-3 py-2"><p className="text-sm font-semibold">{displayName}</p><p className="text-xs text-[var(--money-testo-tenue)]">{t('personalArchive')}</p></div>
+                {/* La notte sta qui, accanto alla lingua: sono le due scelte
+                    che riguardano come si guarda l'app, non cosa c'e' dentro.
+                    `aria-pressed` dice lo stato a chi non vede il colore. */}
+                <button type="button" onClick={() => setNotte((accesa) => !accesa)} aria-pressed={notte} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-[var(--money-velo)]/5">
+                  {notte ? <Moon className="size-4" /> : <Sun className="size-4" />}
+                  {t('nightMode')}
+                  <span aria-hidden className={`relative ml-auto h-5 w-9 shrink-0 rounded-full transition ${notte ? 'bg-[var(--money-primary)]' : 'bg-[var(--money-velo)]/15'}`}>
+                    <span className={`absolute top-0.5 size-4 rounded-full bg-white transition-all ${notte ? 'left-[18px]' : 'left-0.5'}`} />
+                  </span>
+                </button>
                 <div className="px-3 py-2">
-                  <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-[#5e6c68]">{t('language')}</p>
+                  <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-[var(--money-testo-tenue)]">{t('language')}</p>
                   {/* La lingua sceglie come tutte le altre strisce, ma sta dentro
                       un menu e non ha lo spazio per la forma larga: resta la pillola
                       piccola, con il nome della lingua nel tooltip. Quello che le
                       mancava era dire cosa sceglie e quale e' accesa. */}
-                  <div role="group" aria-label={t('language')} className="flex gap-1 rounded-lg bg-[#f3f5f1] p-1">
+                  <div role="group" aria-label={t('language')} className="flex gap-1 rounded-lg bg-[var(--money-superficie-hover)] p-1">
                     {(['it', 'en', 'de', 'es', 'fr'] as Lang[]).map((code) => (
-                      <button key={code} type="button" title={LANG_LABELS[code]} aria-pressed={lang === code} onClick={() => setLang(code)} className={`flex-1 rounded-md py-1 text-xs font-semibold uppercase transition ${lang === code ? 'bg-[var(--money-primary)] text-white' : 'text-[#52615d] hover:bg-white'}`}>
+                      <button key={code} type="button" title={LANG_LABELS[code]} aria-pressed={lang === code} onClick={() => setLang(code)} className={`flex-1 rounded-md py-1 text-xs font-semibold uppercase transition ${lang === code ? 'bg-[var(--money-primary)] text-white' : 'text-[var(--money-testo-muto)] hover:bg-[var(--money-superficie)]'}`}>
                         {code}
                       </button>
                     ))}
                   </div>
                 </div>
-                <button onClick={() => navigate('Impostazioni')} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-black/5"><Settings className="size-4" />{t('navImpostazioni')}</button>
+                <button onClick={() => navigate('Impostazioni')} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-[var(--money-velo)]/5"><Settings className="size-4" />{t('navImpostazioni')}</button>
               </div>}
             </div>
           </header>
@@ -2726,7 +2763,7 @@ function MoneyDashboardInner() {
           <div className="mx-auto max-w-[1450px] px-4 py-7 sm:px-7 lg:px-9 lg:py-9">
             {activeSection === 'Panoramica' ? <>
             <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-              <div><p className="mb-1 text-sm font-medium text-[#5e6c68]">{t('panoramicaSubtitle')}</p><h1 className="flex items-center text-2xl font-semibold tracking-[-0.03em] sm:text-[30px]">{t('panoramicaGreeting', { name: displayName.split(/\s+/)[0] })}<PageHelp titolo="helpTitle" testo="helpPanoramica" dipendenza="helpPanoramicaDep" /></h1></div>
+              <div><p className="mb-1 text-sm font-medium text-[var(--money-testo-tenue)]">{t('panoramicaSubtitle')}</p><h1 className="flex items-center text-2xl font-semibold tracking-[-0.03em] sm:text-[30px]">{t('panoramicaGreeting', { name: displayName.split(/\s+/)[0] })}<PageHelp titolo="helpTitle" testo="helpPanoramica" dipendenza="helpPanoramicaDep" /></h1></div>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {overviewView === 'panoramica' && <PeriodSelector
                   value={period}
@@ -2736,9 +2773,9 @@ function MoneyDashboardInner() {
                   onCompareToChange={setOverviewCompareTo}
                 />}
                 <div className="flex shrink-0 items-center gap-2">
-                <div className="flex overflow-hidden rounded-xl border border-black/7 bg-white shadow-sm shadow-black/[0.02]">
-                  <button type="button" onClick={() => setOverviewView('panoramica')} className={`h-10 px-3.5 text-sm font-medium transition ${overviewView === 'panoramica' ? 'bg-[var(--money-primary)] text-white' : 'text-[#52615d] hover:bg-[#f4f5f1]'}`}>{t('overviewToggle')}</button>
-                  <button type="button" onClick={() => setOverviewView('analisi')} className={`h-10 px-3.5 text-sm font-medium transition ${overviewView === 'analisi' ? 'bg-[var(--money-primary)] text-white' : 'text-[#52615d] hover:bg-[#f4f5f1]'}`}>{t('analysisToggle')}</button>
+                <div className="flex overflow-hidden rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.02]">
+                  <button type="button" onClick={() => setOverviewView('panoramica')} className={`h-10 px-3.5 text-sm font-medium transition ${overviewView === 'panoramica' ? 'bg-[var(--money-primary)] text-white' : 'text-[var(--money-testo-muto)] hover:bg-[var(--money-superficie-hover)]'}`}>{t('overviewToggle')}</button>
+                  <button type="button" onClick={() => setOverviewView('analisi')} className={`h-10 px-3.5 text-sm font-medium transition ${overviewView === 'analisi' ? 'bg-[var(--money-primary)] text-white' : 'text-[var(--money-testo-muto)] hover:bg-[var(--money-superficie-hover)]'}`}>{t('analysisToggle')}</button>
                 </div>
                 {overviewView === 'panoramica' && <Button className="h-10 rounded-xl bg-[var(--money-primary)] px-4 text-white hover:bg-[var(--money-primary-hover)]" onClick={openNewTransaction}><Plus className="size-4" /><span className="hidden sm:inline">{t('newTransaction')}</span></Button>}
                 </div>
@@ -2766,15 +2803,15 @@ function MoneyDashboardInner() {
               fetch pulita (AbortController incluso) tramite panoramicaRetryKey.
             */}
             {!summaryLoaded && connectionError && (
-              <div className="mb-5 rounded-2xl border border-[#efc4b8] bg-[#fff6f3] p-4 shadow-sm">
+              <div className="mb-5 rounded-2xl border border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-velo)] p-4 shadow-sm">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-start gap-3">
-                    <span className="mt-0.5 grid size-9 place-items-center rounded-xl bg-[#fce9e3]">
-                      <AlertCircle className="size-5 text-[#a94f3a]" />
+                    <span className="mt-0.5 grid size-9 place-items-center rounded-xl bg-[var(--money-allarme-tenue)]">
+                      <AlertCircle className="size-5 text-[var(--money-allarme)]" />
                     </span>
                     <div>
                       <p className="text-sm font-semibold">{t('overviewLoadFailed')}</p>
-                      <p className="mt-1 text-xs leading-5 text-[#52615d]">{t('overviewLoadFailedHint')}</p>
+                      <p className="mt-1 text-xs leading-5 text-[var(--money-testo-muto)]">{t('overviewLoadFailedHint')}</p>
                     </div>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => setPanoramicaRetryKey((k) => k + 1)}>{t('retry')}</Button>
@@ -2812,43 +2849,43 @@ function MoneyDashboardInner() {
             </div>
 
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+              <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
                 <CardContent className="p-5">
-                  <div className="flex items-center justify-between"><span className="text-sm font-medium text-[#5e6c68]">{t('periodCompletion')}</span><span className="text-xs text-[#5e6c68]">{t('daysOf', { passed: summary.daysPassed, total: summary.daysInPeriod })}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-sm font-medium text-[var(--money-testo-tenue)]">{t('periodCompletion')}</span><span className="text-xs text-[var(--money-testo-tenue)]">{t('daysOf', { passed: summary.daysPassed, total: summary.daysInPeriod })}</span></div>
                   <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{formatPercentNumber(summary.periodCompletion * 100)}%</p>
-                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#eef0ec]"><div className="h-full rounded-full bg-[#6d8ff4]" style={{ width: `${summary.periodCompletion * 100}%` }} /></div>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--money-superficie-hover)]"><div className="h-full rounded-full bg-[var(--money-barra)]" style={{ width: `${summary.periodCompletion * 100}%` }} /></div>
                 </CardContent>
               </Card>
-              <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+              <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
                 <CardContent className="p-5">
-                  <div className="flex items-center justify-between"><span className="text-sm font-medium text-[#5e6c68]">{t('periodSavingsRate')}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-sm font-medium text-[var(--money-testo-tenue)]">{t('periodSavingsRate')}</span></div>
                   <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{summary.savingsRate !== null ? `${formatPercentNumber(summary.savingsRate * 100)}%` : '—'}</p>
-                  <p className="mt-3 text-xs text-[#5e6c68]">{summary.savingsRate !== null ? t('onPeriodIncome') : t('noIncomeInPeriod')}</p>
+                  <p className="mt-3 text-xs text-[var(--money-testo-tenue)]">{summary.savingsRate !== null ? t('onPeriodIncome') : t('noIncomeInPeriod')}</p>
                 </CardContent>
               </Card>
               {/* Su un mese chiuso la card resta - togliendola ballerebbe la
                   griglia - ma dice che non c'e' niente da stimare. */}
-              {summary.projection && <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+              {summary.projection && <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
                 <CardContent className="p-5">
-                  <span className="text-sm font-medium text-[#5e6c68]">{t('endOfMonthEstimate')}</span>
+                  <span className="text-sm font-medium text-[var(--money-testo-tenue)]">{t('endOfMonthEstimate')}</span>
                   {summary.projection.state === 'closed' ? <>
-                    <p className="mt-2 text-2xl font-semibold tracking-tight text-[#5e6c68]">—</p>
-                    <p className="mt-3 text-xs text-[#5e6c68]">{t('estimateClosedMonth')}</p>
-                    <p className="mt-1 text-[11px] leading-4 text-[#5e6c68]">{t('estimateClosedTotal', { spent: formatCompactEuro(summary.projection.spentSoFar) })}</p>
+                    <p className="mt-2 text-2xl font-semibold tracking-tight text-[var(--money-testo-tenue)]">—</p>
+                    <p className="mt-3 text-xs text-[var(--money-testo-tenue)]">{t('estimateClosedMonth')}</p>
+                    <p className="mt-1 text-[11px] leading-4 text-[var(--money-testo-tenue)]">{t('estimateClosedTotal', { spent: formatCompactEuro(summary.projection.spentSoFar) })}</p>
                   </> : <>
                     <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{formatEuro(summary.projection.estimate ?? 0)}</p>
-                    <p className="mt-3 text-xs text-[#5e6c68]">{summary.projection.planned > 0
+                    <p className="mt-3 text-xs text-[var(--money-testo-tenue)]">{summary.projection.planned > 0
                       ? t('estimateVsPlanned', { spent: formatCompactEuro(summary.projection.spentSoFar), planned: formatCompactEuro(summary.projection.planned) })
                       : t('estimateSoFar', { spent: formatCompactEuro(summary.projection.spentSoFar) })}</p>
-                    <p className="mt-1 text-[11px] leading-4 text-[#5e6c68]">{t('estimateRule')}</p>
+                    <p className="mt-1 text-[11px] leading-4 text-[var(--money-testo-tenue)]">{t('estimateRule')}</p>
                   </>}
                 </CardContent>
               </Card>}
-              {summary.goalCoverage.monthlyNeeded > 0 && <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+              {summary.goalCoverage.monthlyNeeded > 0 && <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
                 <CardContent className="p-5">
-                  <span className="text-sm font-medium text-[#5e6c68]">{t('goalCoverage')}</span>
+                  <span className="text-sm font-medium text-[var(--money-testo-tenue)]">{t('goalCoverage')}</span>
                   <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{formatPercentNumber(summary.goalCoverage.coverage ?? 0)}%</p>
-                  <p className="mt-3 text-xs text-[#5e6c68]">{t('goalCoverageDetail', { saved: formatCompactEuro(summary.goalCoverage.savedThisPeriod), needed: formatCompactEuro(summary.goalCoverage.monthlyNeeded) })}</p>
+                  <p className="mt-3 text-xs text-[var(--money-testo-tenue)]">{t('goalCoverageDetail', { saved: formatCompactEuro(summary.goalCoverage.savedThisPeriod), needed: formatCompactEuro(summary.goalCoverage.monthlyNeeded) })}</p>
                 </CardContent>
               </Card>}
             </div>
@@ -2856,7 +2893,7 @@ function MoneyDashboardInner() {
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(310px,0.85fr)]">
               <PeriodBreakdownCard breakdown={summaryBreakdown} isWholeYear={overviewMonth === null} />
 
-              <Card className="flex flex-col border-black/6 bg-[var(--money-deep)] text-white shadow-sm shadow-black/[0.04]">
+              <Card className="flex flex-col border-[var(--money-velo)]/6 bg-[var(--money-deep)] text-white shadow-sm shadow-black/[0.04]">
                 <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-[17px]">{t('budgetOfPeriod')}</CardTitle><CircleDollarSign className="size-5 text-[var(--money-accent)]" /></div><p className="text-xs text-white/70">{t('howMuchLeftToSpend')}</p></CardHeader>
                 <CardContent className="flex min-h-0 flex-1 flex-col">
                   <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">{formatEuro(remainingBudget)}</p>
@@ -3035,8 +3072,8 @@ function MoneyDashboardInner() {
           <form ref={movementFormRef} key={editingTransaction ? `edit-${editingTransaction.id}` : duplicatingTransaction ? `duplicate-${duplicatingTransaction.id}` : 'new'} className="space-y-4" onSubmit={handleSaveTransaction} onChange={(event) => { const form = new FormData(event.currentTarget); setEffectivePreview({ occurred: String(form.get('occurred_on') ?? ''), type: String(form.get('transaction_type') ?? ''), amount: Math.abs(Number(form.get('amount') || 0)), origine: String(form.get('account_name') ?? '') }); }}>
             <datalist id="strumenti-esistenti">{nomiStrumenti.map((nome) => <option key={nome} value={nome} />)}</datalist>
             <div className="grid grid-cols-2 gap-3">
-              <label htmlFor="movement-date" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDate')}<Input id="movement-date" required name="occurred_on" type="date" defaultValue={formTransaction?.occurredOn ?? new Date().toISOString().slice(0, 10)} className="h-10 bg-white" /></label>
-              <label htmlFor="movement-type" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldType')}<select id="movement-type" required name="transaction_type" defaultValue={formTransaction?.transactionType ?? 'Expenses'} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"><option value="Expenses">{t('typeExpense')}</option><option value="Income">{t('typeIncome')}</option><option value="Transfers">{t('typeTransfer')}</option><option value="Investment">{t('typeInvestment')}</option><option value="Debt">{t('typeDebt')}</option></select></label>
+              <label htmlFor="movement-date" className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldDate')}<Input id="movement-date" required name="occurred_on" type="date" defaultValue={formTransaction?.occurredOn ?? new Date().toISOString().slice(0, 10)} className="h-10 bg-[var(--money-superficie)]" /></label>
+              <label htmlFor="movement-type" className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldType')}<select id="movement-type" required name="transaction_type" defaultValue={formTransaction?.transactionType ?? 'Expenses'} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"><option value="Expenses">{t('typeExpense')}</option><option value="Income">{t('typeIncome')}</option><option value="Transfers">{t('typeTransfer')}</option><option value="Investment">{t('typeInvestment')}</option><option value="Debt">{t('typeDebt')}</option></select></label>
             </div>
             {(() => {
               const occurred = effectivePreview.occurred || formTransaction?.occurredOn || new Date().toISOString().slice(0, 10);
@@ -3045,15 +3082,15 @@ function MoneyDashboardInner() {
               const day = Number(settingsData.settings.late_income_day ?? 20) || 20;
               const effective = previewEffectiveDate(occurred, type, shift, day);
               if (effective === occurred) return null;
-              return <p className="rounded-lg bg-[#f0f8f4] px-3 py-2 text-xs text-[#3b6a5b]">{t('effectiveDateHint', { date: formatDate(`${effective}T12:00:00`, { day: 'numeric', month: 'long', year: 'numeric' }) })}</p>;
+              return <p className="rounded-lg bg-[var(--money-ok-tenue)] px-3 py-2 text-xs text-[var(--money-ok)]">{t('effectiveDateHint', { date: formatDate(`${effective}T12:00:00`, { day: 'numeric', month: 'long', year: 'numeric' }) })}</p>;
             })()}
             <div className="grid grid-cols-2 gap-3">
-              <label htmlFor="movement-category" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldCategory')}<select id="movement-category" required={!isTransfer && Boolean(editingTransaction)} disabled={isTransfer} name="category" defaultValue={formTransaction?.category ?? ''} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]"><option value="" disabled={!isTransfer && Boolean(editingTransaction)}>{isTransfer ? t('categoryNotApplicable') : editingTransaction ? t('selectPlaceholder') : t('categoryAutomatic')}</option>{!isTransfer && <CategoryOptions names={uniqueOptions(formTransaction?.category ?? '', movementCategories)} tree={settingsData.categoryTree} />}</select></label>
-              <label htmlFor="movement-amount" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldAmount')}<Input id="movement-amount" required min="0.01" step="0.01" name="amount" type="number" defaultValue={formTransaction ? Math.abs(formTransaction.amount).toFixed(2) : undefined} className="h-10 bg-white" /></label>
+              <label htmlFor="movement-category" className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldCategory')}<select id="movement-category" required={!isTransfer && Boolean(editingTransaction)} disabled={isTransfer} name="category" defaultValue={formTransaction?.category ?? ''} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:bg-[var(--money-superficie-hover)] disabled:text-[var(--money-testo-spento)]"><option value="" disabled={!isTransfer && Boolean(editingTransaction)}>{isTransfer ? t('categoryNotApplicable') : editingTransaction ? t('selectPlaceholder') : t('categoryAutomatic')}</option>{!isTransfer && <CategoryOptions names={uniqueOptions(formTransaction?.category ?? '', movementCategories)} tree={settingsData.categoryTree} />}</select></label>
+              <label htmlFor="movement-amount" className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldAmount')}<Input id="movement-amount" required min="0.01" step="0.01" name="amount" type="number" defaultValue={formTransaction ? Math.abs(formTransaction.amount).toFixed(2) : undefined} className="h-10 bg-[var(--money-superficie)]" /></label>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <label htmlFor="movement-account" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldAccount')}<select id="movement-account" name="account_name" required value={movementAccount} onChange={(event) => setMovementAccount(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"><option value="">{t('noAccount')}</option>{accounts.filter(a => a.isActive !== false || (!!editingTransaction && a.name === formTransaction?.accountName)).map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}</select></label>
-              <label htmlFor="movement-destination" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDestinationAccount')}<select id="movement-destination" name="destination_name" required={isTransfer} disabled={!isTransfer} value={movementDestination} onChange={(event) => setMovementDestination(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]"><option value="">{isTransfer ? t('none') : t('destinationOnlyForTransfers')}</option>{isTransfer && accounts.filter(a => (movementType !== 'Investment' || prelievoDaBroker || a.isBroker === true
+              <label htmlFor="movement-account" className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldAccount')}<select id="movement-account" name="account_name" required value={movementAccount} onChange={(event) => setMovementAccount(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"><option value="">{t('noAccount')}</option>{accounts.filter(a => a.isActive !== false || (!!editingTransaction && a.name === formTransaction?.accountName)).map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}</select></label>
+              <label htmlFor="movement-destination" className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldDestinationAccount')}<select id="movement-destination" name="destination_name" required={isTransfer} disabled={!isTransfer} value={movementDestination} onChange={(event) => setMovementDestination(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:bg-[var(--money-superficie-hover)] disabled:text-[var(--money-testo-spento)]"><option value="">{isTransfer ? t('none') : t('destinationOnlyForTransfers')}</option>{isTransfer && accounts.filter(a => (movementType !== 'Investment' || prelievoDaBroker || a.isBroker === true
               // Il valore gia' salvato resta sempre in elenco: una tendina che
               // non contiene il proprio valore lo perde al primo salvataggio.
               || a.name === formTransaction?.destinationName)
@@ -3067,45 +3104,45 @@ function MoneyDashboardInner() {
             {cambioDiValuta && (() => {
               const entrata = Number(arrivo);
               const uscita = Number(effectivePreview.amount || 0);
-              return <label htmlFor="movement-destination-amount" className="block space-y-1.5 text-xs font-medium text-[#52615d]">
+              return <label htmlFor="movement-destination-amount" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">
                 {t('fieldDestinationAmount', { currency: valutaArrivo })}
                 <Input id="movement-destination-amount" name="destination_amount" type="number" min="0" step="0.01"
-                       value={arrivo} onChange={(event) => setArrivo(event.target.value)} className="h-10 bg-white" />
-                <span className="block text-[11px] leading-4 text-[#5e6c68]">
+                       value={arrivo} onChange={(event) => setArrivo(event.target.value)} className="h-10 bg-[var(--money-superficie)]" />
+                <span className="block text-[11px] leading-4 text-[var(--money-testo-tenue)]">
                   {entrata > 0 && uscita > 0
                     ? t('destinationAmountRate', { rate: formatNumber(entrata / uscita, { maximumFractionDigits: 4 }) })
                     : t('destinationAmountHint', { currency: valutaArrivo })}
                 </span>
               </label>;
             })()}
-            {movementType === 'Expenses' && contoDebito && <div className="space-y-1.5 rounded-xl border border-[#bd5e46]/20 bg-[#fff9f6] p-3">
+            {movementType === 'Expenses' && contoDebito && <div className="space-y-1.5 rounded-xl border border-[var(--money-allarme)]/20 bg-[var(--money-allarme-velo)] p-3">
               {/* Una spesa su un conto di debito puo' essere un interesse, e
                   finche' non lo si dice non entra nei totali del debito: il
                   banner "da classificare" la segnala. Prima si deduceva dal
                   tipo e dal conto, e qualunque spesa finita li' diventava un
                   interesse senza che nulla lo segnalasse. */}
-              <label htmlFor="movement-debt-interest" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDebtCharge')}
+              <label htmlFor="movement-debt-interest" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldDebtCharge')}
                 <Input id="movement-debt-interest" name="debt_interest" type="number" min="0" step="0.01" placeholder={t('fieldDebtChargeNone')} defaultValue={formTransaction?.liabilitySplit?.interest ?? ''} />
               </label>
-              <span className="block text-[11px] leading-4 text-[#5e6c68]">{t('fieldDebtChargeHint')}</span>
+              <span className="block text-[11px] leading-4 text-[var(--money-testo-tenue)]">{t('fieldDebtChargeHint')}</span>
             </div>}
-            {movementType === 'Debt' && <div className="space-y-3 rounded-xl border border-[#bd5e46]/20 bg-[#fff9f6] p-3"><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('principalShare')}<Input required min="0" step="0.01" name="debt_principal" type="number" defaultValue={formTransaction?.liabilitySplit?.principal ?? (origineDaDebito && formTransaction ? Math.abs(formTransaction.amount) : undefined)} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('interestShare')}<Input required min="0" step="0.01" name="debt_interest" type="number" defaultValue={formTransaction?.liabilitySplit?.interest ?? 0} /></label></div></div>}
+            {movementType === 'Debt' && <div className="space-y-3 rounded-xl border border-[var(--money-allarme)]/20 bg-[var(--money-allarme-velo)] p-3"><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('principalShare')}<Input required min="0" step="0.01" name="debt_principal" type="number" defaultValue={formTransaction?.liabilitySplit?.principal ?? (origineDaDebito && formTransaction ? Math.abs(formTransaction.amount) : undefined)} /></label><label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('interestShare')}<Input required min="0" step="0.01" name="debt_interest" type="number" defaultValue={formTransaction?.liabilitySplit?.interest ?? 0} /></label></div></div>}
             {!isSpostamento && <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="exclude_budget" defaultChecked={formTransaction?.countsInBudget === false} />{t('excludeBudget')}</label>}
             {(movementType === 'Income' || movementType === 'Expenses') && <RefundPicker apiUrl={apiUrl} initialId={editingTransaction?.refundOfId ?? null} transactionType={movementType} />}
-            <label htmlFor="movement-goal" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldGoal')}<select id="movement-goal" name="goal" defaultValue={formTransaction?.goal ?? ''} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"><option value="">{t('noGoal')}</option>{uniqueOptions(formTransaction?.goal ?? '', goalsData.items.map((goal) => goal.name)).map((goal) => <option key={goal} value={goal}>{goal}</option>)}</select></label>
+            <label htmlFor="movement-goal" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldGoal')}<select id="movement-goal" name="goal" defaultValue={formTransaction?.goal ?? ''} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"><option value="">{t('noGoal')}</option>{uniqueOptions(formTransaction?.goal ?? '', goalsData.items.map((goal) => goal.name)).map((goal) => <option key={goal} value={goal}>{goal}</option>)}</select></label>
             {/* L'evento e' un contenitore che taglia le categorie, non una
                 categoria: sta qui accanto al goal perche' e' un'altra
                 etichetta del movimento. Gli eventi chiusi non si offrono: un
                 evento finito non e' piu' qualcosa a cui si sta lavorando. */}
-            <label htmlFor="movement-event" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('eventField')}<select id="movement-event" name="event_id" value={eventChoice} onChange={(event) => setEventChoice(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"><option value="">{t('eventNone')}</option>{eventi.filter((evento) => !evento.closed).map((evento) => <option key={evento.id} value={String(evento.id)}>{evento.name}</option>)}{eventoCorrente && !eventoCorrenteOfferto && <option value={String(eventoCorrente.id)}>{eventoCorrente.name}</option>}<option value={EVENTO_NUOVO}>{t('eventNew')}</option></select></label>
-            {eventChoice === EVENTO_NUOVO && <label htmlFor="movement-event-name" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('eventName')}<Input id="movement-event-name" name="nuovo_evento" required placeholder={t('eventNewPlaceholder')} className="h-10 bg-white" /></label>}
-            <label htmlFor="movement-details" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDescription')}<Input id="movement-details" name="details" defaultValue={formTransaction?.details ?? ''} placeholder={t('optionalNote')} className="h-10 bg-white" /></label>
+            <label htmlFor="movement-event" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('eventField')}<select id="movement-event" name="event_id" value={eventChoice} onChange={(event) => setEventChoice(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"><option value="">{t('eventNone')}</option>{eventi.filter((evento) => !evento.closed).map((evento) => <option key={evento.id} value={String(evento.id)}>{evento.name}</option>)}{eventoCorrente && !eventoCorrenteOfferto && <option value={String(eventoCorrente.id)}>{eventoCorrente.name}</option>}<option value={EVENTO_NUOVO}>{t('eventNew')}</option></select></label>
+            {eventChoice === EVENTO_NUOVO && <label htmlFor="movement-event-name" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('eventName')}<Input id="movement-event-name" name="nuovo_evento" required placeholder={t('eventNewPlaceholder')} className="h-10 bg-[var(--money-superficie)]" /></label>}
+            <label htmlFor="movement-details" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldDescription')}<Input id="movement-details" name="details" defaultValue={formTransaction?.details ?? ''} placeholder={t('optionalNote')} className="h-10 bg-[var(--money-superficie)]" /></label>
             {/* Solo un Investimento si collega al ledger, e conta il tipo scelto
                 ora nel modulo: la casella compariva anche su spese ed entrate,
                 che il backend rifiuta. */}
             {!editingTransaction && movementType === 'Investment' && (
-              <div className="space-y-2 rounded-lg border border-[#5c8f82]/20 bg-[#f6f9f7] p-3">
-                <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-[#3b6a5b]">
+              <div className="space-y-2 rounded-lg border border-[var(--money-anello)]/20 bg-[var(--money-superficie-tenue)] p-3">
+                <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-[var(--money-ok)]">
                   <input
                     type="checkbox"
                     checked={linkLedgerOpen}
@@ -3121,26 +3158,26 @@ function MoneyDashboardInner() {
                 </label>
                 {linkLedgerOpen && (
                   <div className="space-y-2">
-                    <p className="text-[11px] text-[#52615d]">{t('linkToLedgerDesc')}</p>
+                    <p className="text-[11px] text-[var(--money-testo-muto)]">{t('linkToLedgerDesc')}</p>
                     {linkedLedgerRows.map((row, index) => (
-                      <div key={index} className="space-y-2 rounded-md border border-black/8 bg-white p-2">
+                      <div key={index} className="space-y-2 rounded-md border border-[var(--money-velo)]/8 bg-[var(--money-superficie)] p-2">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-semibold text-[#52615d]">#{index + 1}</span>
+                          <span className="text-[11px] font-semibold text-[var(--money-testo-muto)]">#{index + 1}</span>
                           <button
                             type="button"
                             onClick={() => setLinkedLedgerRows(linkedLedgerRows.filter((_, i) => i !== index))}
-                            className="text-[11px] text-[#a94f3a] hover:underline"
+                            className="text-[11px] text-[var(--money-allarme)] hover:underline"
                             aria-label={t('removeRow')}
                           >
                             {t('removeRow')}
                           </button>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
-                          <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('instrument')}
-                            <Input list="strumenti-esistenti" autoComplete="off" value={row.name} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, name: event.target.value } : item))} className="h-8 bg-white text-xs" />
+                          <label className="space-y-1 text-[10px] font-medium text-[var(--money-testo-muto)]">{t('instrument')}
+                            <Input list="strumenti-esistenti" autoComplete="off" value={row.name} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, name: event.target.value } : item))} className="h-8 bg-[var(--money-superficie)] text-xs" />
                           </label>
-                          <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('operation')}
-                            <select value={row.transactionType} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, transactionType: event.target.value as LedgerTypeDaMovimento } : item))} className="h-8 w-full rounded-md border border-input bg-white px-2 text-xs">
+                          <label className="space-y-1 text-[10px] font-medium text-[var(--money-testo-muto)]">{t('operation')}
+                            <select value={row.transactionType} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, transactionType: event.target.value as LedgerTypeDaMovimento } : item))} className="h-8 w-full rounded-md border border-input bg-[var(--money-superficie)] px-2 text-xs">
                               {LEDGER_TYPES_DA_MOVIMENTO.map((tipo) => <option key={tipo} value={tipo}>{t(LEDGER_TYPE_LABEL[tipo])}</option>)}
                             </select>
                           </label>
@@ -3150,23 +3187,23 @@ function MoneyDashboardInner() {
                           // o un versamento: al loro posto l'importo, come fa il
                           // modulo del ledger.
                           <div className="grid grid-cols-2 gap-2">
-                            <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldAmount')}
-                              <Input type="number" step="0.01" value={row.amount} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, amount: event.target.value } : item))} className="h-8 bg-white text-xs" />
+                            <label className="space-y-1 text-[10px] font-medium text-[var(--money-testo-muto)]">{t('fieldAmount')}
+                              <Input type="number" step="0.01" value={row.amount} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, amount: event.target.value } : item))} className="h-8 bg-[var(--money-superficie)] text-xs" />
                             </label>
-                            <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fee')}
-                              <Input type="number" step="0.01" value={row.fee} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, fee: event.target.value } : item))} className="h-8 bg-white text-xs" />
+                            <label className="space-y-1 text-[10px] font-medium text-[var(--money-testo-muto)]">{t('fee')}
+                              <Input type="number" step="0.01" value={row.fee} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, fee: event.target.value } : item))} className="h-8 bg-[var(--money-superficie)] text-xs" />
                             </label>
                           </div>
                         ) : (
                         <div className="grid grid-cols-3 gap-2">
-                          <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('units')}
-                            <Input type="number" step="0.00000001" value={row.units} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, units: event.target.value } : item))} className="h-8 bg-white text-xs" />
+                          <label className="space-y-1 text-[10px] font-medium text-[var(--money-testo-muto)]">{t('units')}
+                            <Input type="number" step="0.00000001" value={row.units} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, units: event.target.value } : item))} className="h-8 bg-[var(--money-superficie)] text-xs" />
                           </label>
-                          <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('priceLabel')}
-                            <Input type="number" step="0.0001" value={row.price} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, price: event.target.value } : item))} className="h-8 bg-white text-xs" />
+                          <label className="space-y-1 text-[10px] font-medium text-[var(--money-testo-muto)]">{t('priceLabel')}
+                            <Input type="number" step="0.0001" value={row.price} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, price: event.target.value } : item))} className="h-8 bg-[var(--money-superficie)] text-xs" />
                           </label>
-                          <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fee')}
-                            <Input type="number" step="0.01" value={row.fee} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, fee: event.target.value } : item))} className="h-8 bg-white text-xs" />
+                          <label className="space-y-1 text-[10px] font-medium text-[var(--money-testo-muto)]">{t('fee')}
+                            <Input type="number" step="0.01" value={row.fee} onChange={(event) => setLinkedLedgerRows(linkedLedgerRows.map((item, i) => i === index ? { ...item, fee: event.target.value } : item))} className="h-8 bg-[var(--money-superficie)] text-xs" />
                           </label>
                         </div>
                         )}
@@ -3190,7 +3227,7 @@ function MoneyDashboardInner() {
                       const netto = nettoOperazioni(linkedLedgerRows);
                       const mismatch = Math.abs(netto - expected) > 0.01;
                       return (
-                        <p className={`text-[11px] ${mismatch ? 'text-[#a94f3a]' : 'text-[#3b6a5b]'}`}>
+                        <p className={`text-[11px] ${mismatch ? 'text-[var(--money-allarme)]' : 'text-[var(--money-ok)]'}`}>
                           {t('ledgerTotalPreview', {
                             // I separatori delle migliaia sono quelli della lingua
                             // scelta: scritti a mano uscivano "1234.56" accanto a
@@ -3219,11 +3256,11 @@ function MoneyDashboardInner() {
               const nettoOperazioni = linkedBalance?.operations ?? 0;
               const scarto = linkedBalance?.difference ?? 0;
               return (
-              <div className="space-y-2 rounded-lg border border-[#5c8f82]/20 bg-[#f6f9f7] p-3">
+              <div className="space-y-2 rounded-lg border border-[var(--money-anello)]/20 bg-[var(--money-superficie-tenue)] p-3">
                 {/* Titolo e pulsanti su due righe: il dialogo e' largo 448px e
                     su una riga sola i due pulsanti uscivano dal riquadro. */}
-                <p className="text-xs font-semibold text-[#3b6a5b]">{t('linkedLedgerTitle')}</p>
-                {editingTransaction.transactionType !== 'Investment' && <p className="text-[11px] leading-4 text-[#52615d]">{t('linkSavesAsInvestment')}</p>}
+                <p className="text-xs font-semibold text-[var(--money-ok)]">{t('linkedLedgerTitle')}</p>
+                {editingTransaction.transactionType !== 'Investment' && <p className="text-[11px] leading-4 text-[var(--money-testo-muto)]">{t('linkSavesAsInvestment')}</p>}
                 <div className="flex flex-wrap gap-1.5">
                   <Button type="button" variant="outline" size="sm" disabled={linkEditingBusy} onClick={() => { setNuovaOpAperta(true); setNuovaOpImporto(Math.abs(scarto).toFixed(2)); }} className="h-7 flex-1 px-2 text-xs">+ {t('createLedgerShort')}</Button>
                   <Button type="button" variant="outline" size="sm" disabled={linkEditingBusy} onClick={openLinkPicker} className="h-7 flex-1 px-2 text-xs">+ {t('linkExistingShort')}</Button>
@@ -3231,7 +3268,7 @@ function MoneyDashboardInner() {
                 {/* La quadratura, sempre a video: un bonifico e le operazioni che
                     ha finanziato devono dire la stessa cifra, e quando non lo
                     fanno si deve vedere subito di quanto. */}
-                <div className={`grid grid-cols-3 gap-2 rounded-md px-2 py-1.5 text-[10px] ${Math.abs(scarto) < 0.005 ? 'bg-[#eaf5ef] text-[#237056]' : 'bg-[#fdf3e7] text-[#7d6119]'}`}>
+                <div className={`grid grid-cols-3 gap-2 rounded-md px-2 py-1.5 text-[10px] ${Math.abs(scarto) < 0.005 ? 'bg-[var(--money-ok-tenue)] text-[var(--money-ok)]' : 'bg-[var(--money-attenzione-tenue)] text-[var(--money-attenzione)]'}`}>
                   <span className="min-w-0">{t('linkTransferAmount')}<br /><b className="tabular-nums text-xs">{formatEuro(atteso)}</b></span>
                   <span className="min-w-0">{t('linkOperationsTotal')}<br /><b className="tabular-nums text-xs">{formatEuro(nettoOperazioni)}</b></span>
                   <span className="min-w-0">{Math.abs(scarto) < 0.005
@@ -3239,19 +3276,19 @@ function MoneyDashboardInner() {
                     : <>{t('linkDifference')}<br /><b className="tabular-nums text-xs">{scarto > 0 ? '+' : ''}{formatEuro(scarto)}</b></>}</span>
                 </div>
                 {nuovaOpAperta && (
-                  <div className="space-y-2 rounded-md border border-[#5c8f82]/30 bg-white p-2">
-                    <p className="text-[11px] font-semibold text-[#3b6a5b]">{t('createLedgerOperation')}</p>
-                    <p className="text-[10px] leading-4 text-[#5e6c68]">{t('createLedgerOperationHint')}</p>
+                  <div className="space-y-2 rounded-md border border-[var(--money-anello)]/30 bg-[var(--money-superficie)] p-2">
+                    <p className="text-[11px] font-semibold text-[var(--money-ok)]">{t('createLedgerOperation')}</p>
+                    <p className="text-[10px] leading-4 text-[var(--money-testo-tenue)]">{t('createLedgerOperationHint')}</p>
                     <div className="grid grid-cols-2 gap-2">
-                      <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('instrument')}
-                        <Input list="strumenti-esistenti" autoComplete="off" value={nuovaOpNome} onChange={(e) => setNuovaOpNome(e.target.value)} className="h-8 bg-white text-xs" /></label>
-                      <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('operation')}
-                        <select value={nuovaOpTipo} onChange={(e) => setNuovaOpTipo(e.target.value as LedgerTypeDaMovimento)} className="h-8 w-full rounded-md border border-input bg-white px-2 text-xs">{LEDGER_TYPES_DA_MOVIMENTO.map((tipo) => <option key={tipo} value={tipo}>{t(LEDGER_TYPE_LABEL[tipo])}</option>)}</select></label>
-                      <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldAmount')}
-                        <Input type="number" step="0.01" value={nuovaOpImporto} onChange={(e) => setNuovaOpImporto(e.target.value)} className="h-8 bg-white text-xs" /></label>
+                      <label className="space-y-1 text-[10px] font-medium text-[var(--money-testo-muto)]">{t('instrument')}
+                        <Input list="strumenti-esistenti" autoComplete="off" value={nuovaOpNome} onChange={(e) => setNuovaOpNome(e.target.value)} className="h-8 bg-[var(--money-superficie)] text-xs" /></label>
+                      <label className="space-y-1 text-[10px] font-medium text-[var(--money-testo-muto)]">{t('operation')}
+                        <select value={nuovaOpTipo} onChange={(e) => setNuovaOpTipo(e.target.value as LedgerTypeDaMovimento)} className="h-8 w-full rounded-md border border-input bg-[var(--money-superficie)] px-2 text-xs">{LEDGER_TYPES_DA_MOVIMENTO.map((tipo) => <option key={tipo} value={tipo}>{t(LEDGER_TYPE_LABEL[tipo])}</option>)}</select></label>
+                      <label className="space-y-1 text-[10px] font-medium text-[var(--money-testo-muto)]">{t('fieldAmount')}
+                        <Input type="number" step="0.01" value={nuovaOpImporto} onChange={(e) => setNuovaOpImporto(e.target.value)} className="h-8 bg-[var(--money-superficie)] text-xs" /></label>
                       {!SOLO_CONTANTE_DA_MOVIMENTO.includes(nuovaOpTipo) && (
-                        <label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('units')}
-                          <Input type="number" step="0.00000001" value={nuovaOpQuote} onChange={(e) => setNuovaOpQuote(e.target.value)} className="h-8 bg-white text-xs" /></label>
+                        <label className="space-y-1 text-[10px] font-medium text-[var(--money-testo-muto)]">{t('units')}
+                          <Input type="number" step="0.00000001" value={nuovaOpQuote} onChange={(e) => setNuovaOpQuote(e.target.value)} className="h-8 bg-[var(--money-superficie)] text-xs" /></label>
                       )}
                     </div>
                     <div className="flex justify-end gap-1.5">
@@ -3261,17 +3298,17 @@ function MoneyDashboardInner() {
                   </div>
                 )}
                 {linkedLedgerItems.length === 0 ? (
-                  <p className="text-[11px] text-[#52615d]">{t('noLinkedOperations')}</p>
+                  <p className="text-[11px] text-[var(--money-testo-muto)]">{t('noLinkedOperations')}</p>
                 ) : (
                   <ul className="space-y-1.5">
                     {linkedLedgerItems.map((item) => (
-                      <li key={item.linkId} className="flex items-start justify-between gap-2 rounded-md border border-black/8 bg-white p-2">
+                      <li key={item.linkId} className="flex items-start justify-between gap-2 rounded-md border border-[var(--money-velo)]/8 bg-[var(--money-superficie)] p-2">
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-medium">{item.name} <span className="ml-1 rounded-full bg-[#edf0ed] px-1.5 py-0.5 text-[10px] font-normal text-[#5e6c68]">{item.transactionType}</span></p>
+                          <p className="truncate text-xs font-medium">{item.name} <span className="ml-1 rounded-full bg-[var(--money-superficie-hover)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--money-testo-tenue)]">{item.transactionType}</span></p>
                           {/* La data come la scrive il resto dell'app: qui usciva in ISO. */}
-                          <p className="mt-0.5 text-[10px] text-[#5e6c68]">{formatDate(`${item.occurredOn}T12:00:00`)} · <b className="font-medium tabular-nums text-[#52615d]">{formatEuro(item.transactionType === 'Sell' ? -Math.abs(item.amount) : Math.abs(item.amount))}</b>{item.units != null ? ` · ${item.units} @ ${item.price}` : ''}</p>
+                          <p className="mt-0.5 text-[10px] text-[var(--money-testo-tenue)]">{formatDate(`${item.occurredOn}T12:00:00`)} · <b className="font-medium tabular-nums text-[var(--money-testo-muto)]">{formatEuro(item.transactionType === 'Sell' ? -Math.abs(item.amount) : Math.abs(item.amount))}</b>{item.units != null ? ` · ${item.units} @ ${item.price}` : ''}</p>
                         </div>
-                        <Button type="button" variant="ghost" size="icon" title={t('unlinkOperation')} aria-label={`${t('unlinkOperation')} ${item.name}`} disabled={linkEditingBusy} onClick={() => void unlinkLedgerRow(item.linkId)} className="size-7 shrink-0 text-[#a94f3a]"><Unlink className="size-3.5" /></Button>
+                        <Button type="button" variant="ghost" size="icon" title={t('unlinkOperation')} aria-label={`${t('unlinkOperation')} ${item.name}`} disabled={linkEditingBusy} onClick={() => void unlinkLedgerRow(item.linkId)} className="size-7 shrink-0 text-[var(--money-allarme)]"><Unlink className="size-3.5" /></Button>
                       </li>
                     ))}
                   </ul>
@@ -3280,15 +3317,15 @@ function MoneyDashboardInner() {
               );
             })()}
             {linkPickerOpen && (
-              <div className="rounded-lg border border-[#5c8f82]/30 bg-white p-3">
+              <div className="rounded-lg border border-[var(--money-anello)]/30 bg-[var(--money-superficie)] p-3">
                 <div className="mb-2 flex items-center justify-between">
-                  <p className="text-xs font-semibold text-[#3b6a5b]">{t('linkExistingOperation')}</p>
+                  <p className="text-xs font-semibold text-[var(--money-ok)]">{t('linkExistingOperation')}</p>
                   <Button type="button" variant="ghost" size="sm" onClick={() => setLinkPickerOpen(false)} className="h-7 text-xs">{t('cancel')}</Button>
                 </div>
                 {linkPickerBusy ? (
-                  <p className="text-[11px] text-[#52615d]">{t('loadingEllipsis')}</p>
+                  <p className="text-[11px] text-[var(--money-testo-muto)]">{t('loadingEllipsis')}</p>
                 ) : linkPickerLedger.length === 0 ? (
-                  <p className="text-[11px] text-[#52615d]">{t('allOperationsLinked')}</p>
+                  <p className="text-[11px] text-[var(--money-testo-muto)]">{t('allOperationsLinked')}</p>
                 ) : (() => {
                   // Cerca su nome, data e importo insieme: quello che uno ha
                   // sott'occhio guardando un bonifico e' la cifra o il giorno,
@@ -3299,27 +3336,27 @@ function MoneyDashboardInner() {
                     : linkPickerLedger;
                   return <>
                     <div className="relative mb-2">
-                      <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-black/35" />
-                      <Input aria-label={t('searchOperation')} value={linkPickerQuery} onChange={(event) => setLinkPickerQuery(event.target.value)} className="h-8 bg-[#fafaf8] pl-8 text-xs" placeholder={t('searchOperationPlaceholder')} />
+                      <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--money-velo)]/35" />
+                      <Input aria-label={t('searchOperation')} value={linkPickerQuery} onChange={(event) => setLinkPickerQuery(event.target.value)} className="h-8 bg-[var(--money-superficie-tenue)] pl-8 text-xs" placeholder={t('searchOperationPlaceholder')} />
                     </div>
-                    {trovati.length === 0 ? <p className="text-[11px] text-[#52615d]">{t('noOperationsMatch')}</p> : <>
+                    {trovati.length === 0 ? <p className="text-[11px] text-[var(--money-testo-muto)]">{t('noOperationsMatch')}</p> : <>
                       <ul className="max-h-48 space-y-1 overflow-auto">
                         {trovati.slice(0, 50).map((item) => (
                           <li key={item.id}>
-                            <Button type="button" variant="ghost" disabled={linkEditingBusy} onClick={() => void linkExistingLedger(item.id)} className="h-auto w-full justify-between whitespace-normal rounded-md border border-black/5 bg-white px-2 py-1.5 text-left text-xs hover:bg-[#f4f5f1]">
-                              <span className="min-w-0 flex-1 truncate">{item.name} <span className="ml-1 text-[10px] text-[#5e6c68]">{item.transactionType}</span></span>
-                              <span className="ml-2 shrink-0 text-[10px] text-[#5e6c68]">{formatDate(`${item.occurredOn}T12:00:00`)} · {item.amount} {item.currency}</span>
+                            <Button type="button" variant="ghost" disabled={linkEditingBusy} onClick={() => void linkExistingLedger(item.id)} className="h-auto w-full justify-between whitespace-normal rounded-md border border-[var(--money-velo)]/5 bg-[var(--money-superficie)] px-2 py-1.5 text-left text-xs hover:bg-[var(--money-superficie-hover)]">
+                              <span className="min-w-0 flex-1 truncate">{item.name} <span className="ml-1 text-[10px] text-[var(--money-testo-tenue)]">{item.transactionType}</span></span>
+                              <span className="ml-2 shrink-0 text-[10px] text-[var(--money-testo-tenue)]">{formatDate(`${item.occurredOn}T12:00:00`)} · {item.amount} {item.currency}</span>
                             </Button>
                           </li>
                         ))}
                       </ul>
-                      <p className="mt-1.5 text-[10px] text-[#5e6c68]">{trovati.length > 50 ? t('operationsShownOfMatching', { shown: 50, total: trovati.length }) : t('operationsToLink', { count: trovati.length })}</p>
+                      <p className="mt-1.5 text-[10px] text-[var(--money-testo-tenue)]">{trovati.length > 50 ? t('operationsShownOfMatching', { shown: 50, total: trovati.length }) : t('operationsToLink', { count: trovati.length })}</p>
                     </>}
                   </>;
                 })()}
               </div>
             )}
-            {saveError && <p className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{saveError}</p>}
+            {saveError && <p className="rounded-lg bg-[var(--money-allarme-tenue)] px-3 py-2 text-xs text-[var(--money-allarme)]">{saveError}</p>}
             <DialogFooter className="mx-0 mb-0 mt-5 border-0 bg-transparent p-0">
               <Button type="button" variant="outline" onClick={() => setNewTransactionOpen(false)}>{t('cancel')}</Button>
               <Button type="submit" disabled={saving} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{saving ? t('savingEllipsis') : editingTransaction ? t('saveChanges') : duplicatingTransaction ? t('createCopy') : t('saveMovement')}</Button>
@@ -3332,12 +3369,12 @@ function MoneyDashboardInner() {
         <DialogContent className="max-w-md gap-5 p-6">
           <DialogHeader><DialogTitle className="text-lg">{t(debtTransferMode === 'repayment' ? 'registerDebtPayment' : debtTransferMode === 'drawdown' ? 'registerDebtDrawdown' : 'transferBetweenAccounts')}</DialogTitle><DialogDescription>{t(debtTransferMode ? 'debtTransferDesc' : 'transferDesc')}</DialogDescription></DialogHeader>
           <form className="space-y-4" onSubmit={handleCreateTransfer}>
-            <label htmlFor="transfer-date" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDate')}<Input id="transfer-date" required name="occurred_on" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className="h-10 bg-white" /></label>
-            <label htmlFor="transfer-source" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldFrom')}<select id="transfer-source" required name="source_account" value={transferSource} onChange={(event) => setTransferSource(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm"><option value="" disabled>{t('selectAccount')}</option>{accounts.filter(a => a.isActive !== false).map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}</select></label>
-            <label htmlFor="transfer-destination" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldTo')}<select id="transfer-destination" required name="destination_account" value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm"><option value="" disabled>{t('selectAccount')}</option>{accounts.filter(a => a.isActive !== false).map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}</select></label>
-            {debtTransferMode === 'repayment' ? <><div className="grid grid-cols-2 gap-3"><label htmlFor="transfer-principal" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('principalShare')}<Input id="transfer-principal" required min="0" step="0.01" name="principal_amount" type="number" value={transferPrincipal} onChange={(event) => setTransferPrincipal(event.target.value)} /></label><label htmlFor="transfer-interest" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('interestShare')}<Input id="transfer-interest" required min="0" step="0.01" name="interest_amount" type="number" value={transferInterest} onChange={(event) => setTransferInterest(event.target.value)} /></label></div><p className="rounded-lg bg-[#f4f5f1] px-3 py-2 text-xs text-[#52615d]">{t('debtPaymentTotal', { amount: formatEuro(Number(transferPrincipal || 0) + Number(transferInterest || 0)) })}</p></> : <label htmlFor="transfer-amount" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t(debtTransferMode === 'drawdown' ? 'principalShare' : 'fieldAmount')}<Input id="transfer-amount" required min="0.01" step="0.01" name="amount" type="number" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} className="h-10 bg-white" /></label>}
-            <label htmlFor="transfer-details" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDescription')}<Input id="transfer-details" name="details" placeholder={t('optionalNote')} className="h-10 bg-white" /></label>
-            {saveError && <p className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{saveError}</p>}
+            <label htmlFor="transfer-date" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldDate')}<Input id="transfer-date" required name="occurred_on" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className="h-10 bg-[var(--money-superficie)]" /></label>
+            <label htmlFor="transfer-source" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldFrom')}<select id="transfer-source" required name="source_account" value={transferSource} onChange={(event) => setTransferSource(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm"><option value="" disabled>{t('selectAccount')}</option>{accounts.filter(a => a.isActive !== false).map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}</select></label>
+            <label htmlFor="transfer-destination" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldTo')}<select id="transfer-destination" required name="destination_account" value={transferDestination} onChange={(event) => setTransferDestination(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm"><option value="" disabled>{t('selectAccount')}</option>{accounts.filter(a => a.isActive !== false).map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}</select></label>
+            {debtTransferMode === 'repayment' ? <><div className="grid grid-cols-2 gap-3"><label htmlFor="transfer-principal" className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('principalShare')}<Input id="transfer-principal" required min="0" step="0.01" name="principal_amount" type="number" value={transferPrincipal} onChange={(event) => setTransferPrincipal(event.target.value)} /></label><label htmlFor="transfer-interest" className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('interestShare')}<Input id="transfer-interest" required min="0" step="0.01" name="interest_amount" type="number" value={transferInterest} onChange={(event) => setTransferInterest(event.target.value)} /></label></div><p className="rounded-lg bg-[var(--money-superficie-hover)] px-3 py-2 text-xs text-[var(--money-testo-muto)]">{t('debtPaymentTotal', { amount: formatEuro(Number(transferPrincipal || 0) + Number(transferInterest || 0)) })}</p></> : <label htmlFor="transfer-amount" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t(debtTransferMode === 'drawdown' ? 'principalShare' : 'fieldAmount')}<Input id="transfer-amount" required min="0.01" step="0.01" name="amount" type="number" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} className="h-10 bg-[var(--money-superficie)]" /></label>}
+            <label htmlFor="transfer-details" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldDescription')}<Input id="transfer-details" name="details" placeholder={t('optionalNote')} className="h-10 bg-[var(--money-superficie)]" /></label>
+            {saveError && <p className="rounded-lg bg-[var(--money-allarme-tenue)] px-3 py-2 text-xs text-[var(--money-allarme)]">{saveError}</p>}
             <DialogFooter className="mx-0 mb-0 mt-5 border-0 bg-transparent p-0"><Button type="button" variant="outline" onClick={() => setTransferOpen(false)}>{t('cancel')}</Button><Button type="submit" disabled={saving} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{saving ? t('savingEllipsis') : t(debtTransferMode === 'repayment' ? 'registerDebtPayment' : debtTransferMode === 'drawdown' ? 'registerDebtDrawdown' : 'registerTransfer')}</Button></DialogFooter>
           </form>
         </DialogContent>
@@ -3355,28 +3392,28 @@ function MoneyDashboardInner() {
                 <DialogDescription>{t('valuationsDialogDesc')}</DialogDescription>
               </DialogHeader>
               {stime.length === 0
-                ? <p className="rounded-lg bg-[#fafaf8] px-3 py-4 text-center text-xs text-[#5e6c68]">{t('valuationsEmpty')}</p>
-                : <ul className="divide-y divide-black/5 rounded-lg border border-black/6">
+                ? <p className="rounded-lg bg-[var(--money-superficie-tenue)] px-3 py-4 text-center text-xs text-[var(--money-testo-tenue)]">{t('valuationsEmpty')}</p>
+                : <ul className="divide-y divide-[var(--money-velo)]/5 rounded-lg border border-[var(--money-velo)]/6">
                     {stime.map((stima) => {
                       // La stessa forma della conferma di cancellazione
                       // (`handleValuationDelete`): due scritture dello stesso
                       // giorno nella stessa finestra erano due date diverse.
                       const quando = formatDate(`${stima.observedOn}T12:00:00`, { day: 'numeric', month: 'short', year: 'numeric' });
                       return <li key={stima.id} className="flex items-center gap-3 px-3 py-2.5">
-                        <span className="w-24 shrink-0 text-xs tabular-nums text-[#5e6c68]">{quando}</span>
+                        <span className="w-24 shrink-0 text-xs tabular-nums text-[var(--money-testo-tenue)]">{quando}</span>
                         <span className="flex-1 text-sm font-semibold tabular-nums">{formatEuro(stima.value)}</span>
-                        {stima.notes && <span className="truncate text-xs text-[#5e6c68]">{stima.notes}</span>}
-                        <Button size="icon" variant="ghost" aria-label={`${t('delete')} ${quando}`} onClick={() => void handleValuationDelete(stima.id, stima.observedOn)} className="text-[#a94f3a] hover:text-[#a04f3a]"><Trash2 className="size-4" /></Button>
+                        {stima.notes && <span className="truncate text-xs text-[var(--money-testo-tenue)]">{stima.notes}</span>}
+                        <Button size="icon" variant="ghost" aria-label={`${t('delete')} ${quando}`} onClick={() => void handleValuationDelete(stima.id, stima.observedOn)} className="text-[var(--money-allarme)] hover:text-[var(--money-allarme-hover)]"><Trash2 className="size-4" /></Button>
                       </li>;
                     })}
                   </ul>}
               <form className="space-y-3" onSubmit={handleValuationSave}>
                 <div className="grid grid-cols-2 gap-3">
-                  <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDate')}<Input required name="observed_on" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className="h-10 bg-white" /></label>
-                  <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('value')}<Input required name="value" type="number" step="0.01" className="h-10 bg-white" /></label>
+                  <label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldDate')}<Input required name="observed_on" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className="h-10 bg-[var(--money-superficie)]" /></label>
+                  <label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('value')}<Input required name="value" type="number" step="0.01" className="h-10 bg-[var(--money-superficie)]" /></label>
                 </div>
-                <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('note')}<Input name="notes" placeholder={t('optional')} className="h-10 bg-white" /></label>
-                {accountError && <p className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{accountError}</p>}
+                <label className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('note')}<Input name="notes" placeholder={t('optional')} className="h-10 bg-[var(--money-superficie)]" /></label>
+                {accountError && <p className="rounded-lg bg-[var(--money-allarme-tenue)] px-3 py-2 text-xs text-[var(--money-allarme)]">{accountError}</p>}
                 <DialogFooter className="mx-0 mb-0 mt-4 border-0 bg-transparent p-0">
                   <Button type="button" variant="outline" onClick={() => setValuationForId(null)}>{t('close')}</Button>
                   <Button type="submit" disabled={accountSaving} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{accountSaving ? t('savingEllipsis') : t('addValuation')}</Button>
@@ -3398,21 +3435,21 @@ function MoneyDashboardInner() {
               {/* La key rimonta il form quando si passa da un conto all'altro:
                   senza, i defaultValue resterebbero quelli del conto di prima. */}
               <form key={conto?.id ?? 'new'} className="space-y-4" onSubmit={handleAccountSave}>
-                <label htmlFor="account-name" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldName')}<Input id="account-name" required name="name" defaultValue={conto?.name ?? ''} className="h-10 bg-white" /></label>
-                <label htmlFor="account-group" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldGroup')}<select id="account-group" required name="source_group" value={accountGroup} onChange={(event) => setAccountGroup(event.target.value as Account['group'])} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm">
+                <label htmlFor="account-name" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldName')}<Input id="account-name" required name="name" defaultValue={conto?.name ?? ''} className="h-10 bg-[var(--money-superficie)]" /></label>
+                <label htmlFor="account-group" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldGroup')}<select id="account-group" required name="source_group" value={accountGroup} onChange={(event) => setAccountGroup(event.target.value as Account['group'])} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm">
                   <option value="bank">{t('groupBank')}</option>
                   <option value="asset">{t('groupAsset')}</option>
                   <option value="liability">{t('groupLiability')}</option>
                 </select></label>
-                <label htmlFor="account-currency" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldCurrency')}<Input id="account-currency" name="currency" maxLength={3} defaultValue={conto?.currency ?? 'EUR'} className="h-10 w-24 bg-white uppercase" /><span className="block pt-1 font-normal leading-5 text-[#5e6c68]">{t('accountCurrencyHint')}</span></label>
-                <label htmlFor="account-balance" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldInitialBalance')}<Input id="account-balance" name="starting_balance" type="number" step="0.01" defaultValue={conto ? String(conto.startingBalance) : '0'} className="h-10 bg-white" />{accountGroup === 'liability' && <span className="block pt-1 font-normal leading-5 text-[#5e6c68]">{t('initialBalanceSignHint')}</span>}</label>
-                <label htmlFor="account-notes" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('note')}<textarea id="account-notes" name="notes" defaultValue={conto?.notes ?? ''} className="min-h-20 w-full rounded-lg border border-input bg-white p-2.5 text-sm" /></label>
-                <label className="flex items-center gap-2.5 text-xs font-medium text-[#52615d]"><input type="checkbox" name="counts_in_net_worth" defaultChecked={conto ? conto.countsInNetWorth !== false : true} className="size-4 accent-[var(--money-primary)]" />{t('fieldCountsInNetWorth')}</label>
-                {accountGroup === 'asset' && <label title={t('liquidityExplanation')} className="flex items-center gap-2.5 text-xs font-medium text-[#52615d]"><input type="checkbox" name="is_liquid" defaultChecked={conto?.isLiquid === true} className="size-4 accent-[var(--money-primary)]" />{t('fieldLiquid')}</label>}
-                {accountGroup === 'asset' && <label className="block space-y-1 text-xs font-medium text-[#52615d]"><span className="flex items-center gap-2.5"><input type="checkbox" name="is_broker" defaultChecked={conto?.isBroker === true} className="size-4 accent-[var(--money-primary)]" />{t('fieldBroker')}</span><span className="block pl-6.5 pt-1 font-normal leading-5 text-[#5e6c68]">{t('brokerHint')}</span></label>}
-                {accountGroup === 'asset' && <label className="block space-y-1 text-xs font-medium text-[#52615d]"><span className="flex items-center gap-2.5"><input type="checkbox" name="needs_manual_valuation" defaultChecked={conto?.needsManualValuation === true} className="size-4 accent-[var(--money-primary)]" />{t('fieldManualValuation')}</span><span className="block pl-6.5 pt-1 font-normal leading-5 text-[#5e6c68]">{t('manualValuationHint')}</span></label>}
-                {conto && <label className="flex items-center gap-2.5 text-xs font-medium text-[#52615d]"><input type="checkbox" name="is_archived" defaultChecked={conto.isActive === false} className="size-4 accent-[var(--money-primary)]" />{t('fieldArchived')}</label>}
-                {accountError && <p className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{accountError}</p>}
+                <label htmlFor="account-currency" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldCurrency')}<Input id="account-currency" name="currency" maxLength={3} defaultValue={conto?.currency ?? 'EUR'} className="h-10 w-24 bg-[var(--money-superficie)] uppercase" /><span className="block pt-1 font-normal leading-5 text-[var(--money-testo-tenue)]">{t('accountCurrencyHint')}</span></label>
+                <label htmlFor="account-balance" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldInitialBalance')}<Input id="account-balance" name="starting_balance" type="number" step="0.01" defaultValue={conto ? String(conto.startingBalance) : '0'} className="h-10 bg-[var(--money-superficie)]" />{accountGroup === 'liability' && <span className="block pt-1 font-normal leading-5 text-[var(--money-testo-tenue)]">{t('initialBalanceSignHint')}</span>}</label>
+                <label htmlFor="account-notes" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('note')}<textarea id="account-notes" name="notes" defaultValue={conto?.notes ?? ''} className="min-h-20 w-full rounded-lg border border-input bg-[var(--money-superficie)] p-2.5 text-sm" /></label>
+                <label className="flex items-center gap-2.5 text-xs font-medium text-[var(--money-testo-muto)]"><input type="checkbox" name="counts_in_net_worth" defaultChecked={conto ? conto.countsInNetWorth !== false : true} className="size-4 accent-[var(--money-primary)]" />{t('fieldCountsInNetWorth')}</label>
+                {accountGroup === 'asset' && <label title={t('liquidityExplanation')} className="flex items-center gap-2.5 text-xs font-medium text-[var(--money-testo-muto)]"><input type="checkbox" name="is_liquid" defaultChecked={conto?.isLiquid === true} className="size-4 accent-[var(--money-primary)]" />{t('fieldLiquid')}</label>}
+                {accountGroup === 'asset' && <label className="block space-y-1 text-xs font-medium text-[var(--money-testo-muto)]"><span className="flex items-center gap-2.5"><input type="checkbox" name="is_broker" defaultChecked={conto?.isBroker === true} className="size-4 accent-[var(--money-primary)]" />{t('fieldBroker')}</span><span className="block pl-6.5 pt-1 font-normal leading-5 text-[var(--money-testo-tenue)]">{t('brokerHint')}</span></label>}
+                {accountGroup === 'asset' && <label className="block space-y-1 text-xs font-medium text-[var(--money-testo-muto)]"><span className="flex items-center gap-2.5"><input type="checkbox" name="needs_manual_valuation" defaultChecked={conto?.needsManualValuation === true} className="size-4 accent-[var(--money-primary)]" />{t('fieldManualValuation')}</span><span className="block pl-6.5 pt-1 font-normal leading-5 text-[var(--money-testo-tenue)]">{t('manualValuationHint')}</span></label>}
+                {conto && <label className="flex items-center gap-2.5 text-xs font-medium text-[var(--money-testo-muto)]"><input type="checkbox" name="is_archived" defaultChecked={conto.isActive === false} className="size-4 accent-[var(--money-primary)]" />{t('fieldArchived')}</label>}
+                {accountError && <p className="rounded-lg bg-[var(--money-allarme-tenue)] px-3 py-2 text-xs text-[var(--money-allarme)]">{accountError}</p>}
                 <DialogFooter className="mx-0 mb-0 mt-5 border-0 bg-transparent p-0">
                   <Button type="button" variant="outline" onClick={() => setAccountDialog(null)}>{t('cancel')}</Button>
                   <Button type="submit" disabled={accountSaving} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{accountSaving ? t('savingEllipsis') : t('save')}</Button>
@@ -3479,13 +3516,13 @@ function PeriodSelector({ value: periodoScelto, years, onChange, allowMonth = tr
   };
   return <div role="toolbar" aria-label={t('period')} tabIndex={0} onKeyDown={(event) => { if (event.target !== event.currentTarget) return; if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); move(event.key === 'ArrowLeft' ? -1 : 1); } }} className="flex flex-wrap items-center gap-1 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-[var(--money-primary)]/40">
     <div className="flex flex-nowrap items-center gap-1">
-    <button type="button" aria-label={t('previousPeriod')} onClick={() => move(-1)} disabled={atMin} className="grid size-10 shrink-0 place-items-center rounded-xl border border-black/7 bg-white text-[#52615d] shadow-sm shadow-black/[0.02] transition hover:bg-[#f4f5f1] disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeft className="size-4" /></button>
-    <label className="relative"><span className="sr-only">{t('year')}</span><select aria-label={t('year')} value={scope === 'last12' ? 'last12' : value.year} onChange={(event) => onChange(event.target.value === 'last12' ? { ...value, scope: 'last12' } : { ...value, year: Number(event.target.value), scope: 'year' })} className="h-10 appearance-none rounded-xl border border-black/7 bg-white py-0 pl-3.5 pr-9 text-sm font-medium shadow-sm outline-none focus:border-[#5c8f82]">{allowLast12 && <option value="last12">{t('analysisPeriodLast12')}</option>}{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-black/45" /></label>
-    {allowMonth && <label className="relative"><span className="sr-only">{t('period')}</span><select aria-label={t('period')} value={scope === 'year' ? 'year' : value.month} onChange={(event) => { const annual = event.target.value === 'year'; onChange({ ...value, scope: annual ? 'year' : 'month', month: annual ? value.month : Number(event.target.value) }); if (annual && compareTo === 'prior_period') onCompareToChange?.('prior_year'); }} className="h-10 appearance-none rounded-xl border border-black/7 bg-white py-0 pl-3.5 pr-9 text-sm font-medium shadow-sm outline-none focus:border-[#5c8f82]">{allowYear && <option value="year">{t('wholeYear')}</option>}{monthNames.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-black/45" /></label>}
-    <button type="button" aria-label={t('nextPeriod')} onClick={() => move(1)} disabled={atMax} className="grid size-10 shrink-0 place-items-center rounded-xl border border-black/7 bg-white text-[#52615d] shadow-sm shadow-black/[0.02] transition hover:bg-[#f4f5f1] disabled:cursor-not-allowed disabled:opacity-40"><ChevronRight className="size-4" /></button>
-    <button type="button" onClick={() => onChange({ year: OGGI.getFullYear(), month: OGGI.getMonth() + 1, scope: allowMonth ? 'month' : value.scope })} disabled={scope === 'last12' || (allowMonth ? scope === 'month' && value.year === OGGI.getFullYear() && value.month === OGGI.getMonth() + 1 : value.year === OGGI.getFullYear())} className="h-10 rounded-xl border border-black/7 bg-white px-3 text-sm font-medium text-[#52615d] shadow-sm hover:bg-[#f4f5f1] disabled:opacity-40">{t('today')}</button>
+    <button type="button" aria-label={t('previousPeriod')} onClick={() => move(-1)} disabled={atMin} className="grid size-10 shrink-0 place-items-center rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] text-[var(--money-testo-muto)] shadow-sm shadow-black/[0.02] transition hover:bg-[var(--money-superficie-hover)] disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeft className="size-4" /></button>
+    <label className="relative"><span className="sr-only">{t('year')}</span><select aria-label={t('year')} value={scope === 'last12' ? 'last12' : value.year} onChange={(event) => onChange(event.target.value === 'last12' ? { ...value, scope: 'last12' } : { ...value, year: Number(event.target.value), scope: 'year' })} className="h-10 appearance-none rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] py-0 pl-3.5 pr-9 text-sm font-medium shadow-sm outline-none focus:border-[var(--money-anello)]">{allowLast12 && <option value="last12">{t('analysisPeriodLast12')}</option>}{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-[var(--money-velo)]/45" /></label>
+    {allowMonth && <label className="relative"><span className="sr-only">{t('period')}</span><select aria-label={t('period')} value={scope === 'year' ? 'year' : value.month} onChange={(event) => { const annual = event.target.value === 'year'; onChange({ ...value, scope: annual ? 'year' : 'month', month: annual ? value.month : Number(event.target.value) }); if (annual && compareTo === 'prior_period') onCompareToChange?.('prior_year'); }} className="h-10 appearance-none rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] py-0 pl-3.5 pr-9 text-sm font-medium shadow-sm outline-none focus:border-[var(--money-anello)]">{allowYear && <option value="year">{t('wholeYear')}</option>}{monthNames.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-[var(--money-velo)]/45" /></label>}
+    <button type="button" aria-label={t('nextPeriod')} onClick={() => move(1)} disabled={atMax} className="grid size-10 shrink-0 place-items-center rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] text-[var(--money-testo-muto)] shadow-sm shadow-black/[0.02] transition hover:bg-[var(--money-superficie-hover)] disabled:cursor-not-allowed disabled:opacity-40"><ChevronRight className="size-4" /></button>
+    <button type="button" onClick={() => onChange({ year: OGGI.getFullYear(), month: OGGI.getMonth() + 1, scope: allowMonth ? 'month' : value.scope })} disabled={scope === 'last12' || (allowMonth ? scope === 'month' && value.year === OGGI.getFullYear() && value.month === OGGI.getMonth() + 1 : value.year === OGGI.getFullYear())} className="h-10 rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] px-3 text-sm font-medium text-[var(--money-testo-muto)] shadow-sm hover:bg-[var(--money-superficie-hover)] disabled:opacity-40">{t('today')}</button>
     </div>
-    {compareTo !== undefined && onCompareToChange && <label className="relative ml-1"><span className="sr-only">{t('compareWith')}</span><select aria-label={t('compareWith')} value={compareTo} onChange={(event) => onCompareToChange(event.target.value as 'none' | 'prior_period' | 'prior_year')} className="h-10 appearance-none rounded-xl border border-black/7 bg-white py-0 pl-3.5 pr-9 text-sm font-medium shadow-sm outline-none focus:border-[#5c8f82]"><option value="prior_year">{scope === 'year' ? t('priorYear') : t('vsSamePeriodPriorYear', { unit: t('monthUnit') })}</option>{scope === 'month' && <option value="prior_period">{t('vsPriorPeriod', { label: t('priorMonth').toLowerCase() })}</option>}<option value="none">{t('noComparisonOption')}</option></select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-black/45" /></label>}
+    {compareTo !== undefined && onCompareToChange && <label className="relative ml-1"><span className="sr-only">{t('compareWith')}</span><select aria-label={t('compareWith')} value={compareTo} onChange={(event) => onCompareToChange(event.target.value as 'none' | 'prior_period' | 'prior_year')} className="h-10 appearance-none rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] py-0 pl-3.5 pr-9 text-sm font-medium shadow-sm outline-none focus:border-[var(--money-anello)]"><option value="prior_year">{scope === 'year' ? t('priorYear') : t('vsSamePeriodPriorYear', { unit: t('monthUnit') })}</option>{scope === 'month' && <option value="prior_period">{t('vsPriorPeriod', { label: t('priorMonth').toLowerCase() })}</option>}<option value="none">{t('noComparisonOption')}</option></select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-[var(--money-velo)]/45" /></label>}
     <output className="sr-only" aria-live="polite">{t('selectedPeriodAnnouncement', { period: periodLabel })}</output>
   </div>;
 }
@@ -3500,7 +3537,7 @@ const MAX_ANNI_CONFRONTO = TREND_COLORS.length;
 function YearComparisonSelector({ availableYears, selected, onChange }: { availableYears: number[]; selected: number[]; onChange: (years: number[]) => void }) {
   const { t } = useI18n();
   if (!availableYears.length) {
-    return <p className="text-xs text-[#5e6c68]">{t('trendsNoYears')}</p>;
+    return <p className="text-xs text-[var(--money-testo-tenue)]">{t('trendsNoYears')}</p>;
   }
   const alTetto = selected.length >= MAX_ANNI_CONFRONTO;
   const toggle = (year: number) => {
@@ -3517,22 +3554,22 @@ function YearComparisonSelector({ availableYears, selected, onChange }: { availa
   // tastiera lo apre e lo chiude da sola.
   return (
     <details className="group relative">
-      <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-xl border border-black/7 bg-white px-3.5 text-sm font-medium shadow-sm shadow-black/[0.02] transition hover:bg-[#f8f9f6] [&::-webkit-details-marker]:hidden">
-        <span className="text-[#5e6c68]">{t('trendsCompareYears')}:</span>
+      <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] px-3.5 text-sm font-medium shadow-sm shadow-black/[0.02] transition hover:bg-[var(--money-superficie-tenue)] [&::-webkit-details-marker]:hidden">
+        <span className="text-[var(--money-testo-tenue)]">{t('trendsCompareYears')}:</span>
         <span className="tabular-nums">{selected.join(', ')}</span>
-        <ChevronDown className="size-4 shrink-0 text-black/45 transition group-open:rotate-180" />
+        <ChevronDown className="size-4 shrink-0 text-[var(--money-velo)]/45 transition group-open:rotate-180" />
       </summary>
-      <div className="absolute right-0 z-20 mt-1.5 w-max max-w-[20rem] rounded-xl border border-black/7 bg-white p-2.5 shadow-lg shadow-black/[0.08]">
+      <div className="absolute right-0 z-20 mt-1.5 w-max max-w-[20rem] rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] p-2.5 shadow-lg shadow-black/[0.08]">
         <div className="flex flex-wrap gap-1.5">
           {availableYears.map((year) => {
             const active = selected.includes(year);
             // Al tetto restano premibili solo quelli gia' scelti, per poterli
             // togliere: gli altri si spengono invece di rifiutare il clic.
             const bloccato = !active && alTetto;
-            return <button key={year} type="button" aria-pressed={active} disabled={bloccato} onClick={() => toggle(year)} className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${active ? 'border-[var(--money-deep)] bg-[var(--money-deep)] text-white' : bloccato ? 'cursor-not-allowed border-black/5 bg-[#fafaf8] text-[#b6bdba]' : 'border-black/8 bg-white text-[#5e6c68] hover:bg-[#f0f2ee]'}`}>{year}</button>;
+            return <button key={year} type="button" aria-pressed={active} disabled={bloccato} onClick={() => toggle(year)} className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${active ? 'border-[var(--money-deep)] bg-[var(--money-deep)] text-white' : bloccato ? 'cursor-not-allowed border-[var(--money-velo)]/5 bg-[var(--money-superficie-tenue)] text-[var(--money-icona)]' : 'border-[var(--money-velo)]/8 bg-[var(--money-superficie)] text-[var(--money-testo-tenue)] hover:bg-[var(--money-superficie-hover)]'}`}>{year}</button>;
           })}
         </div>
-        <p className="mt-2 px-0.5 text-[11px] leading-4 text-[#5e6c68]">{t('trendsMaxYears', { max: MAX_ANNI_CONFRONTO })}</p>
+        <p className="mt-2 px-0.5 text-[11px] leading-4 text-[var(--money-testo-tenue)]">{t('trendsMaxYears', { max: MAX_ANNI_CONFRONTO })}</p>
       </div>
       <output className="sr-only" aria-live="polite">{t('selectedYearsAnnouncement', { years: selected.join(', ') })}</output>
     </details>
@@ -3888,8 +3925,8 @@ function SectionView({
   return (
     <>
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div><p className="mb-1 text-sm font-medium text-[#5e6c68]">{t(SECTION_DESC_KEYS[section])}</p><h1 className="flex items-center text-2xl font-semibold tracking-[-0.03em] sm:text-[30px]">{t(SECTION_LABEL_KEYS[section])}<PageHelp titolo="helpTitle" testo={SECTION_HELP_KEYS[section][0]} dipendenza={SECTION_HELP_KEYS[section][1]} /></h1></div>
-        {section === 'Movimenti' && <div className="flex flex-wrap gap-2"><div className="flex flex-wrap gap-2"><Button disabled={pdfImporting} onClick={() => void onPdfImport()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileText className={`size-4 ${pdfImporting ? 'animate-spin' : ''}`} />{pdfImporting ? t('importingEllipsis') : t('importFromPdf')}</Button><Button disabled={pdfImporting} onClick={() => void onCsvImport()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileSpreadsheet className={`size-4 ${pdfImporting ? 'animate-spin' : ''}`} />{pdfImporting ? t('importingEllipsis') : t('importFromCsv')}</Button><Button disabled={pdfImporting} onClick={() => void onBackupImport()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><DatabaseBackup className={`size-4 ${pdfImporting ? 'animate-spin' : ''}`} />{pdfImporting ? t('importingEllipsis') : t('importFromFastbudget')}</Button></div><Button variant="outline" className="h-10 rounded-xl bg-white" onClick={() => onTransfer()}><ArrowRightLeft className="size-4" />{t('transfer')}</Button><Button className="h-10 rounded-xl bg-[var(--money-primary)] px-4 text-white hover:bg-[var(--money-primary-hover)]" onClick={onNewTransaction}><Plus className="size-4" />{t('newTransaction')}</Button></div>}
+        <div><p className="mb-1 text-sm font-medium text-[var(--money-testo-tenue)]">{t(SECTION_DESC_KEYS[section])}</p><h1 className="flex items-center text-2xl font-semibold tracking-[-0.03em] sm:text-[30px]">{t(SECTION_LABEL_KEYS[section])}<PageHelp titolo="helpTitle" testo={SECTION_HELP_KEYS[section][0]} dipendenza={SECTION_HELP_KEYS[section][1]} /></h1></div>
+        {section === 'Movimenti' && <div className="flex flex-wrap gap-2"><div className="flex flex-wrap gap-2"><Button disabled={pdfImporting} onClick={() => void onPdfImport()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileText className={`size-4 ${pdfImporting ? 'animate-spin' : ''}`} />{pdfImporting ? t('importingEllipsis') : t('importFromPdf')}</Button><Button disabled={pdfImporting} onClick={() => void onCsvImport()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileSpreadsheet className={`size-4 ${pdfImporting ? 'animate-spin' : ''}`} />{pdfImporting ? t('importingEllipsis') : t('importFromCsv')}</Button><Button disabled={pdfImporting} onClick={() => void onBackupImport()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><DatabaseBackup className={`size-4 ${pdfImporting ? 'animate-spin' : ''}`} />{pdfImporting ? t('importingEllipsis') : t('importFromFastbudget')}</Button></div><Button variant="outline" className="h-10 rounded-xl bg-[var(--money-superficie)]" onClick={() => onTransfer()}><ArrowRightLeft className="size-4" />{t('transfer')}</Button><Button className="h-10 rounded-xl bg-[var(--money-primary)] px-4 text-white hover:bg-[var(--money-primary-hover)]" onClick={onNewTransaction}><Plus className="size-4" />{t('newTransaction')}</Button></div>}
         {/* Le Categorie e le Entrate tardive non leggono il periodo: il primo
             mostra due alberi interi, il secondo due impostazioni. Il selettore
             acceso voleva dire poter cambiare mese senza che niente si muovesse. */}
@@ -3904,26 +3941,26 @@ function SectionView({
         {section === 'Report' && <PeriodSelector value={period} years={years} onChange={onPeriodChange} allowYear={false} />}
       </div>
 
-      {section === 'Movimenti' && <div className="space-y-4"><p className="text-xs text-[#5e6c68]">{t('statementAllDates')}</p>
+      {section === 'Movimenti' && <div className="space-y-4"><p className="text-xs text-[var(--money-testo-tenue)]">{t('statementAllDates')}</p>
         {/* Un import che non riesce non e' una notizia come le altre: `ok`
             c'era gia' e non si guardava, e la riga d'errore aveva l'aspetto di
             quella di riuscita. */}
         {importFeedback && (importFeedback.ok
-          ? <p role="status" className="rounded-xl border border-black/6 bg-white px-4 py-2 text-sm text-[#3a4a46] shadow-sm shadow-black/[0.02]">{importFeedback.message}</p>
-          : <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#a94f3a]">{importFeedback.message}</p>)}
-        {refundError && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#a94f3a]">{refundError}</p>}
-        <div className="flex flex-wrap gap-2 rounded-xl border border-black/6 bg-white p-1.5 shadow-sm">
-          {([['list', t('movementsTabList')], ['recurring', t('movementsTabRecurring')], ['rules', t('movementsTabRules')]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setMovementsView(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${movementsView === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#5e6c68] hover:bg-[#f0f2ee]'}`}>{label}</button>)}
+          ? <p role="status" className="rounded-xl border border-[var(--money-velo)]/6 bg-[var(--money-superficie)] px-4 py-2 text-sm text-[var(--money-testo)] shadow-sm shadow-black/[0.02]">{importFeedback.message}</p>
+          : <p role="alert" className="rounded-xl border border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-tenue)] px-4 py-2 text-sm text-[var(--money-allarme)]">{importFeedback.message}</p>)}
+        {refundError && <p role="alert" className="rounded-xl border border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-tenue)] px-4 py-2 text-sm text-[var(--money-allarme)]">{refundError}</p>}
+        <div className="flex flex-wrap gap-2 rounded-xl border border-[var(--money-velo)]/6 bg-[var(--money-superficie)] p-1.5 shadow-sm">
+          {([['list', t('movementsTabList')], ['recurring', t('movementsTabRecurring')], ['rules', t('movementsTabRules')]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setMovementsView(value)} className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${movementsView === value ? 'bg-[var(--money-deep)] text-white' : 'text-[var(--money-testo-tenue)] hover:bg-[var(--money-superficie-hover)]'}`}>{label}</button>)}
         </div>
         {movementsView === 'rules'
           ? <CategoryRulesCard rules={categorizationRules} categories={categorieRegola} categoryTree={settingsData.categoryTree} apiUrl={apiUrl}
             onChanged={onCategoryRulesChanged} />
           : movementsView === 'recurring' ? <RecurringTransactionsView accounts={accounts} data={recurringTransactions} categoriesByType={settingsData.categoriesByType} categoryTree={settingsData.categoryTree} onCreate={onCreateRecurring} onDelete={onDeleteRecurring} onGenerate={onGenerateRecurring} /> : <>
-        <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+        <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
           <CardHeader className="gap-4">
-            <div><CardTitle className="text-[17px]">{t('allMovements')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('resultsOfTotal', { count: movimenti.length, total: totaleMovimenti })}</p></div>
+            <div><CardTitle className="text-[17px]">{t('allMovements')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('resultsOfTotal', { count: movimenti.length, total: totaleMovimenti })}</p></div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(190px,1fr)_150px_180px_130px_150px]">
-              <div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-black/35" /><Input aria-label={t('searchInMovements')} value={searchQuery} onChange={(event) => onSearchChange(event.target.value)} className="h-10 bg-[#fafaf8] pl-9" placeholder={t('searchInMovementsPlaceholder')} />{searchQuery && <button aria-label={t('clearSearch')} onClick={() => onSearchChange('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-black/40 hover:text-black"><X className="size-4" /></button>}</div>
+              <div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--money-velo)]/35" /><Input aria-label={t('searchInMovements')} value={searchQuery} onChange={(event) => onSearchChange(event.target.value)} className="h-10 bg-[var(--money-superficie-tenue)] pl-9" placeholder={t('searchInMovementsPlaceholder')} />{searchQuery && <button aria-label={t('clearSearch')} onClick={() => onSearchChange('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--money-velo)]/40 hover:text-[var(--money-velo)]"><X className="size-4" /></button>}</div>
               <FilterSelect label={t('filterByType')} value={transactionTypeFilter} onChange={setTransactionTypeFilter} options={[["all", t('allTypes')], ["Income", t('incomeType')], ["Expenses", t('expensesType')], ["Transfers", t('transfersType')], ["Investment", t('investmentType')], ["Debt", t('debtTypeMovement')]]} />
               <FilterSelect label={t('filterByAccount')} value={accountFilter} onChange={setAccountFilter} options={[["all", t('allAccounts')], ...accounts.map((account) => [account.name, account.name] as [string, string])]} />
               {transactionGoals.length > 0 && <FilterSelect label={t('filterByGoal')} value={goalFilter} onChange={setGoalFilter} options={[["all", t('allGoals')], ["-", t('withoutGoal')], ...transactionGoals.map((nome) => [nome, nome] as [string, string])]} />}
@@ -3937,26 +3974,26 @@ function SectionView({
           {/* Fra i filtri e l'elenco: un filo sopra la separa dall'intestazione,
               e il bottone va a destra perche' agisce su cio' che sta sotto,
               non sul filtro accanto. */}
-          <div className="flex flex-wrap items-center gap-3 border-t border-black/5 px-3 py-2.5 sm:px-6">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-[#52615d] transition hover:bg-[#f4f5f1]">
+          <div className="flex flex-wrap items-center gap-3 border-t border-[var(--money-velo)]/5 px-3 py-2.5 sm:px-6">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-[var(--money-testo-muto)] transition hover:bg-[var(--money-superficie-hover)]">
               <input type="checkbox" checked={incompleteOnly} onChange={(event) => setIncompleteOnly(event.target.checked)} className="size-4 shrink-0 cursor-pointer accent-[var(--money-primary)]" />
               {t('incompleteMovements')}
             </label>
-            <Button type="button" variant="outline" size="sm" className="ml-auto h-9 rounded-lg bg-white" disabled={bulkBusy || totaleMovimenti === 0} onClick={() => void selectAll()}>{bulkBusy ? t('updating') : t('selectFiltered')}</Button>
+            <Button type="button" variant="outline" size="sm" className="ml-auto h-9 rounded-lg bg-[var(--money-superficie)]" disabled={bulkBusy || totaleMovimenti === 0} onClick={() => void selectAll()}>{bulkBusy ? t('updating') : t('selectFiltered')}</Button>
           </div>
-          {bulkError && <p role="alert" className="px-6 text-[#a94f3a]">{bulkError}</p>}
-          <CardContent className="px-3 sm:px-6">{movimenti.length ? <><div className={`divide-y divide-black/5 ${caricandoMovimenti ? 'opacity-60' : ''}`}>{movimenti.map((transaction) => <div key={transaction.id} className="flex items-center gap-2"><input type="checkbox" aria-label={t('selectMovement', { description: transaction.description })} checked={selection.has(String(transaction.id))} onChange={e => setSelection(old => { const next = new Set(old); e.target.checked ? next.add(String(transaction.id)) : next.delete(String(transaction.id)); return next; })} /><div className="min-w-0 flex-1"><TransactionRow transaction={transaction} onRefund={openRefundedTransaction} onEdit={onEditTransaction} onDuplicate={onDuplicateTransaction} onDelete={onDeleteTransaction} onSplit={onSplitTransaction} /></div></div>)}</div>{movimenti.length < totaleMovimenti && <div className="border-t border-black/5 py-4 text-center"><Button type="button" variant="outline" disabled={caricandoMovimenti} onClick={() => setPagina((corrente) => corrente + 1)}>{caricandoMovimenti ? t('updating') : t('showMore100')}</Button></div>}</> : (() => {
+          {bulkError && <p role="alert" className="px-6 text-[var(--money-allarme)]">{bulkError}</p>}
+          <CardContent className="px-3 sm:px-6">{movimenti.length ? <><div className={`divide-y divide-[var(--money-velo)]/5 ${caricandoMovimenti ? 'opacity-60' : ''}`}>{movimenti.map((transaction) => <div key={transaction.id} className="flex items-center gap-2"><input type="checkbox" aria-label={t('selectMovement', { description: transaction.description })} checked={selection.has(String(transaction.id))} onChange={e => setSelection(old => { const next = new Set(old); e.target.checked ? next.add(String(transaction.id)) : next.delete(String(transaction.id)); return next; })} /><div className="min-w-0 flex-1"><TransactionRow transaction={transaction} onRefund={openRefundedTransaction} onEdit={onEditTransaction} onDuplicate={onDuplicateTransaction} onDelete={onDeleteTransaction} onSplit={onSplitTransaction} /></div></div>)}</div>{movimenti.length < totaleMovimenti && <div className="border-t border-[var(--money-velo)]/5 py-4 text-center"><Button type="button" variant="outline" disabled={caricandoMovimenti} onClick={() => setPagina((corrente) => corrente + 1)}>{caricandoMovimenti ? t('updating') : t('showMore100')}</Button></div>}</> : (() => {
             // Un elenco vuoto non ha sempre un filtro da incolpare: la prima
             // volta il vuoto e' il punto di partenza, e li' l'unica cosa utile
             // che si puo' fare e' aggiungere il primo movimento — che il
             // pulsante in cima alla pagina non rende ovvio.
             const filtrato = Boolean(ricerca.trim()) || incompleteOnly
               || [transactionTypeFilter, accountFilter, goalFilter, eventFilter, yearFilter, monthFilter].some((valore) => valore !== 'all');
-            if (caricandoMovimenti) return <p className="py-12 text-center text-sm text-[#5e6c68]">{t('updating')}</p>;
-            if (filtrato) return <p className="py-12 text-center text-sm text-[#5e6c68]">{t('noMovementsMatchFilters')}</p>;
+            if (caricandoMovimenti) return <p className="py-12 text-center text-sm text-[var(--money-testo-tenue)]">{t('updating')}</p>;
+            if (filtrato) return <p className="py-12 text-center text-sm text-[var(--money-testo-tenue)]">{t('noMovementsMatchFilters')}</p>;
             return (
               <div className="flex flex-col items-center gap-4 py-12 text-center">
-                <p className="text-sm text-[#5e6c68]">{t('noMovementsYet')}</p>
+                <p className="text-sm text-[var(--money-testo-tenue)]">{t('noMovementsYet')}</p>
                 <Button onClick={onNewTransaction} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('newTransaction')}</Button>
               </div>
             );
@@ -3964,14 +4001,14 @@ function SectionView({
         </Card>
         <EventsCard events={eventiCard} apiUrl={apiUrl} />
         <ImportHistoryCard apiUrl={apiUrl} versione={movimentiVersione} />
-        {selection.size > 0 && <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-xl border bg-white p-4 shadow-lg">
+        {selection.size > 0 && <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-xl border bg-[var(--money-superficie)] p-4 shadow-lg">
           <span>{t('selectedCount', { count: selection.size })}</span>
-          {selezioneTroncata > 0 && <span className="rounded-lg bg-[#f4f5f1] px-2 py-1 text-xs text-[#52615d]">{t('bulkSelectionCapped', { total: selezioneTroncata })}</span>}
-          <select aria-label={t('bulkField')} value={bulkField} onChange={e => { setBulkField(e.target.value); setBulkValue(''); }} className="h-10 min-w-0 rounded-lg border border-input bg-[#fafaf8] px-2.5 text-sm outline-none focus:border-ring">
+          {selezioneTroncata > 0 && <span className="rounded-lg bg-[var(--money-superficie-hover)] px-2 py-1 text-xs text-[var(--money-testo-muto)]">{t('bulkSelectionCapped', { total: selezioneTroncata })}</span>}
+          <select aria-label={t('bulkField')} value={bulkField} onChange={e => { setBulkField(e.target.value); setBulkValue(''); }} className="h-10 min-w-0 rounded-lg border border-input bg-[var(--money-superficie-tenue)] px-2.5 text-sm outline-none focus:border-ring">
             <option value="category">{t('category')}</option><option value="account_name">{t('fieldAccount')}</option><option value="transaction_type">{t('type')}</option><option value="counts_in_budget">{t('excludeBudget')}</option><option value="incomplete_accepted">{t('bulkFieldIncompleteAccepted')}</option>
           </select>
           {bulkField === 'category' ? <Input aria-label={t('category')} value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="w-48" /> :
-            <select aria-label={t('bulkValue')} value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="h-10 min-w-0 rounded-lg border border-input bg-[#fafaf8] px-2.5 text-sm outline-none focus:border-ring"><option value="">{t('bulkValue')}</option>
+            <select aria-label={t('bulkValue')} value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="h-10 min-w-0 rounded-lg border border-input bg-[var(--money-superficie-tenue)] px-2.5 text-sm outline-none focus:border-ring"><option value="">{t('bulkValue')}</option>
               {bulkField === 'account_name' ? accounts.filter(a => a.isActive !== false).map(a => <option key={a.id} value={a.name}>{a.name}</option>) :
               bulkField === 'transaction_type' ? (['Income','Expenses','Transfers','Investment','Debt'] as const).map(type => <option key={type} value={type}>{t(type === 'Income' ? 'incomeType' : type === 'Expenses' ? 'expensesType' : type === 'Transfers' ? 'transfersType' : type === 'Investment' ? 'investmentType' : 'debtTypeMovement')}</option>) :
               bulkField === 'incomplete_accepted' ? <><option value="true">{t('leaveAsIs')}</option><option value="false">{t('backToFix')}</option></> :
@@ -4007,10 +4044,10 @@ function SectionView({
           <TabStrip label={t('budget')} value={budgetView} onChange={onBudgetViewChange}
             options={[['dashboard', t('budgetTabDashboard')], ['trends', t('budgetTabTrends')], ['plan', t('budgetTabPlan')], ['categories', t('budgetTabCategories')], ['entrateTardive', t('budgetTabLateIncome')]] as const} />
         </div>
-        {budgetLoadFailed ? <Card className="border-[#efc4b8] bg-[#fff6f3] shadow-sm"><CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold">{t('budgetLoadFailed')}</p><p className="mt-1 text-xs text-[#52615d]">{t('budgetLoadFailedHint')}</p></div><Button variant="outline" size="sm" onClick={() => void onReload()}>{t('retry')}</Button></CardContent></Card> : <>
+        {budgetLoadFailed ? <Card className="border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-velo)] shadow-sm"><CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold">{t('budgetLoadFailed')}</p><p className="mt-1 text-xs text-[var(--money-testo-muto)]">{t('budgetLoadFailedHint')}</p></div><Button variant="outline" size="sm" onClick={() => void onReload()}>{t('retry')}</Button></CardContent></Card> : <>
         {budgetView === 'dashboard' && (budgetDashboardData ? <BudgetDashboardView data={budgetDashboardData} budgetType={budgetType} onGoToView={onBudgetViewChange} /> : <BudgetTabEmpty loading={inCorso > 0} />)}
         {budgetView === 'trends' && (trendsLoadFailed
-          ? <Card className="border-[#efc4b8] bg-[#fff6f3] shadow-sm"><CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold">{t('budgetLoadFailed')}</p><p className="mt-1 text-xs text-[#52615d]">{t('budgetLoadFailedHint')}</p></div><Button variant="outline" size="sm" onClick={() => void onReload()}>{t('retry')}</Button></CardContent></Card>
+          ? <Card className="border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-velo)] shadow-sm"><CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold">{t('budgetLoadFailed')}</p><p className="mt-1 text-xs text-[var(--money-testo-muto)]">{t('budgetLoadFailedHint')}</p></div><Button variant="outline" size="sm" onClick={() => void onReload()}>{t('retry')}</Button></CardContent></Card>
           : <BudgetTrendsView data={budgetTrendsData} budgetType={budgetType} loading={inCorso > 0} />)}
         {budgetView === 'plan' && <div className="space-y-5">
           {period.scope === 'month' ? <>
@@ -4079,7 +4116,7 @@ function SectionView({
 }
 
 function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (value: string) => void }) {
-  return <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="h-10 min-w-0 rounded-lg border border-input bg-[#fafaf8] px-2.5 text-sm outline-none focus:border-ring">{options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}</select>;
+  return <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="h-10 min-w-0 rounded-lg border border-input bg-[var(--money-superficie-tenue)] px-2.5 text-sm outline-none focus:border-ring">{options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}</select>;
 }
 
 function BudgetBalanceCard({ balance, scope }: { balance: BudgetBalance; scope: 'month' | 'year' }) {
@@ -4090,23 +4127,23 @@ function BudgetBalanceCard({ balance, scope }: { balance: BudgetBalance; scope: 
   const negativo = balance.savings < 0;
   // Senza piano entrate, un savings negativo vuol dire che le spese superano
   // quello che si pensava di incassare: e' comunque un segnale da segnalare.
-  const tono = negativo ? 'text-[#a94f3a]' : !balance.hasIncomePlan ? 'text-[#5e6c68]' : 'text-[#237056]';
+  const tono = negativo ? 'text-[var(--money-allarme)]' : !balance.hasIncomePlan ? 'text-[var(--money-testo-tenue)]' : 'text-[var(--money-ok)]';
   const messaggio = negativo
     ? t('budgetBalanceOverplanned', { amount: formatEuro(Math.abs(balance.savings)) })
     : !balance.hasIncomePlan
       ? t('budgetBalanceNoIncome')
       : t('budgetBalanceSaves', { amount: formatEuro(balance.savings) });
-  return <Card className="border-black/6 bg-white shadow-sm">
-    <CardHeader><CardTitle className="text-[17px]">{scope === 'year' ? t('budgetBalanceTitleYear') : t('budgetBalanceTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{scope === 'year' ? t('budgetBalanceSubtitleYear') : t('budgetBalanceSubtitle')}</p></CardHeader>
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
+    <CardHeader><CardTitle className="text-[17px]">{scope === 'year' ? t('budgetBalanceTitleYear') : t('budgetBalanceTitle')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{scope === 'year' ? t('budgetBalanceSubtitleYear') : t('budgetBalanceSubtitle')}</p></CardHeader>
     <CardContent className="space-y-3">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm tabular-nums">
         <span className="font-semibold">{formatEuro(balance.income)}</span>
-        <span className="text-[#5e6c68]">{t('budgetBalanceIncome')}</span>
-        <span className="text-[#5e6c68]">−</span>
+        <span className="text-[var(--money-testo-tenue)]">{t('budgetBalanceIncome')}</span>
+        <span className="text-[var(--money-testo-tenue)]">−</span>
         <span className="font-semibold">{formatEuro(balance.expenses)}</span>
-        <span className="text-[#5e6c68]">{t('budgetBalanceExpenses')}</span>
-        <span className="text-[#5e6c68]">=</span>
-        <span className="text-[#5e6c68]">{t('budgetBalanceSavings')}</span>
+        <span className="text-[var(--money-testo-tenue)]">{t('budgetBalanceExpenses')}</span>
+        <span className="text-[var(--money-testo-tenue)]">=</span>
+        <span className="text-[var(--money-testo-tenue)]">{t('budgetBalanceSavings')}</span>
       </div>
       <p className={`text-2xl font-semibold tabular-nums ${tono}`}>{formatEuro(balance.savings)}</p>
       <p className={`text-xs ${tono}`}>{messaggio}</p>
@@ -4120,21 +4157,21 @@ function NeedsWantsCard({ groups }: { groups: BudgetGroupSplit[] }) {
   const { t, formatEuro } = useI18n();
   const totale = groups.reduce((sum, group) => sum + group.actual, 0);
   const etichetta = (group: string) => group === 'Needs' ? t('groupNeeds') : group === 'Wants' ? t('groupWants') : t('groupOther');
-  return <Card className="border-black/6 bg-white shadow-sm">
-    <CardHeader><CardTitle className="text-[17px]">{t('needsWantsTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('needsWantsSubtitle')}</p></CardHeader>
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
+    <CardHeader><CardTitle className="text-[17px]">{t('needsWantsTitle')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('needsWantsSubtitle')}</p></CardHeader>
     <CardContent className="space-y-3">
       {totale > 0 ? <>
-        <div className="flex h-3 overflow-hidden rounded-full bg-[#f0f2ee]">
+        <div className="flex h-3 overflow-hidden rounded-full bg-[var(--money-superficie-hover)]">
           {groups.filter((group) => group.actual > 0).map((group) => <div key={group.group} style={{ width: `${group.actualShare}%`, backgroundColor: GROUP_COLORS[group.group] }} title={`${etichetta(group.group)} ${group.actualShare}%`} />)}
         </div>
         <ul className="space-y-2">
           {groups.map((group) => <li key={group.group} className="flex items-center justify-between gap-3 text-xs">
             <span className="flex items-center gap-2"><span className="size-2.5 rounded-full" style={{ backgroundColor: GROUP_COLORS[group.group] }} />{etichetta(group.group)}</span>
-            <span className="tabular-nums text-[#52615d]">{formatEuro(group.actual)} · {group.actualShare}%{group.planned > 0 && <span className="text-[#5e6c68]"> ({t('plannedShort', { amount: formatEuro(group.planned) })})</span>}</span>
+            <span className="tabular-nums text-[var(--money-testo-muto)]">{formatEuro(group.actual)} · {group.actualShare}%{group.planned > 0 && <span className="text-[var(--money-testo-tenue)]"> ({t('plannedShort', { amount: formatEuro(group.planned) })})</span>}</span>
           </li>)}
         </ul>
-        {(groups.find((group) => group.group === 'Other')?.actual ?? 0) > 0 && <p className="rounded-lg bg-[#f4f5f1] px-3 py-2 text-[11px] leading-4 text-[#5e6c68]">{t('needsWantsUnclassified')}</p>}
-      </> : <p className="text-xs text-[#5e6c68]">{t('needsWantsEmpty')}</p>}
+        {(groups.find((group) => group.group === 'Other')?.actual ?? 0) > 0 && <p className="rounded-lg bg-[var(--money-superficie-hover)] px-3 py-2 text-[11px] leading-4 text-[var(--money-testo-tenue)]">{t('needsWantsUnclassified')}</p>}
+      </> : <p className="text-xs text-[var(--money-testo-tenue)]">{t('needsWantsEmpty')}</p>}
     </CardContent>
   </Card>;
 }
@@ -4170,7 +4207,7 @@ function BudgetDashboardView({ data, budgetType, onGoToView }: { data: BudgetDas
     {/* Al primo utilizzo questa pagina e' una griglia di zeri: niente, qui,
         diceva che il budget si scrive da un'altra scheda e che quegli zeri
         sono il punto di partenza, non un guasto. */}
-    {data.plannedTotal === 0 && data.actualTotal === 0 && <Card className="border-[#5c8f82]/30 bg-[#f4f9f7] shadow-sm"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-5"><p className="text-sm text-[#2f4f47]">{t('budgetFirstRun')}</p><Button variant="outline" onClick={() => onGoToView('plan')}>{t('budgetTabPlan')}</Button></CardContent></Card>}
+    {data.plannedTotal === 0 && data.actualTotal === 0 && <Card className="border-[var(--money-anello)]/30 bg-[var(--money-superficie-tenue)] shadow-sm"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-5"><p className="text-sm text-[var(--money-ok)]">{t('budgetFirstRun')}</p><Button variant="outline" onClick={() => onGoToView('plan')}>{t('budgetTabPlan')}</Button></CardContent></Card>}
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <MetricCard title={plannedTitle} value={data.plannedTotal} change={formatPeriodRef(monthNames, data.periodYear, data.periodMonth)} icon={CircleDollarSign} tone="worth" />
       <MetricCard title={actualTitle} value={data.actualTotal} change={data.usage === null ? t('budgetNotPlanned') : isExpense ? t('spentPercentUsed', { percent: formatPercentNumber(data.usage) }) : t(isSavings ? 'percentOfPlanValue' : 'percentOfTarget', { percent: formatPercentNumber(data.usage) })} icon={CreditCard} tone={isExpense ? 'expense' : 'worth'} />
@@ -4181,13 +4218,13 @@ function BudgetDashboardView({ data, budgetType, onGoToView }: { data: BudgetDas
     </div>
     {isExpense && <NeedsWantsCard groups={data.groups} />}
     <div className={`grid gap-5 ${isSavings ? '' : 'xl:grid-cols-[1.3fr_1fr]'}`}>
-      <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('budgetAndActualByType', { 0: budgetType })}</CardTitle><p className="text-xs text-[#5e6c68]">{t('budgetAndActualByTypeSubtitle', { 0: budgetType })}</p></CardHeader><CardContent><ChartContainer config={budgetChartConfig} className="h-[300px] w-full"><BarChart accessibilityLayer data={data.months}><CartesianGrid vertical={false} strokeDasharray="3 5" /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} /><YAxis tickLine={false} axisLine={false} tickFormatter={(value) => formatCompactEuro(Number(value))} width={70} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} />} /><ChartLegend content={<ChartLegendContent />} /><Bar dataKey="planned" fill="var(--color-planned)" radius={[4, 4, 0, 0]} maxBarSize={22} /><Bar dataKey="actual" fill="var(--color-actual)" radius={[4, 4, 0, 0]} maxBarSize={22} /></BarChart></ChartContainer></CardContent></Card>
-      {!isSavings && <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('periodCategories')}</CardTitle><p className="text-xs text-[#5e6c68]">{t('monthCategoriesSubtitle')}</p></CardHeader>{data.categories.length === 0 ? <CardContent className="p-6 text-center text-xs text-[#5e6c68]">{t('budgetNotPlanned')}</CardContent> : <CardContent className="divide-y divide-black/5">{[...data.categories].sort((a, b) => (b.actual - a.actual) || (b.planned - a.planned)).slice(0, CATEGORIE_IN_CARD).map((item) => { const good = budgetVarianceIsGood(budgetType, item.variance); const message = isExpense ? (item.variance < 0 ? t('overBudgetBy', { amount: formatEuro(Math.abs(item.variance)) }) : t('availableAmount', { amount: formatEuro(item.variance) })) : (item.variance < 0 ? t('exceededTargetBy', { amount: formatEuro(Math.abs(item.variance)) }) : t('belowTargetBy', { amount: formatEuro(item.variance) })); return <div key={item.category} className="grid grid-cols-[1fr_auto] gap-3 py-3"><div><p className="text-sm font-medium">{item.categoryLabel}</p><p className={`mt-1 text-xs ${good ? 'text-[#5e6c68]' : 'text-[#a94f3a]'}`}>{message}</p>{item.previousLeftover !== 0 && <p className="mt-0.5 text-[11px] text-[#5e6c68]">{item.previousLeftover > 0 ? t('budgetPreviousLeft', { amount: formatEuro(item.previousLeftover) }) : t('budgetPreviousOver', { amount: formatEuro(Math.abs(item.previousLeftover)) })}</p>}</div><div className="text-right text-xs"><p className="font-semibold">{formatEuro(item.actual)}</p><p className="mt-1 text-[#5e6c68]">{t('ofPlannedShort', { amount: formatEuro(item.planned) })}</p></div></div>; })}
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('budgetAndActualByType', { 0: budgetType })}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{t('budgetAndActualByTypeSubtitle', { 0: budgetType })}</p></CardHeader><CardContent><ChartContainer config={budgetChartConfig} className="h-[300px] w-full"><BarChart accessibilityLayer data={data.months}><CartesianGrid vertical={false} strokeDasharray="3 5" /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} /><YAxis tickLine={false} axisLine={false} tickFormatter={(value) => formatCompactEuro(Number(value))} width={70} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} />} /><ChartLegend content={<ChartLegendContent />} /><Bar dataKey="planned" fill="var(--color-planned)" radius={[4, 4, 0, 0]} maxBarSize={22} /><Bar dataKey="actual" fill="var(--color-actual)" radius={[4, 4, 0, 0]} maxBarSize={22} /></BarChart></ChartContainer></CardContent></Card>
+      {!isSavings && <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('periodCategories')}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{t('monthCategoriesSubtitle')}</p></CardHeader>{data.categories.length === 0 ? <CardContent className="p-6 text-center text-xs text-[var(--money-testo-tenue)]">{t('budgetNotPlanned')}</CardContent> : <CardContent className="divide-y divide-[var(--money-velo)]/5">{[...data.categories].sort((a, b) => (b.actual - a.actual) || (b.planned - a.planned)).slice(0, CATEGORIE_IN_CARD).map((item) => { const good = budgetVarianceIsGood(budgetType, item.variance); const message = isExpense ? (item.variance < 0 ? t('overBudgetBy', { amount: formatEuro(Math.abs(item.variance)) }) : t('availableAmount', { amount: formatEuro(item.variance) })) : (item.variance < 0 ? t('exceededTargetBy', { amount: formatEuro(Math.abs(item.variance)) }) : t('belowTargetBy', { amount: formatEuro(item.variance) })); return <div key={item.category} className="grid grid-cols-[1fr_auto] gap-3 py-3"><div><p className="text-sm font-medium">{item.categoryLabel}</p><p className={`mt-1 text-xs ${good ? 'text-[var(--money-testo-tenue)]' : 'text-[var(--money-allarme)]'}`}>{message}</p>{item.previousLeftover !== 0 && <p className="mt-0.5 text-[11px] text-[var(--money-testo-tenue)]">{item.previousLeftover > 0 ? t('budgetPreviousLeft', { amount: formatEuro(item.previousLeftover) }) : t('budgetPreviousOver', { amount: formatEuro(Math.abs(item.previousLeftover)) })}</p>}</div><div className="text-right text-xs"><p className="font-semibold">{formatEuro(item.actual)}</p><p className="mt-1 text-[var(--money-testo-tenue)]">{t('ofPlannedShort', { amount: formatEuro(item.planned) })}</p></div></div>; })}
         {/* Le righe sopra sono le prime dieci per importo: l'elenco intero, con
             le categorie che non ci sono, sta nella scheda Categorie. Senza
             questa riga il conto non tornava col totale in cima alla pagina e
             non si sapeva dove fossero finite le altre. */}
-        {data.categories.length > CATEGORIE_IN_CARD && <button type="button" onClick={() => onGoToView('categories')} className="mt-1 flex w-full items-center justify-between gap-2 px-2 py-3 text-left text-xs font-medium text-[#5e6c68] transition hover:text-[#173b33]"><span>{t('otherCategories', { count: data.categories.length - CATEGORIE_IN_CARD })}</span><ChevronRight className="size-4 shrink-0" /></button>}</CardContent>}</Card>}
+        {data.categories.length > CATEGORIE_IN_CARD && <button type="button" onClick={() => onGoToView('categories')} className="mt-1 flex w-full items-center justify-between gap-2 px-2 py-3 text-left text-xs font-medium text-[var(--money-testo-tenue)] transition hover:text-[var(--money-marca)]"><span>{t('otherCategories', { count: data.categories.length - CATEGORIE_IN_CARD })}</span><ChevronRight className="size-4 shrink-0" /></button>}</CardContent>}</Card>}
     </div>
   </div>;
 }
@@ -4230,8 +4267,8 @@ function BudgetPlanMonthTotals({ data, budgetType, calculations, year, month }: 
 
 function BudgetTabEmpty({ loading }: { loading: boolean }) {
   const { t } = useI18n();
-  return <Card className="border-black/6 bg-white shadow-sm">
-    <CardContent className="flex h-40 items-center justify-center text-sm text-[#5e6c68]">
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
+    <CardContent className="flex h-40 items-center justify-center text-sm text-[var(--money-testo-tenue)]">
       {loading ? t('loading') : t('budgetTabEmpty')}
     </CardContent>
   </Card>;
@@ -4245,8 +4282,8 @@ function BudgetTrendsView({ data, budgetType, loading }: { data: BudgetTrendsDat
   const yearTitle = (year: number) => budgetType === 'Expenses' ? t('spentYear', { year }) : budgetType === 'Income' ? t('receivedYear', { year }) : t('savedYear', { year });
   if (!data.years.length) return <BudgetTabEmpty loading={loading} />;
   return <div className="space-y-5">
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{data.years.map((item) => { const good = budgetVarianceIsGood(budgetType, item.plannedTotal - item.actualTotal); return <Card key={item.year} className="border-black/6 bg-white shadow-sm"><CardContent className="p-5"><p className="text-sm font-medium text-[#5e6c68]">{yearTitle(item.year)}</p><p className="mt-3 text-2xl font-semibold">{formatEuro(item.actualTotal)}</p><p className={`mt-2 text-xs ${good ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>{t('budgetMetric')} {formatEuro(item.plannedTotal)}</p></CardContent></Card>; })}</div>
-    <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('monthlyComparisonAcrossYears')}</CardTitle><p className="text-xs text-[#5e6c68]">{t('monthlyComparisonAcrossYearsSubtitle')}</p></CardHeader><CardContent><ChartContainer config={trendConfig} className="h-[360px] w-full"><LineChart accessibilityLayer data={data.comparison}><CartesianGrid vertical={false} strokeDasharray="3 5" /><XAxis dataKey="month" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} /><YAxis tickLine={false} axisLine={false} width={72} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} />} /><ChartLegend content={<ChartLegendContent />} />{data.years.map((item, index) => <Line key={item.year} type="monotone" dataKey={String(item.year)} stroke={TREND_COLORS[index % TREND_COLORS.length]} strokeWidth={2.5} dot={false} connectNulls />)}</LineChart></ChartContainer></CardContent></Card>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{data.years.map((item) => { const good = budgetVarianceIsGood(budgetType, item.plannedTotal - item.actualTotal); return <Card key={item.year} className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardContent className="p-5"><p className="text-sm font-medium text-[var(--money-testo-tenue)]">{yearTitle(item.year)}</p><p className="mt-3 text-2xl font-semibold">{formatEuro(item.actualTotal)}</p><p className={`mt-2 text-xs ${good ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'}`}>{t('budgetMetric')} {formatEuro(item.plannedTotal)}</p></CardContent></Card>; })}</div>
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('monthlyComparisonAcrossYears')}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{t('monthlyComparisonAcrossYearsSubtitle')}</p></CardHeader><CardContent><ChartContainer config={trendConfig} className="h-[360px] w-full"><LineChart accessibilityLayer data={data.comparison}><CartesianGrid vertical={false} strokeDasharray="3 5" /><XAxis dataKey="month" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} /><YAxis tickLine={false} axisLine={false} width={72} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} />} /><ChartLegend content={<ChartLegendContent />} />{data.years.map((item, index) => <Line key={item.year} type="monotone" dataKey={String(item.year)} stroke={TREND_COLORS[index % TREND_COLORS.length]} strokeWidth={2.5} dot={false} connectNulls />)}</LineChart></ChartContainer></CardContent></Card>
   </div>;
 }
 
@@ -4320,9 +4357,9 @@ function AnnualBudgetEditor({ data, padreDi, onApply }: { data: AnnualBudgetData
   }
 
   return <div className="space-y-5">
-    <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('applySameValueToMultipleMonths')}</CardTitle><p className="text-xs text-[#5e6c68]">{t('applySameValueToMultipleMonthsSubtitle')}</p></CardHeader><CardContent><form onSubmit={applyMany} className="space-y-4"><div className="flex flex-wrap items-start gap-3"><select aria-label={t('category')} value={effectiveCategory} onChange={(event) => setCategory(event.target.value)} className="h-10 rounded-lg border border-input bg-white px-3 text-sm">{data.items.map((item) => <option key={item.category} value={item.category}>{item.categoryLabel}</option>)}</select>{padreDiVoce(effectiveCategory) && <span className="self-center rounded-full bg-[#f2f5f3] px-2.5 py-1 text-[11px] text-[#5b6b66]">{t('budgetInsideParent', { parent: padreDiVoce(effectiveCategory) ?? '' })}</span>}<Input required min="0" step="0.01" type="number" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={t('monthlyAmountPlaceholder')} /><Button type="submit" disabled={busy || !months.length} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Save className="size-4" />{busy ? t('savingEllipsis') : t('applyToMonths', { count: months.length || 0 })}</Button></div><div className="flex flex-wrap gap-2">{monthNamesShort.map((name, index) => { const month = index + 1; const selected = months.includes(month); return <button key={name} type="button" onClick={() => setMonths((current) => selected ? current.filter((value) => value !== month) : [...current, month].sort((a, b) => a - b))} className={`rounded-lg border px-3 py-2 text-xs font-medium ${selected ? 'border-[var(--money-deep)] bg-[var(--money-deep)] text-white' : 'border-black/8 bg-[#fafaf8] text-[#5e6c68]'}`}>{name}</button>; })}<button type="button" onClick={() => setMonths(months.length === 12 ? [] : Array.from({ length: 12 }, (_, index) => index + 1))} className="rounded-lg px-3 py-2 text-xs font-semibold text-[#237056]">{months.length === 12 ? t('deselectAll') : t('wholeYearAction')}</button></div></form></CardContent></Card>
-    {error && <p className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}
-    <Card className="overflow-hidden border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('annualPlan', { year: data.year })}</CardTitle><p className="text-xs text-[#5e6c68]">{t('annualPlanSubtitle')}</p></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1320px] w-full text-xs"><thead className="sticky top-0 bg-[#f4f5f1] text-[#52615d]"><tr><th className="sticky left-0 z-10 bg-[#f4f5f1] px-4 py-3 text-left">{t('category')}</th>{monthNamesShort.map((month) => <th key={month} className="px-2 py-3 text-right">{month}</th>)}<th className="px-4 py-3 text-right">{t('total')}</th></tr></thead><tbody className="divide-y divide-black/5">{gruppi.map(({ padre, voci }) => <Fragment key={padre ?? "(radici)"}>{padre && <tr className="bg-[#f6f8f6]"><td className="sticky left-0 z-10 bg-[#f6f8f6] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#5b6b66]" colSpan={14}>{padre}</td></tr>}{voci.map((item) => <tr key={item.category}><td className="sticky left-0 z-10 bg-white px-4 py-2 font-medium">{padre && <span aria-hidden className="mr-2 inline-block h-3 w-px translate-y-0.5 bg-[#dfe4e1]" />}{item.categoryLabel}</td>{item.months.map((month) => <td key={month.month} className="px-1.5 py-1.5"><input key={`${data.year}-${item.category}-${month.month}`} aria-label={`${item.categoryLabel} ${monthNamesShort[month.month - 1]}`} type="number" min="0" step="0.01" defaultValue={month.amount.toFixed(2)} onBlur={(event) => void applyCell(event, item.category, month.month, month.amount, item.categoryGroup)} className="h-8 w-full rounded-md border border-transparent bg-[#fafaf8] px-2 text-right tabular-nums outline-none hover:border-black/10 focus:border-[#5c8f82]" /></td>)}<td className="px-4 py-2 text-right font-semibold">{formatEuro(item.plannedTotal)}</td></tr>)}</Fragment>)}</tbody><tfoot className="border-t border-black/8 bg-[#f4f5f1] font-semibold"><tr><td className="sticky left-0 bg-[#f4f5f1] px-4 py-3">{t('total')}</td>{data.monthTotals.map((month) => <td key={month.month} className="px-2 py-3 text-right">{formatCompactEuro(month.planned)}</td>)}<td className="px-4 py-3 text-right">{formatEuro(data.monthTotals.reduce((total, month) => total + month.planned, 0))}</td></tr></tfoot></table></div></CardContent></Card>
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('applySameValueToMultipleMonths')}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{t('applySameValueToMultipleMonthsSubtitle')}</p></CardHeader><CardContent><form onSubmit={applyMany} className="space-y-4"><div className="flex flex-wrap items-start gap-3"><select aria-label={t('category')} value={effectiveCategory} onChange={(event) => setCategory(event.target.value)} className="h-10 rounded-lg border border-input bg-[var(--money-superficie)] px-3 text-sm">{data.items.map((item) => <option key={item.category} value={item.category}>{item.categoryLabel}</option>)}</select>{padreDiVoce(effectiveCategory) && <span className="self-center rounded-full bg-[var(--money-superficie-hover)] px-2.5 py-1 text-[11px] text-[var(--money-testo-tenue)]">{t('budgetInsideParent', { parent: padreDiVoce(effectiveCategory) ?? '' })}</span>}<Input required min="0" step="0.01" type="number" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={t('monthlyAmountPlaceholder')} /><Button type="submit" disabled={busy || !months.length} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Save className="size-4" />{busy ? t('savingEllipsis') : t('applyToMonths', { count: months.length || 0 })}</Button></div><div className="flex flex-wrap gap-2">{monthNamesShort.map((name, index) => { const month = index + 1; const selected = months.includes(month); return <button key={name} type="button" onClick={() => setMonths((current) => selected ? current.filter((value) => value !== month) : [...current, month].sort((a, b) => a - b))} className={`rounded-lg border px-3 py-2 text-xs font-medium ${selected ? 'border-[var(--money-deep)] bg-[var(--money-deep)] text-white' : 'border-[var(--money-velo)]/8 bg-[var(--money-superficie-tenue)] text-[var(--money-testo-tenue)]'}`}>{name}</button>; })}<button type="button" onClick={() => setMonths(months.length === 12 ? [] : Array.from({ length: 12 }, (_, index) => index + 1))} className="rounded-lg px-3 py-2 text-xs font-semibold text-[var(--money-ok)]">{months.length === 12 ? t('deselectAll') : t('wholeYearAction')}</button></div></form></CardContent></Card>
+    {error && <p className="rounded-lg bg-[var(--money-allarme-tenue)] px-3 py-2 text-xs text-[var(--money-allarme)]">{error}</p>}
+    <Card className="overflow-hidden border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('annualPlan', { year: data.year })}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{t('annualPlanSubtitle')}</p></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1320px] w-full text-xs"><thead className="sticky top-0 bg-[var(--money-superficie-hover)] text-[var(--money-testo-muto)]"><tr><th className="sticky left-0 z-10 bg-[var(--money-superficie-hover)] px-4 py-3 text-left">{t('category')}</th>{monthNamesShort.map((month) => <th key={month} className="px-2 py-3 text-right">{month}</th>)}<th className="px-4 py-3 text-right">{t('total')}</th></tr></thead><tbody className="divide-y divide-[var(--money-velo)]/5">{gruppi.map(({ padre, voci }) => <Fragment key={padre ?? "(radici)"}>{padre && <tr className="bg-[var(--money-superficie-tenue)]"><td className="sticky left-0 z-10 bg-[var(--money-superficie-tenue)] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--money-testo-tenue)]" colSpan={14}>{padre}</td></tr>}{voci.map((item) => <tr key={item.category}><td className="sticky left-0 z-10 bg-[var(--money-superficie)] px-4 py-2 font-medium">{padre && <span aria-hidden className="mr-2 inline-block h-3 w-px translate-y-0.5 bg-[var(--money-superficie-hover)]" />}{item.categoryLabel}</td>{item.months.map((month) => <td key={month.month} className="px-1.5 py-1.5"><input key={`${data.year}-${item.category}-${month.month}`} aria-label={`${item.categoryLabel} ${monthNamesShort[month.month - 1]}`} type="number" min="0" step="0.01" defaultValue={month.amount.toFixed(2)} onBlur={(event) => void applyCell(event, item.category, month.month, month.amount, item.categoryGroup)} className="h-8 w-full rounded-md border border-transparent bg-[var(--money-superficie-tenue)] px-2 text-right tabular-nums outline-none hover:border-[var(--money-velo)]/10 focus:border-[var(--money-anello)]" /></td>)}<td className="px-4 py-2 text-right font-semibold">{formatEuro(item.plannedTotal)}</td></tr>)}</Fragment>)}</tbody><tfoot className="border-t border-[var(--money-velo)]/8 bg-[var(--money-superficie-hover)] font-semibold"><tr><td className="sticky left-0 bg-[var(--money-superficie-hover)] px-4 py-3">{t('total')}</td>{data.monthTotals.map((month) => <td key={month.month} className="px-2 py-3 text-right">{formatCompactEuro(month.planned)}</td>)}<td className="px-4 py-3 text-right">{formatEuro(data.monthTotals.reduce((total, month) => total + month.planned, 0))}</td></tr></tfoot></table></div></CardContent></Card>
   </div>;
 }
 
@@ -4330,9 +4367,9 @@ function GoalStatusBadge({ status }: { status: GoalData['status'] }) {
   const { t } = useI18n();
   if (!status || status === 'completed') return null;
   const stile = {
-    on_track: { testo: t('goalOnTrack'), classe: 'bg-[#eaf5ef] text-[#237056]' },
-    slightly_behind: { testo: t('goalSlightlyBehind'), classe: 'bg-[#fdf6ec] text-[#7d6119]' },
-    behind: { testo: t('goalBehind'), classe: 'bg-[#fce9e3] text-[#a94f3a]' },
+    on_track: { testo: t('goalOnTrack'), classe: 'bg-[var(--money-ok-tenue)] text-[var(--money-ok)]' },
+    slightly_behind: { testo: t('goalSlightlyBehind'), classe: 'bg-[var(--money-attenzione-tenue)] text-[var(--money-attenzione)]' },
+    behind: { testo: t('goalBehind'), classe: 'bg-[var(--money-allarme-tenue)] text-[var(--money-allarme)]' },
   }[status];
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${stile.classe}`}>{stile.testo}</span>;
 }
@@ -4403,25 +4440,25 @@ function GoalMilestones({ goal, onAdd, onRemove }: {
   return <div className="mt-3">
     {goal.milestones.length > 0 && <ul className="space-y-1.5">{goal.milestones.map((tappa) => (
       <li key={tappa.id} className="flex flex-wrap items-center gap-2 text-xs">
-        <span aria-hidden className={`size-2 shrink-0 rounded-full ${tappa.status === 'completed' ? 'bg-[#397867]' : 'bg-[#c9d2f0]'}`} />
-        <span className={`font-medium ${tappa.status === 'completed' ? 'text-[#5e6c68] line-through' : 'text-[#52615d]'}`}>{tappa.name}</span>
-        <span className="text-[#5e6c68]">{formatEuro(tappa.targetAmount)}</span>
+        <span aria-hidden className={`size-2 shrink-0 rounded-full ${tappa.status === 'completed' ? 'bg-[var(--money-ok)]' : 'bg-[#c9d2f0]'}`} />
+        <span className={`font-medium ${tappa.status === 'completed' ? 'text-[var(--money-testo-tenue)] line-through' : 'text-[var(--money-testo-muto)]'}`}>{tappa.name}</span>
+        <span className="text-[var(--money-testo-tenue)]">{formatEuro(tappa.targetAmount)}</span>
         {tappa.status === 'completed'
-          ? <span className="rounded-full bg-[#eaf5ef] px-2 py-0.5 text-[11px] font-medium text-[#237056]">{t('goalMilestoneReached')}</span>
+          ? <span className="rounded-full bg-[var(--money-ok-tenue)] px-2 py-0.5 text-[11px] font-medium text-[var(--money-ok)]">{t('goalMilestoneReached')}</span>
           : <GoalStatusBadge status={tappa.status} />}
-        <button type="button" aria-label={`${t('delete')} ${tappa.name}`} onClick={() => void togli(tappa)} className="ml-auto text-[#a94f3a]"><Trash2 className="size-3.5" /></button>
+        <button type="button" aria-label={`${t('delete')} ${tappa.name}`} onClick={() => void togli(tappa)} className="ml-auto text-[var(--money-allarme)]"><Trash2 className="size-3.5" /></button>
       </li>
     ))}</ul>}
     {aggiunta
       ? <form onSubmit={aggiungi} className="mt-2 flex flex-wrap items-end gap-2">
-          <label htmlFor={`milestone-name-${goal.id}`} className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('goalMilestoneName')}<Input id={`milestone-name-${goal.id}`} required name="name" className="h-9" /></label>
-          <label htmlFor={`milestone-amount-${goal.id}`} className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('goalMilestoneAmount')}<Input id={`milestone-amount-${goal.id}`} required name="target_amount" type="number" min="0.01" step="0.01" className="h-9" /></label>
-          <label htmlFor={`milestone-date-${goal.id}`} className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDeadline')}<Input id={`milestone-date-${goal.id}`} name="target_date" type="date" className="h-9" /></label>
+          <label htmlFor={`milestone-name-${goal.id}`} className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('goalMilestoneName')}<Input id={`milestone-name-${goal.id}`} required name="name" className="h-9" /></label>
+          <label htmlFor={`milestone-amount-${goal.id}`} className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('goalMilestoneAmount')}<Input id={`milestone-amount-${goal.id}`} required name="target_amount" type="number" min="0.01" step="0.01" className="h-9" /></label>
+          <label htmlFor={`milestone-date-${goal.id}`} className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldDeadline')}<Input id={`milestone-date-${goal.id}`} name="target_date" type="date" className="h-9" /></label>
           <Button type="submit" disabled={busy} className="h-9 bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('goalMilestoneAdd')}</Button>
           <Button type="button" variant="outline" className="h-9" onClick={() => { setAggiunta(false); setErrore(''); }}>{t('cancel')}</Button>
         </form>
-      : <button type="button" onClick={() => { setAggiunta(true); setErrore(''); }} className="inline-flex items-center gap-1 text-xs font-medium text-[#237056] hover:underline"><Plus className="size-3.5" />{t('goalMilestoneAdd')}</button>}
-    {errore && <p role="alert" className="mt-2 rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{errore}</p>}
+      : <button type="button" onClick={() => { setAggiunta(true); setErrore(''); }} className="inline-flex items-center gap-1 text-xs font-medium text-[var(--money-ok)] hover:underline"><Plus className="size-3.5" />{t('goalMilestoneAdd')}</button>}
+    {errore && <p role="alert" className="mt-2 rounded-lg bg-[var(--money-allarme-tenue)] px-3 py-2 text-xs text-[var(--money-allarme)]">{errore}</p>}
   </div>;
 }
 
@@ -4431,13 +4468,13 @@ function GoalsBalanceRow({ data }: { data: GoalsData }) {
   if (!data.monthlyNeededTotal) return null;
   const senzaPiano = !data.hasPlannedSavings;
   const ciStanno = data.monthlyGap >= 0;
-  const tono = senzaPiano ? 'text-[#5e6c68]' : ciStanno ? 'text-[#237056]' : 'text-[#a94f3a]';
+  const tono = senzaPiano ? 'text-[var(--money-testo-tenue)]' : ciStanno ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]';
   const messaggio = senzaPiano
     ? t('goalsNoPlan', { amount: formatEuro(data.monthlyNeededTotal) })
     : ciStanno
       ? t('goalsFit', { needed: formatEuro(data.monthlyNeededTotal), saved: formatEuro(data.plannedSavings) })
       : t('goalsShort', { needed: formatEuro(data.monthlyNeededTotal), saved: formatEuro(data.plannedSavings), missing: formatEuro(Math.abs(data.monthlyGap)) });
-  return <Card className="border-black/6 bg-white shadow-sm"><CardContent className="p-4"><p className={`text-sm ${tono}`}>{messaggio}</p></CardContent></Card>;
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardContent className="p-4"><p className={`text-sm ${tono}`}>{messaggio}</p></CardContent></Card>;
 }
 
 // Dove cade la tacca di una tappa sulla barra.
@@ -4487,22 +4524,22 @@ function GoalsView({ data, accounts, onSave, onDelete, onMilestoneAdd, onMilesto
   return <div className="space-y-5">
     <div className="grid gap-4 sm:grid-cols-2">
       <Card className="border-0 bg-[var(--money-deep)] text-white"><CardContent className="p-6"><p className="text-sm text-white/70">{t('allocatedTotal')}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{formatEuro(data.currentTotal)}</p><p className="mt-3 text-xs text-white/70">{t('ofAllGoals', { amount: formatEuro(data.targetTotal) })}</p></CardContent></Card>
-      <Card className="border-black/6 bg-white"><CardContent className="p-6"><p className="text-sm text-[#5e6c68]">{t('activeGoals')}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{data.active}</p><p className="mt-3 text-xs text-[#5e6c68]">{t('goalsAchievedOfTotal', { completed: data.completed, total: data.items.length })}</p></CardContent></Card>
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)]"><CardContent className="p-6"><p className="text-sm text-[var(--money-testo-tenue)]">{t('activeGoals')}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{data.active}</p><p className="mt-3 text-xs text-[var(--money-testo-tenue)]">{t('goalsAchievedOfTotal', { completed: data.completed, total: data.items.length })}</p></CardContent></Card>
     </div>
     <GoalsBalanceRow data={data} />
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="text-sm font-medium text-[#52615d]">{visibleGoals.length === data.items.length
+      <p className="text-sm font-medium text-[var(--money-testo-muto)]">{visibleGoals.length === data.items.length
         ? t('goalListTitleAll', { total: data.items.length })
         : t('goalListTitle', { visible: visibleGoals.length, total: data.items.length })}</p>
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-1 rounded-xl border border-black/6 bg-white p-1 shadow-sm">
-        {([['all', t('goalFilterAll')], ['active', t('goalFilterActive')]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setGoalFilter(value)} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${goalFilter === value ? 'bg-[var(--money-deep)] text-white' : 'text-[#5e6c68] hover:bg-[#f4f5f1]'}`}>{label}</button>)}
+        <div className="flex gap-1 rounded-xl border border-[var(--money-velo)]/6 bg-[var(--money-superficie)] p-1 shadow-sm">
+        {([['all', t('goalFilterAll')], ['active', t('goalFilterActive')]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setGoalFilter(value)} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${goalFilter === value ? 'bg-[var(--money-deep)] text-white' : 'text-[var(--money-testo-tenue)] hover:bg-[var(--money-superficie-hover)]'}`}>{label}</button>)}
         </div>
         <Button className="h-10 rounded-xl bg-[var(--money-primary)] px-4 text-white hover:bg-[var(--money-primary-hover)]" onClick={() => apriGoal(null)}><Plus className="size-4" />{t('newGoal')}</Button>
       </div>
     </div>
-    {deleteError && <p role="alert" className="rounded-lg bg-[#fce9e3] px-3 py-2 text-sm text-[#a94f3a]">{deleteError}</p>}
-    {visibleGoals.length === 0 ? <Card><CardContent className="p-10 text-center text-sm text-[#5e6c68]">
+    {deleteError && <p role="alert" className="rounded-lg bg-[var(--money-allarme-tenue)] px-3 py-2 text-sm text-[var(--money-allarme)]">{deleteError}</p>}
+    {visibleGoals.length === 0 ? <Card><CardContent className="p-10 text-center text-sm text-[var(--money-testo-tenue)]">
       {/* Senza obiettivi non c'e' nessun filtro da incolpare. Il pulsante per
           crearne uno non si ripete qui: sta gia' in cima alla pagina, e due
           pulsanti con lo stesso nome sono due bersagli per chi naviga da
@@ -4520,11 +4557,11 @@ function GoalsView({ data, accounts, onSave, onDelete, onMilestoneAdd, onMilesto
       } else {
         subtitleParts.push(t('noDeadline'));
       }
-      return <Card key={goal.id} className={`border-black/6 bg-white shadow-sm ${goal.completed ? 'opacity-75' : ''}`}><CardHeader className="flex-row items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><CardTitle className="text-[17px]">{goal.name}</CardTitle><GoalStatusBadge status={goal.status} /></div><p className="mt-1 text-xs text-[#5e6c68]">{subtitleParts.join(' · ')}</p></div><div className="flex"><Button size="icon" variant="ghost" aria-label={`${t('edit')} ${goal.name}`} onClick={() => apriGoal(goal)}><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${goal.name}`} onClick={() => void remove(goal)} className="text-[#a94f3a]"><Trash2 className="size-4" /></Button></div></CardHeader><CardContent><div className="flex items-end justify-between"><p className="text-2xl font-semibold">{formatEuro(goal.currentAmount)}</p><p className="text-sm font-semibold text-[#237056]">{formatPercentPoints(goal.progress)}</p></div><div className="relative mt-4 h-2 overflow-hidden rounded-full bg-[#eef0ec]"><div className="h-full rounded-full bg-[#6d8ff4]" style={{ width: `${goal.progress}%` }} />{goal.milestones.map((tappa) => <span key={tappa.id} aria-hidden className={`absolute top-0 h-full w-[2px] ${tappa.status === 'completed' ? 'bg-white' : 'bg-[#2c3f7a]/70'}`} style={{ left: `${percentualeTappa(goal, tappa)}%` }} />)}</div><GoalMilestones goal={goal} onAdd={onMilestoneAdd} onRemove={onMilestoneDelete} />{goal.history.length > 1 ? <div className="mt-4"><ChartContainer config={historyConfig} className="h-[88px] w-full"><LineChart accessibilityLayer data={historyData} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}><YAxis hide domain={[(min: number) => Math.min(min, 0), (max: number) => Math.max(max, goal.targetAmount)]} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} hide /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} nameKey="amount" formatter={(value) => formatEuro(Number(value))} />} /><Line type="monotone" dataKey="target" stroke="var(--color-target)" strokeWidth={1.5} strokeDasharray="3 4" dot={false} /><Line type="monotone" dataKey="amount" stroke="var(--color-amount)" strokeWidth={2.4} dot={false} /></LineChart></ChartContainer></div> : <p className="mt-4 text-xs text-[#5e6c68]">{t('goalHistoryUnavailable')}</p>}{goal.monthlyNeeded !== null && <p className="mt-3 text-sm"><span className="font-semibold text-[var(--money-deep)]">{t('goalMonthlyNeeded', { amount: formatEuro(goal.monthlyNeeded) })}</span> <span className="text-xs text-[#5e6c68]">{t('goalWeeklyNeeded', { amount: formatEuro(goal.weeklyNeeded ?? 0) })}</span></p>}
-      {goal.overdue && !goal.completed && <p className="mt-3 text-sm font-medium text-[#a94f3a]">{t('goalOverdue', { amount: formatEuro(goal.remainingAmount) })}</p>}
-      <div className="mt-3 flex justify-between text-xs text-[#5e6c68]"><span>{goal.kind === 'contributions' ? `${t('movementsAndAmount', { count: goal.linkedMovements, amount: formatEuro(goal.linkedAmount) })}${goal.targetAccount ? ` · ${t('goalTargetAccountOn', { account: goal.targetAccount })}` : ''}` : t(goal.kind === 'portfolio' ? 'goalKindPortfolio' : 'goalKindNetWorth')}</span><span>{goal.startingAmount > 0 ? `${t('startingAmount')} ${formatEuro(goal.startingAmount)} · ` : ''}{t('goalTarget', { amount: formatEuro(goal.targetAmount) })}</span></div></CardContent></Card>;
+      return <Card key={goal.id} className={`border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm ${goal.completed ? 'opacity-75' : ''}`}><CardHeader className="flex-row items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><CardTitle className="text-[17px]">{goal.name}</CardTitle><GoalStatusBadge status={goal.status} /></div><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{subtitleParts.join(' · ')}</p></div><div className="flex"><Button size="icon" variant="ghost" aria-label={`${t('edit')} ${goal.name}`} onClick={() => apriGoal(goal)}><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${goal.name}`} onClick={() => void remove(goal)} className="text-[var(--money-allarme)]"><Trash2 className="size-4" /></Button></div></CardHeader><CardContent><div className="flex items-end justify-between"><p className="text-2xl font-semibold">{formatEuro(goal.currentAmount)}</p><p className="text-sm font-semibold text-[var(--money-ok)]">{formatPercentPoints(goal.progress)}</p></div><div className="relative mt-4 h-2 overflow-hidden rounded-full bg-[var(--money-superficie-hover)]"><div className="h-full rounded-full bg-[var(--money-barra)]" style={{ width: `${goal.progress}%` }} />{goal.milestones.map((tappa) => <span key={tappa.id} aria-hidden className={`absolute top-0 h-full w-[2px] ${tappa.status === 'completed' ? 'bg-[var(--money-superficie)]' : 'bg-[var(--money-risparmio)]/70'}`} style={{ left: `${percentualeTappa(goal, tappa)}%` }} />)}</div><GoalMilestones goal={goal} onAdd={onMilestoneAdd} onRemove={onMilestoneDelete} />{goal.history.length > 1 ? <div className="mt-4"><ChartContainer config={historyConfig} className="h-[88px] w-full"><LineChart accessibilityLayer data={historyData} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}><YAxis hide domain={[(min: number) => Math.min(min, 0), (max: number) => Math.max(max, goal.targetAmount)]} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} hide /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} nameKey="amount" formatter={(value) => formatEuro(Number(value))} />} /><Line type="monotone" dataKey="target" stroke="var(--color-target)" strokeWidth={1.5} strokeDasharray="3 4" dot={false} /><Line type="monotone" dataKey="amount" stroke="var(--color-amount)" strokeWidth={2.4} dot={false} /></LineChart></ChartContainer></div> : <p className="mt-4 text-xs text-[var(--money-testo-tenue)]">{t('goalHistoryUnavailable')}</p>}{goal.monthlyNeeded !== null && <p className="mt-3 text-sm"><span className="font-semibold text-[var(--money-deep)]">{t('goalMonthlyNeeded', { amount: formatEuro(goal.monthlyNeeded) })}</span> <span className="text-xs text-[var(--money-testo-tenue)]">{t('goalWeeklyNeeded', { amount: formatEuro(goal.weeklyNeeded ?? 0) })}</span></p>}
+      {goal.overdue && !goal.completed && <p className="mt-3 text-sm font-medium text-[var(--money-allarme)]">{t('goalOverdue', { amount: formatEuro(goal.remainingAmount) })}</p>}
+      <div className="mt-3 flex justify-between text-xs text-[var(--money-testo-tenue)]"><span>{goal.kind === 'contributions' ? `${t('movementsAndAmount', { count: goal.linkedMovements, amount: formatEuro(goal.linkedAmount) })}${goal.targetAccount ? ` · ${t('goalTargetAccountOn', { account: goal.targetAccount })}` : ''}` : t(goal.kind === 'portfolio' ? 'goalKindPortfolio' : 'goalKindNetWorth')}</span><span>{goal.startingAmount > 0 ? `${t('startingAmount')} ${formatEuro(goal.startingAmount)} · ` : ''}{t('goalTarget', { amount: formatEuro(goal.targetAmount) })}</span></div></CardContent></Card>;
     })}</div>}
-    <Dialog open={editing !== undefined} onOpenChange={(open) => { if (!open) setEditing(undefined); }}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>{editing ? t('editGoal') : t('newGoalTitle')}</DialogTitle><DialogDescription>{t('goalDialogDesc')}</DialogDescription></DialogHeader><form key={editing?.id ?? 'new-goal'} onSubmit={save} className="space-y-4"><label htmlFor="goal-name" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldName')}<Input id="goal-name" required name="name" defaultValue={editing?.name ?? ''} /></label><div className="grid grid-cols-2 gap-3"><label htmlFor="goal-start-amount" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('startingAmount')}<Input id="goal-start-amount" required name="starting_amount" type="number" min="0" step="0.01" defaultValue={editing?.startingAmount ?? 0} /></label><label htmlFor="goal-target-amount" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldTarget')}<Input id="goal-target-amount" required name="target_amount" type="number" min="0.01" step="0.01" defaultValue={editing?.targetAmount ?? ''} /></label></div><div className="grid grid-cols-2 gap-3"><label htmlFor="goal-start-date" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('startDate')}<Input id="goal-start-date" name="start_date" type="date" defaultValue={editing?.startDate ?? ''} /></label><label htmlFor="goal-target-date" className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fieldDeadline')}<Input id="goal-target-date" name="target_date" type="date" defaultValue={editing?.targetDate ?? ''} /></label></div><label htmlFor="goal-kind" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('goalKindLabel')}<select id="goal-kind" name="kind" value={kindScelto} onChange={(event) => setKindScelto(event.target.value as GoalData['kind'])} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring"><option value="contributions">{t('goalKindContributionsOption')}</option><option value="portfolio">{t('goalKindPortfolioOption')}</option><option value="net_worth">{t('goalKindNetWorthOption')}</option></select></label>{kindScelto === 'contributions' && <label htmlFor="goal-target-account" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('goalTargetAccountLabel')}<select id="goal-target-account" name="target_account" defaultValue={editing?.targetAccount ?? ''} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring"><option value="">{t('goalTargetAccountNone')}</option>{accounts.map((conto) => <option key={conto.id} value={conto.name}>{conto.name}</option>)}</select><span className="block pt-1 font-normal leading-5 text-[#5e6c68]">{t('goalTargetAccountHint')}</span></label>}<label htmlFor="goal-completed-date" className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('achievedDate')}<Input id="goal-completed-date" name="completed_at" type="date" defaultValue={editing?.completedAt ?? ''} /></label>{error && <p className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => setEditing(undefined)}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('saveGoal')}</Button></DialogFooter></form></DialogContent></Dialog>
+    <Dialog open={editing !== undefined} onOpenChange={(open) => { if (!open) setEditing(undefined); }}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>{editing ? t('editGoal') : t('newGoalTitle')}</DialogTitle><DialogDescription>{t('goalDialogDesc')}</DialogDescription></DialogHeader><form key={editing?.id ?? 'new-goal'} onSubmit={save} className="space-y-4"><label htmlFor="goal-name" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldName')}<Input id="goal-name" required name="name" defaultValue={editing?.name ?? ''} /></label><div className="grid grid-cols-2 gap-3"><label htmlFor="goal-start-amount" className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('startingAmount')}<Input id="goal-start-amount" required name="starting_amount" type="number" min="0" step="0.01" defaultValue={editing?.startingAmount ?? 0} /></label><label htmlFor="goal-target-amount" className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldTarget')}<Input id="goal-target-amount" required name="target_amount" type="number" min="0.01" step="0.01" defaultValue={editing?.targetAmount ?? ''} /></label></div><div className="grid grid-cols-2 gap-3"><label htmlFor="goal-start-date" className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('startDate')}<Input id="goal-start-date" name="start_date" type="date" defaultValue={editing?.startDate ?? ''} /></label><label htmlFor="goal-target-date" className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldDeadline')}<Input id="goal-target-date" name="target_date" type="date" defaultValue={editing?.targetDate ?? ''} /></label></div><label htmlFor="goal-kind" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('goalKindLabel')}<select id="goal-kind" name="kind" value={kindScelto} onChange={(event) => setKindScelto(event.target.value as GoalData['kind'])} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm outline-none focus:border-ring"><option value="contributions">{t('goalKindContributionsOption')}</option><option value="portfolio">{t('goalKindPortfolioOption')}</option><option value="net_worth">{t('goalKindNetWorthOption')}</option></select></label>{kindScelto === 'contributions' && <label htmlFor="goal-target-account" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('goalTargetAccountLabel')}<select id="goal-target-account" name="target_account" defaultValue={editing?.targetAccount ?? ''} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm outline-none focus:border-ring"><option value="">{t('goalTargetAccountNone')}</option>{accounts.map((conto) => <option key={conto.id} value={conto.name}>{conto.name}</option>)}</select><span className="block pt-1 font-normal leading-5 text-[var(--money-testo-tenue)]">{t('goalTargetAccountHint')}</span></label>}<label htmlFor="goal-completed-date" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('achievedDate')}<Input id="goal-completed-date" name="completed_at" type="date" defaultValue={editing?.completedAt ?? ''} /></label>{error && <p className="rounded-lg bg-[var(--money-allarme-tenue)] px-3 py-2 text-xs text-[var(--money-allarme)]">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => setEditing(undefined)}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('saveGoal')}</Button></DialogFooter></form></DialogContent></Dialog>
   </div>;
 }
 
@@ -4594,8 +4631,8 @@ function InstrumentAnalysisView({ apiUrl, positions, onGoToLedger }: { apiUrl: s
   // guasto invece del punto di partenza. Qui si dice cosa manca e dove nascono
   // gli strumenti, che e' l'unica cosa da fare da qui.
   if (positions.length === 0) {
-    return <Card className="border-black/6 bg-white shadow-sm"><CardContent className="py-14 text-center">
-      <p className="text-sm font-medium text-[#173b33]">{t('noInstrumentsYet')}</p>
+    return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardContent className="py-14 text-center">
+      <p className="text-sm font-medium text-[var(--money-marca)]">{t('noInstrumentsYet')}</p>
       <Button type="button" variant="outline" className="mt-4" onClick={onGoToLedger}>{t('investTabLedger')}<ChevronRight className="size-4" /></Button>
     </CardContent></Card>;
   }
@@ -4622,10 +4659,10 @@ function InstrumentAnalysisView({ apiUrl, positions, onGoToLedger }: { apiUrl: s
 
   return (
     <div className="space-y-5">
-      <Card className="border-black/6 bg-white shadow-sm">
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-[17px]">{t('gainByInstrument')}</CardTitle>
-          <p className="mt-1 text-xs text-[#5e6c68]">{t('gainByInstrumentSubtitle')}</p>
+          <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('gainByInstrumentSubtitle')}</p>
         </CardHeader>
         <CardContent className="space-y-1.5">
           {ranked.map((position) => (
@@ -4633,14 +4670,14 @@ function InstrumentAnalysisView({ apiUrl, positions, onGoToLedger }: { apiUrl: s
               key={position.name}
               type="button"
               onClick={() => setSelected(position.name)}
-              className={`flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left transition hover:bg-black/[0.03] ${selected === position.name ? 'bg-black/[0.04]' : ''}`}
+              className={`flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left transition hover:bg-[var(--money-velo)]/[0.03] ${selected === position.name ? 'bg-[var(--money-velo)]/[0.04]' : ''}`}
             >
               <span className="w-44 shrink-0 truncate text-sm">
                 {position.name}
-                {!position.isOpen && <span className="ml-2 rounded-full bg-black/6 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[#a3adaa]">{t('closed')}</span>}
+                {!position.isOpen && <span className="ml-2 rounded-full bg-[var(--money-velo)]/6 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--money-testo-spento)]">{t('closed')}</span>}
               </span>
               <span className="relative flex h-4 flex-1 items-center">
-                <span className="absolute left-1/2 h-full w-px bg-black/10" />
+                <span className="absolute left-1/2 h-full w-px bg-[var(--money-velo)]/10" />
                 <span
                   className="absolute h-2.5 rounded-sm"
                   style={{
@@ -4651,7 +4688,7 @@ function InstrumentAnalysisView({ apiUrl, positions, onGoToLedger }: { apiUrl: s
                   }}
                 />
               </span>
-              <span className={`w-28 shrink-0 text-right text-sm font-semibold tabular-nums ${position.totalGain >= 0 ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>
+              <span className={`w-28 shrink-0 text-right text-sm font-semibold tabular-nums ${position.totalGain >= 0 ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'}`}>
                 {formatEuro(position.totalGain)}
               </span>
             </button>
@@ -4659,16 +4696,16 @@ function InstrumentAnalysisView({ apiUrl, positions, onGoToLedger }: { apiUrl: s
         </CardContent>
       </Card>
 
-      <Card className="border-black/6 bg-white shadow-sm">
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-[17px]">{selected ?? t('instrument')}</CardTitle>
-          <p className="mt-1 text-xs text-[#5e6c68]">
+          <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">
             {history?.symbol ? t('instrumentHistorySubtitle', { symbol: history.symbol }) : t('instrumentHistoryNoTicker')}
           </p>
         </CardHeader>
         <CardContent>
-          {loading && <div className="flex h-[300px] items-center justify-center text-sm text-[#5e6c68]">{t('loading')}</div>}
-          {!loading && chartData.length === 0 && <div className="flex h-[300px] items-center justify-center text-sm text-[#5e6c68]">{t('instrumentHistoryEmpty')}</div>}
+          {loading && <div className="flex h-[300px] items-center justify-center text-sm text-[var(--money-testo-tenue)]">{t('loading')}</div>}
+          {!loading && chartData.length === 0 && <div className="flex h-[300px] items-center justify-center text-sm text-[var(--money-testo-tenue)]">{t('instrumentHistoryEmpty')}</div>}
           {!loading && chartData.length > 0 && (
             <ChartContainer config={chartConfig} className="h-[300px] w-full">
               <ComposedChart accessibilityLayer data={chartData}>
@@ -4711,10 +4748,10 @@ async function cercaStrumenti(apiUrl: string, query: string): Promise<TickerResu
 // sembrano due fonti diverse.
 function TickerResults({ items, onPick }: { items: TickerResult[]; onPick: (symbol: string) => void }) {
   if (items.length === 0) return null;
-  return <div className="mt-2 divide-y divide-black/5 rounded-lg border border-black/8 bg-white">
-    {items.map((item) => <button key={item.symbol} type="button" onClick={() => onPick(item.symbol)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs hover:bg-[#f4f5f1]">
-      <span><span className="font-semibold">{item.symbol}</span> <span className="text-[#5e6c68]">{item.name}</span></span>
-      <span className="shrink-0 text-[#5e6c68]">{item.exchange} · {item.type}</span>
+  return <div className="mt-2 divide-y divide-[var(--money-velo)]/5 rounded-lg border border-[var(--money-velo)]/8 bg-[var(--money-superficie)]">
+    {items.map((item) => <button key={item.symbol} type="button" onClick={() => onPick(item.symbol)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs hover:bg-[var(--money-superficie-hover)]">
+      <span><span className="font-semibold">{item.symbol}</span> <span className="text-[var(--money-testo-tenue)]">{item.name}</span></span>
+      <span className="shrink-0 text-[var(--money-testo-tenue)]">{item.exchange} · {item.type}</span>
     </button>)}
   </div>;
 }
@@ -4841,11 +4878,11 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
   // volta, e mentre una gira l'altra aspetta.
   const quoteBusy = busy === 'refresh' || busy === 'backfill';
 
-  return <Card className="border-black/6 bg-white shadow-sm">
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
     <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <CardTitle className="text-[17px]">{t('instrumentTickers')}</CardTitle>
-        <p className="mt-1 text-xs text-[#5e6c68]">{t('instrumentTickersSubtitle', { configured, total: rows.length })}</p>
+        <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('instrumentTickersSubtitle', { configured, total: rows.length })}</p>
       </div>
       <div className="flex flex-col items-end gap-1">
         <div className="flex flex-wrap justify-end gap-2">
@@ -4856,22 +4893,22 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
             <Download className="size-4" />{t('backfillHistory')}
           </Button>
         </div>
-        {summary && <span role={refreshFailed ? 'alert' : undefined} className={`text-xs ${refreshFailed ? 'text-[#a94f3a]' : 'text-[#237056]'}`}>{summary}</span>}
+        {summary && <span role={refreshFailed ? 'alert' : undefined} className={`text-xs ${refreshFailed ? 'text-[var(--money-allarme)]' : 'text-[var(--money-ok)]'}`}>{summary}</span>}
       </div>
     </CardHeader>
     <CardContent className="p-0">
-      <div className="mx-(--card-spacing) mb-3 rounded-xl bg-[#f4f5f1] p-3">
-        <p className="mb-2 text-xs font-medium text-[#52615d]">{t('addInstrument')}</p>
+      <div className="mx-(--card-spacing) mb-3 rounded-xl bg-[var(--money-superficie-hover)] p-3">
+        <p className="mb-2 text-xs font-medium text-[var(--money-testo-muto)]">{t('addInstrument')}</p>
         <div className="flex flex-wrap items-center gap-2">
-          <Input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder={t('instrumentNamePlaceholder')} className="h-9 w-[240px] bg-white" />
-          <Input value={newSymbol} onChange={(event) => setNewSymbol(event.target.value)} placeholder={t('tickerPlaceholder')} className="h-9 w-[150px] bg-white" />
+          <Input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder={t('instrumentNamePlaceholder')} className="h-9 w-[240px] bg-[var(--money-superficie)]" />
+          <Input value={newSymbol} onChange={(event) => setNewSymbol(event.target.value)} placeholder={t('tickerPlaceholder')} className="h-9 w-[150px] bg-[var(--money-superficie)]" />
           <Button type="button" size="sm" disabled={creating || !newName.trim()} onClick={() => void createInstrument()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('add')}</Button>
-          {createError && <span className="text-xs text-[#a94f3a]">{createError}</span>}
+          {createError && <span className="text-xs text-[var(--money-allarme)]">{createError}</span>}
         </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-sm">
-          <thead className="bg-[#f4f5f1] text-xs text-[#52615d]">
+          <thead className="bg-[var(--money-superficie-hover)] text-xs text-[var(--money-testo-muto)]">
             <tr>
               <th className="px-5 py-3 text-left">{t('instrument')}</th>
               <th className="px-3 py-3 text-left">{t('currencyAuto')}</th>
@@ -4880,18 +4917,18 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
               <th className="px-5 py-3" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-black/5">
+          <tbody className="divide-y divide-[var(--money-velo)]/5">
             {rows.map((row) => {
               const value = drafts[row.id] ?? row.providerSymbol ?? '';
               const changed = value.trim() !== (row.providerSymbol ?? '').trim();
               const check = checks[row.id];
               return <tr key={row.id}>
                 <td className="px-5 py-2.5 font-medium">{row.name}</td>
-                <td className="px-3 py-2.5 text-xs text-[#5e6c68]">{row.currency}</td>
+                <td className="px-3 py-2.5 text-xs text-[var(--money-testo-tenue)]">{row.currency}</td>
                 <td className="px-3 py-2.5">
-                  <Input value={value} placeholder={t('tickerPlaceholder')} onChange={(event) => setDrafts((d) => ({ ...d, [row.id]: event.target.value }))} className="h-9 w-[150px] bg-[#fafaf8]" />
+                  <Input value={value} placeholder={t('tickerPlaceholder')} onChange={(event) => setDrafts((d) => ({ ...d, [row.id]: event.target.value }))} className="h-9 w-[150px] bg-[var(--money-superficie-tenue)]" />
                 </td>
-                <td className={`px-3 py-2.5 text-xs ${check ? (check.ok ? 'text-[#237056]' : 'text-[#a94f3a]') : 'text-[#5e6c68]'}`}>{check ? check.text : '—'}</td>
+                <td className={`px-3 py-2.5 text-xs ${check ? (check.ok ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]') : 'text-[var(--money-testo-tenue)]'}`}>{check ? check.text : '—'}</td>
                 <td className="px-5 py-2.5">
                   <div className="flex justify-end gap-1">
                     <Button type="button" size="sm" variant="ghost" onClick={() => { setSearchFor(searchFor === row.id ? null : row.id); setSearchText(row.name); setResults([]); }}><Search className="size-4" />{t('tickerSearch')}</Button>
@@ -4903,13 +4940,13 @@ function InstrumentQuotesView({ apiUrl, rows, reload, onSaved, onRefresh }: { ap
             }).flatMap((rowNode, index) => {
               const row = rows[index];
               if (searchFor !== row.id) return [rowNode];
-              return [rowNode, <tr key={`search-${row.id}`}><td colSpan={5} className="bg-[#fafaf8] px-5 py-3">
+              return [rowNode, <tr key={`search-${row.id}`}><td colSpan={5} className="bg-[var(--money-superficie-tenue)] px-5 py-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Input autoFocus value={searchText} onChange={(event) => setSearchText(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void runSearch(searchText); } }} placeholder={t('tickerSearchPlaceholder')} className="h-9 w-[280px] bg-white" />
+                  <Input autoFocus value={searchText} onChange={(event) => setSearchText(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void runSearch(searchText); } }} placeholder={t('tickerSearchPlaceholder')} className="h-9 w-[280px] bg-[var(--money-superficie)]" />
                   <Button type="button" size="sm" variant="outline" disabled={searching} onClick={() => void runSearch(searchText)}>{searching ? t('searchingEllipsis') : t('tickerSearch')}</Button>
                 </div>
                 <TickerResults items={results} onPick={(symbol) => pick(row.id, symbol)} />
-                {!searching && results.length === 0 && <p className="mt-2 text-xs text-[#5e6c68]">{t('tickerSearchHint')}</p>}
+                {!searching && results.length === 0 && <p className="mt-2 text-xs text-[var(--money-testo-tenue)]">{t('tickerSearchHint')}</p>}
               </td></tr>];
             })}
           </tbody>
@@ -4939,22 +4976,22 @@ function CreditLineCard({ item, onEdit, onEditMovement, onDelete }: { item: Cred
   // Un movimento puo' avere una riga di dettaglio: serve a marcare in tabella
   // quelli ancora da classificare, come fa la scheda del prestito.
   const dettaglioPerMovimento = new Map(item.payments.flatMap((riga) => riga.transactionIds.map((id) => [id, riga] as const)));
-  return <Card className="border-black/6 bg-white shadow-sm">
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
     <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
       <div>
         <CardTitle className="text-[17px]">{item.name}</CardTitle>
-        <p className="mt-1 text-xs text-[#5e6c68]">{item.creditLimit === null ? t('debtNoCreditLimit') : t('debtCreditLineLabel')}</p>
-        {item.unclassified.count > 0 && <p className="mt-1 text-xs font-medium text-[#a94f3a]">{t('debtUnclassifiedSummary', { count: item.unclassified.count, amount: formatEuro(item.unclassified.amount) })}</p>}
+        <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{item.creditLimit === null ? t('debtNoCreditLimit') : t('debtCreditLineLabel')}</p>
+        {item.unclassified.count > 0 && <p className="mt-1 text-xs font-medium text-[var(--money-allarme)]">{t('debtUnclassifiedSummary', { count: item.unclassified.count, amount: formatEuro(item.unclassified.amount) })}</p>}
       </div>
       {/* Stessa azione della scheda del prestito, stesso nome: era "Modifica"
           qui e "Configura debito" li', per lo stesso modulo. */}
       <div className="flex gap-2"><Button variant="outline" size="sm" onClick={onEdit}><Pencil className="size-4" />{t('configureDebt')}</Button><Button variant="ghost" size="icon" aria-label={`${t('delete')} ${item.name}`} onClick={onDelete}><Trash2 className="size-4" /></Button></div>
     </CardHeader>
     <CardContent>
-      <div className="divide-y divide-black/5">
+      <div className="divide-y divide-[var(--money-velo)]/5">
         {voci.map(([etichetta, valore]) => (
           <div key={etichetta} className="flex items-baseline justify-between gap-3 py-2">
-            <span className="text-xs text-[#5e6c68]">{etichetta}</span>
+            <span className="text-xs text-[var(--money-testo-tenue)]">{etichetta}</span>
             <span className="text-sm font-semibold tabular-nums">{valore}</span>
           </div>
         ))}
@@ -4962,12 +4999,12 @@ function CreditLineCard({ item, onEdit, onEditMovement, onDelete }: { item: Cred
       <Button variant="outline" size="sm" className="mt-3" aria-expanded={aperto} onClick={() => setAperto((prima) => !prima)}>
         {aperto ? t('debtHideDetail') : t('debtShowDetail')}
       </Button>
-      {aperto && <div className="mt-4 space-y-5 border-t border-black/6 pt-4">
+      {aperto && <div className="mt-4 space-y-5 border-t border-[var(--money-velo)]/6 pt-4">
         {/* L'equivalente del grafico del saldo di un prestito: come si e'
             mosso lo scoperto nel tempo. Un punto per mese, il valore di fine
             mese - il picco infra-mese sta fra le voci qui sopra. */}
         <div>
-          <p className="mb-2 text-xs font-semibold text-[#52615d]">{t('debtExposureChart')}</p>
+          <p className="mb-2 text-xs font-semibold text-[var(--money-testo-muto)]">{t('debtExposureChart')}</p>
           {item.trend.length > 0
             ? <ChartContainer config={esposizioneConfig} className="h-[200px] w-full">
                 <LineChart accessibilityLayer data={item.trend}>
@@ -4978,13 +5015,13 @@ function CreditLineCard({ item, onEdit, onEditMovement, onDelete }: { item: Cred
                   <Line dataKey="exposure" stroke="var(--color-exposure)" strokeWidth={2.5} dot={item.trend.length === 1} />
                 </LineChart>
               </ChartContainer>
-            : <p className="text-sm text-[#5e6c68]">{t('noTransactions')}</p>}
+            : <p className="text-sm text-[var(--money-testo-tenue)]">{t('noTransactions')}</p>}
         </div>
         <div>
           <p className="mb-3 text-sm font-semibold">{t('debtMovements')}</p>
-          {item.movements.length ? <div className="max-h-[28rem] overflow-auto rounded-lg border border-black/8">
+          {item.movements.length ? <div className="max-h-[28rem] overflow-auto rounded-lg border border-[var(--money-velo)]/8">
             <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-[#f4f5f1]"><tr>
+              <thead className="sticky top-0 bg-[var(--money-superficie-hover)]"><tr>
                 <th className="px-3 py-2 text-left">{t('date')}</th>
                 <th className="px-3 py-2 text-left">{t('description')}</th>
                 <th className="px-3 py-2 text-right">{t('amount')}</th>
@@ -4993,17 +5030,17 @@ function CreditLineCard({ item, onEdit, onEditMovement, onDelete }: { item: Cred
                 const dettaglio = dettaglioPerMovimento.get(movimento.id);
                 // In uscita dal conto il debito cresce, in entrata scende.
                 const effetto = movimento.effect;
-                return <tr key={movimento.id} className={`border-t border-black/5 ${dettaglio && !dettaglio.classified ? 'bg-[#fce9e3]' : ''}`}>
+                return <tr key={movimento.id} className={`border-t border-[var(--money-velo)]/5 ${dettaglio && !dettaglio.classified ? 'bg-[var(--money-allarme-tenue)]' : ''}`}>
                   <td className="whitespace-nowrap px-3 py-2">{formatDate(`${movimento.occurredOn}T12:00:00`)}</td>
                   {/* La stessa modifica che ha il registro di un prestito: qui
                       il movimento "Da classificare" si vedeva e non si poteva
                       toccare, quindi la riga arancione restava arancione. */}
-                  <td className="px-3 py-2">{movimento.description}{dettaglio && !dettaglio.classified && <span className="ml-2 text-[11px] font-medium text-[#a94f3a]">{t('debtUnclassified')}</span>}<Button type="button" size="sm" variant="ghost" className="mt-1 h-7 px-2" onClick={() => onEditMovement(movimento.id)}><Pencil className="size-3.5" />{t('edit')}</Button></td>
-                  <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${effetto >= 0 ? 'text-[#a94f3a]' : 'text-[#237056]'}`}>{effetto >= 0 ? '+' : '−'}{formatEuro(Math.abs(effetto))}</td>
+                  <td className="px-3 py-2">{movimento.description}{dettaglio && !dettaglio.classified && <span className="ml-2 text-[11px] font-medium text-[var(--money-allarme)]">{t('debtUnclassified')}</span>}<Button type="button" size="sm" variant="ghost" className="mt-1 h-7 px-2" onClick={() => onEditMovement(movimento.id)}><Pencil className="size-3.5" />{t('edit')}</Button></td>
+                  <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${effetto >= 0 ? 'text-[var(--money-allarme)]' : 'text-[var(--money-ok)]'}`}>{effetto >= 0 ? '+' : '−'}{formatEuro(Math.abs(effetto))}</td>
                 </tr>;
               })}</tbody>
             </table>
-          </div> : <p className="text-sm text-[#5e6c68]">{t('noTransactions')}</p>}
+          </div> : <p className="text-sm text-[var(--money-testo-tenue)]">{t('noTransactions')}</p>}
         </div>
       </div>}
     </CardContent>
@@ -5098,7 +5135,7 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
     } catch { setError(t('debtSaveFailed')); } finally { setBusy(false); }
   }
 
-  if (!data) return <Card><CardContent className="p-10 text-center text-sm text-[#5e6c68]">{error || t('updating')}</CardContent></Card>;
+  if (!data) return <Card><CardContent className="p-10 text-center text-sm text-[var(--money-testo-tenue)]">{error || t('updating')}</CardContent></Card>;
   const metriche = [
     [t('debtTotal'), formatEuro(data.summary.totalDebt)],
     [t('debtAverageRate'), data.summary.weightedRate == null ? '—' : `${formatPercentNumber(data.summary.weightedRate)}%`],
@@ -5113,51 +5150,51 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
   const prestiti = data.items.filter((item): item is TermLoanItem => item.kind === 'term_loan');
 
   return <div className="space-y-5">
-    <div className="flex flex-wrap items-center justify-between gap-3"><p role="status" className="text-sm text-[#5e6c68]">{t('debtAsOf', { date: formatDate(`${data.asOf}T12:00:00`) })}</p><Button onClick={() => onNewAccount()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('newLiability')}</Button></div>
-    {error && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-3 text-sm text-[#a94f3a]">{error}</p>}
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{metriche.map(([label, value], index) => <Card key={label} className={index === 0 ? 'border-0 bg-[var(--money-deep)] text-white' : 'border-black/6 bg-white'}><CardContent className="p-5"><p className={`text-xs ${index === 0 ? 'text-white/70' : 'text-[#5e6c68]'}`}>{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p></CardContent></Card>)}</div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><p role="status" className="text-sm text-[var(--money-testo-tenue)]">{t('debtAsOf', { date: formatDate(`${data.asOf}T12:00:00`) })}</p><Button onClick={() => onNewAccount()} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('newLiability')}</Button></div>
+    {error && <p role="alert" className="rounded-xl border border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-tenue)] px-4 py-3 text-sm text-[var(--money-allarme)]">{error}</p>}
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{metriche.map(([label, value], index) => <Card key={label} className={index === 0 ? 'border-0 bg-[var(--money-deep)] text-white' : 'border-[var(--money-velo)]/6 bg-[var(--money-superficie)]'}><CardContent className="p-5"><p className={`text-xs ${index === 0 ? 'text-white/70' : 'text-[var(--money-testo-tenue)]'}`}>{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p></CardContent></Card>)}</div>
     {/* L'avviso di pagina dice anche cosa farne: le schede sotto ripetono il
         numero del singolo debito, e senza questa riga l'arancione si vedeva
         senza sapere dove si spegne. */}
-    {data.summary.unclassifiedCount > 0 && <div role="status" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-3 text-sm text-[#a94f3a]">{t('debtUnclassifiedWhere', { count: data.summary.unclassifiedCount, amount: formatEuro(data.summary.unclassifiedAmount) })}</div>}
-    {!data.items.length && <Card><CardContent className="p-10 text-center"><CreditCard className="mx-auto mb-3 size-8 text-[#5e6c68]" /><p className="text-sm text-[#5e6c68]">{t('debtNoAccounts')}</p><Button className="mt-4" onClick={() => onNewAccount()}>{t('newLiability')}</Button></CardContent></Card>}
+    {data.summary.unclassifiedCount > 0 && <div role="status" className="rounded-xl border border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-tenue)] px-4 py-3 text-sm text-[var(--money-allarme)]">{t('debtUnclassifiedWhere', { count: data.summary.unclassifiedCount, amount: formatEuro(data.summary.unclassifiedAmount) })}</div>}
+    {!data.items.length && <Card><CardContent className="p-10 text-center"><CreditCard className="mx-auto mb-3 size-8 text-[var(--money-testo-tenue)]" /><p className="text-sm text-[var(--money-testo-tenue)]">{t('debtNoAccounts')}</p><Button className="mt-4" onClick={() => onNewAccount()}>{t('newLiability')}</Button></CardContent></Card>}
     {linee.length > 0 && <>
-      <p className="text-xs font-semibold uppercase tracking-wide text-[#5e6c68]">{t('debtCreditLines')}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--money-testo-tenue)]">{t('debtCreditLines')}</p>
       <div className="grid gap-4 xl:grid-cols-2">{linee.map((linea) => <CreditLineCard key={linea.accountId} item={linea} onEdit={() => edit(linea)} onEditMovement={(id) => void editMovement(id)} onDelete={() => requestDelete(linea.accountId, linea.name, linea.name)} />)}</div>
     </>}
-    {prestiti.length > 0 && linee.length > 0 && <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[#5e6c68]">{t('debtTermLoans')}</p>}
-    {prestiti.map((item) => <Card key={item.accountId} className="border-black/6 bg-white shadow-sm">
-      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3"><div><CardTitle className="text-[17px]">{item.name}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{item.profile ? `${item.profile.annualRate.toLocaleString(locale)}% · ${t(`debtType_${item.profile.debtType}` as TranslationKey)} · ${t(`debtStatus_${item.profile.status}` as TranslationKey)}` : t('debtScheduleEmpty')}</p>{item.unclassified.count > 0 && <p className="mt-1 text-xs font-medium text-[#a94f3a]">{t('debtUnclassifiedSummary', { count: item.unclassified.count, amount: formatEuro(item.unclassified.amount) })}</p>}</div><div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => { const due = item.nextPayment ? Math.abs((new Date(`${item.nextPayment.dueOn}T12:00:00`).getTime() - Date.now()) / 86400000) : Infinity; onPayment(item.name, due <= 10 && item.nextPayment ? { principal: item.nextPayment.principal, interest: item.nextPayment.interest } : undefined); }}><ArrowRightLeft className="size-4" />{t('registerDebtPayment')}</Button><Button size="sm" variant="outline" onClick={() => edit(item)}><Pencil className="size-4" />{t('configureDebt')}</Button><Button size="sm" variant="ghost" onClick={() => { const account = accounts.find((row) => row.id === item.accountId); if (account) onEditAccount(account); }}>{t('fieldAccount')}</Button><Button variant="ghost" size="icon" aria-label={`${t('delete')} ${item.name}`} onClick={() => requestDelete(item.accountId, item.name, item.name)}><Trash2 className="size-4" /></Button></div></CardHeader>
+    {prestiti.length > 0 && linee.length > 0 && <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[var(--money-testo-tenue)]">{t('debtTermLoans')}</p>}
+    {prestiti.map((item) => <Card key={item.accountId} className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
+      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3"><div><CardTitle className="text-[17px]">{item.name}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{item.profile ? `${item.profile.annualRate.toLocaleString(locale)}% · ${t(`debtType_${item.profile.debtType}` as TranslationKey)} · ${t(`debtStatus_${item.profile.status}` as TranslationKey)}` : t('debtScheduleEmpty')}</p>{item.unclassified.count > 0 && <p className="mt-1 text-xs font-medium text-[var(--money-allarme)]">{t('debtUnclassifiedSummary', { count: item.unclassified.count, amount: formatEuro(item.unclassified.amount) })}</p>}</div><div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => { const due = item.nextPayment ? Math.abs((new Date(`${item.nextPayment.dueOn}T12:00:00`).getTime() - Date.now()) / 86400000) : Infinity; onPayment(item.name, due <= 10 && item.nextPayment ? { principal: item.nextPayment.principal, interest: item.nextPayment.interest } : undefined); }}><ArrowRightLeft className="size-4" />{t('registerDebtPayment')}</Button><Button size="sm" variant="outline" onClick={() => edit(item)}><Pencil className="size-4" />{t('configureDebt')}</Button><Button size="sm" variant="ghost" onClick={() => { const account = accounts.find((row) => row.id === item.accountId); if (account) onEditAccount(account); }}>{t('fieldAccount')}</Button><Button variant="ghost" size="icon" aria-label={`${t('delete')} ${item.name}`} onClick={() => requestDelete(item.accountId, item.name, item.name)}><Trash2 className="size-4" /></Button></div></CardHeader>
       <CardContent className="space-y-4">
       <div className="grid gap-3 lg:grid-cols-3">
-        <div className="rounded-xl border border-[#bd5e46]/15 bg-[#fff9f6] p-4"><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#9b513e]">{t('debtPlanSection')}</p><div className="space-y-2">{[
+        <div className="rounded-xl border border-[var(--money-allarme)]/15 bg-[var(--money-allarme-velo)] p-4"><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--money-allarme-hover)]">{t('debtPlanSection')}</p><div className="space-y-2">{[
           [t('plannedPrincipal'), item.profile ? formatEuro(item.profile.plannedDrawdowns.length ? item.profile.plannedDrawdowns.reduce((sum, row) => sum + row.amount, 0) : item.profile.originalPrincipal) : '—'],
           [t('theoreticalRemaining'), item.theoreticalRemaining == null ? '—' : formatEuro(item.theoreticalRemaining)],
           [t('interestDueToDate'), item.comparison ? formatEuro(item.comparison.plannedInterest) : '—'],
-        ].map(([label, value]) => <div key={label} className="flex items-baseline justify-between gap-3"><span className="text-xs text-[#5e6c68]">{label}</span><span className="text-sm font-semibold tabular-nums">{value}</span></div>)}</div>{!item.profile && <p className="mt-3 text-xs text-[#9b513e]">{t('unconfiguredInterest')}</p>}</div>
-        <div className="rounded-xl border border-[#2d7b65]/15 bg-[#f3faf7] p-4"><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#237056]">{t('debtAccruedSection')}</p><div className="space-y-2">{[
+        ].map(([label, value]) => <div key={label} className="flex items-baseline justify-between gap-3"><span className="text-xs text-[var(--money-testo-tenue)]">{label}</span><span className="text-sm font-semibold tabular-nums">{value}</span></div>)}</div>{!item.profile && <p className="mt-3 text-xs text-[var(--money-allarme-hover)]">{t('unconfiguredInterest')}</p>}</div>
+        <div className="rounded-xl border border-[var(--money-ok)]/15 bg-[var(--money-superficie-tenue)] p-4"><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--money-ok)]">{t('debtAccruedSection')}</p><div className="space-y-2">{[
           [t('drawnPrincipal'), formatEuro(item.drawnPrincipal)],
           [t('chargedInterest'), item.interestCharged == null ? '—' : formatEuro(item.interestCharged)],
-        ].map(([label, value]) => <div key={label} className="flex items-baseline justify-between gap-3"><span className="text-xs text-[#5e6c68]">{label}</span><span className="text-sm font-semibold tabular-nums">{value}</span></div>)}</div><p className="mt-3 text-[11px] leading-4 text-[#5e6c68]">{item.profile ? t('chargedInterestHint') : t('unconfiguredInterest')}</p></div>
-        <div className="rounded-xl border border-black/8 bg-[#f7f8f5] p-4"><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#52615d]">{t('debtPaymentsSection')}</p><div className="space-y-2">{[
+        ].map(([label, value]) => <div key={label} className="flex items-baseline justify-between gap-3"><span className="text-xs text-[var(--money-testo-tenue)]">{label}</span><span className="text-sm font-semibold tabular-nums">{value}</span></div>)}</div><p className="mt-3 text-[11px] leading-4 text-[var(--money-testo-tenue)]">{item.profile ? t('chargedInterestHint') : t('unconfiguredInterest')}</p></div>
+        <div className="rounded-xl border border-[var(--money-velo)]/8 bg-[var(--money-superficie-tenue)] p-4"><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--money-testo-muto)]">{t('debtPaymentsSection')}</p><div className="space-y-2">{[
           [t('actualRepaid'), formatEuro(item.principalRepaid)],
           [t('interestPaid'), formatEuro(item.interestPaid)],
-        ].map(([label, value]) => <div key={label} className="flex items-baseline justify-between gap-3"><span className="text-xs text-[#5e6c68]">{label}</span><span className="text-sm font-semibold tabular-nums">{value}</span></div>)}</div></div>
+        ].map(([label, value]) => <div key={label} className="flex items-baseline justify-between gap-3"><span className="text-xs text-[var(--money-testo-tenue)]">{label}</span><span className="text-sm font-semibold tabular-nums">{value}</span></div>)}</div></div>
       </div>
       <div className="rounded-xl bg-[var(--money-deep)] p-4 text-white"><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-white/70">{t('remainingToPay')}</p><div className="grid gap-3 sm:grid-cols-3">{[
         [t('remainingDebt'), formatEuro(item.outstanding)],
         [t('interestOutstanding'), item.interestOutstanding == null ? '—' : formatEuro(item.interestOutstanding)],
         [t('actualTotalDebt'), item.actualTotalDebt == null ? '—' : formatEuro(item.actualTotalDebt)],
       ].map(([label, value], index) => <div key={label} className={index === 2 ? 'sm:border-l sm:border-white/15 sm:pl-3' : ''}><p className="text-[11px] text-white/70">{label}</p><p className={`mt-1 tabular-nums ${index === 2 ? 'text-xl font-semibold' : 'text-sm font-medium'}`}>{value}</p></div>)}</div></div>
-      {Math.abs(item.reconciliationDifference) >= 0.01 && <p role="status" className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{t('debtReconciliation', { amount: formatEuro(item.reconciliationDifference) })}</p>}
-      {item.nextPayment && <p className="text-xs text-[#52615d]"><span className="font-medium">{t('theoreticalNextPayment')}:</span> {formatEuro(item.nextPayment.payment)} · {formatDate(`${item.nextPayment.dueOn}T12:00:00`)}</p>}
+      {Math.abs(item.reconciliationDifference) >= 0.01 && <p role="status" className="rounded-lg bg-[var(--money-allarme-velo)] px-3 py-2 text-xs text-[var(--money-allarme)]">{t('debtReconciliation', { amount: formatEuro(item.reconciliationDifference) })}</p>}
+      {item.nextPayment && <p className="text-xs text-[var(--money-testo-muto)]"><span className="font-medium">{t('theoreticalNextPayment')}:</span> {formatEuro(item.nextPayment.payment)} · {formatDate(`${item.nextPayment.dueOn}T12:00:00`)}</p>}
       <Button variant="outline" size="sm" aria-expanded={expanded === item.accountId} onClick={() => setExpanded(expanded === item.accountId ? null : item.accountId)}>{expanded === item.accountId ? t('close') : t('details')}</Button>
-      {expanded === item.accountId && <div className="grid gap-5 border-t border-black/6 pt-4 xl:grid-cols-2">
+      {expanded === item.accountId && <div className="grid gap-5 border-t border-[var(--money-velo)]/6 pt-4 xl:grid-cols-2">
         <div><p className="mb-3 text-sm font-semibold">{t('debtPlanVsActual')}</p>{item.schedule.length ? <>
-          {item.comparison && <p className={`mb-4 rounded-lg px-3 py-2 text-xs font-medium ${item.difference != null && item.difference <= 0 ? 'bg-[#eaf5ef] text-[#237056]' : 'bg-[#fce9e3] text-[#a94f3a]'}`}>{t((item.difference ?? 0) <= 0 ? 'debtAheadOfPlan' : 'debtBehindPlan', { amount: formatEuro(Math.abs(item.difference ?? 0)) })}</p>}
-          <p className="mb-2 text-xs font-semibold text-[#52615d]">{t('debtBalanceChart')}</p><ChartContainer config={{ plannedDebt: { label: t('theoreticalRemaining'), color: '#bd5e46' }, actualDebt: { label: t('actualTotalDebt'), color: '#237056' } }} className="h-[200px] w-full"><LineChart accessibilityLayer data={item.trend}><CartesianGrid vertical={false} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} minTickGap={35} /><YAxis tickLine={false} axisLine={false} width={70} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} formatter={(value) => formatEuro(Number(value))} />} /><ChartLegend content={<ChartLegendContent />} /><Line dataKey="plannedDebt" stroke="var(--color-plannedDebt)" strokeWidth={2.5} dot={false} /><Line dataKey="actualDebt" stroke="var(--color-actualDebt)" strokeWidth={2.5} dot={false} connectNulls={false} /></LineChart></ChartContainer>
-          <p className="mb-2 mt-5 text-xs font-semibold text-[#52615d]">{t('debtCapitalFlowsChart')}</p><ChartContainer config={{ actualDrawn: { label: t('drawnPrincipal'), color: '#457b9d' }, actualRepaid: { label: t('actualRepaid'), color: '#237056' } }} className="h-[200px] w-full"><LineChart accessibilityLayer data={item.trend}><CartesianGrid vertical={false} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} minTickGap={35} /><YAxis tickLine={false} axisLine={false} width={70} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} formatter={(value) => formatEuro(Number(value))} />} /><ChartLegend content={<ChartLegendContent />} /><Line dataKey="actualDrawn" stroke="var(--color-actualDrawn)" strokeWidth={2.5} dot={false} connectNulls={false} /><Line dataKey="actualRepaid" stroke="var(--color-actualRepaid)" strokeWidth={2.5} dot={false} connectNulls={false} /></LineChart></ChartContainer>
-          <p className="mb-2 mt-5 text-xs font-semibold text-[#52615d]">{t('debtInterestChart')}</p><ChartContainer config={{ plannedInterest: { label: t('plannedInterestLine'), color: '#d49a3a' }, actualInterestCharged: { label: t('actualChargedInterestLine'), color: '#bd5e46' }, actualInterestPaid: { label: t('actualInterestLine'), color: '#6473b8' } }} className="h-[200px] w-full"><LineChart accessibilityLayer data={item.trend}><CartesianGrid vertical={false} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} minTickGap={35} /><YAxis tickLine={false} axisLine={false} width={70} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} formatter={(value) => formatEuro(Number(value))} />} /><ChartLegend content={<ChartLegendContent />} /><Line dataKey="plannedInterest" stroke="var(--color-plannedInterest)" strokeWidth={2} strokeDasharray="5 4" dot={false} /><Line dataKey="actualInterestCharged" stroke="var(--color-actualInterestCharged)" strokeWidth={2.5} dot={false} connectNulls={false} /><Line dataKey="actualInterestPaid" stroke="var(--color-actualInterestPaid)" strokeWidth={2.5} dot={false} connectNulls={false} /></LineChart></ChartContainer>
+          {item.comparison && <p className={`mb-4 rounded-lg px-3 py-2 text-xs font-medium ${item.difference != null && item.difference <= 0 ? 'bg-[var(--money-ok-tenue)] text-[var(--money-ok)]' : 'bg-[var(--money-allarme-tenue)] text-[var(--money-allarme)]'}`}>{t((item.difference ?? 0) <= 0 ? 'debtAheadOfPlan' : 'debtBehindPlan', { amount: formatEuro(Math.abs(item.difference ?? 0)) })}</p>}
+          <p className="mb-2 text-xs font-semibold text-[var(--money-testo-muto)]">{t('debtBalanceChart')}</p><ChartContainer config={{ plannedDebt: { label: t('theoreticalRemaining'), color: '#bd5e46' }, actualDebt: { label: t('actualTotalDebt'), color: '#237056' } }} className="h-[200px] w-full"><LineChart accessibilityLayer data={item.trend}><CartesianGrid vertical={false} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} minTickGap={35} /><YAxis tickLine={false} axisLine={false} width={70} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} formatter={(value) => formatEuro(Number(value))} />} /><ChartLegend content={<ChartLegendContent />} /><Line dataKey="plannedDebt" stroke="var(--color-plannedDebt)" strokeWidth={2.5} dot={false} /><Line dataKey="actualDebt" stroke="var(--color-actualDebt)" strokeWidth={2.5} dot={false} connectNulls={false} /></LineChart></ChartContainer>
+          <p className="mb-2 mt-5 text-xs font-semibold text-[var(--money-testo-muto)]">{t('debtCapitalFlowsChart')}</p><ChartContainer config={{ actualDrawn: { label: t('drawnPrincipal'), color: '#457b9d' }, actualRepaid: { label: t('actualRepaid'), color: '#237056' } }} className="h-[200px] w-full"><LineChart accessibilityLayer data={item.trend}><CartesianGrid vertical={false} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} minTickGap={35} /><YAxis tickLine={false} axisLine={false} width={70} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} formatter={(value) => formatEuro(Number(value))} />} /><ChartLegend content={<ChartLegendContent />} /><Line dataKey="actualDrawn" stroke="var(--color-actualDrawn)" strokeWidth={2.5} dot={false} connectNulls={false} /><Line dataKey="actualRepaid" stroke="var(--color-actualRepaid)" strokeWidth={2.5} dot={false} connectNulls={false} /></LineChart></ChartContainer>
+          <p className="mb-2 mt-5 text-xs font-semibold text-[var(--money-testo-muto)]">{t('debtInterestChart')}</p><ChartContainer config={{ plannedInterest: { label: t('plannedInterestLine'), color: '#d49a3a' }, actualInterestCharged: { label: t('actualChargedInterestLine'), color: '#bd5e46' }, actualInterestPaid: { label: t('actualInterestLine'), color: '#6473b8' } }} className="h-[200px] w-full"><LineChart accessibilityLayer data={item.trend}><CartesianGrid vertical={false} /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} minTickGap={35} /><YAxis tickLine={false} axisLine={false} width={70} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} formatter={(value) => formatEuro(Number(value))} />} /><ChartLegend content={<ChartLegendContent />} /><Line dataKey="plannedInterest" stroke="var(--color-plannedInterest)" strokeWidth={2} strokeDasharray="5 4" dot={false} /><Line dataKey="actualInterestCharged" stroke="var(--color-actualInterestCharged)" strokeWidth={2.5} dot={false} connectNulls={false} /><Line dataKey="actualInterestPaid" stroke="var(--color-actualInterestPaid)" strokeWidth={2.5} dot={false} connectNulls={false} /></LineChart></ChartContainer>
           {/* Le rate passate e quelle future erano righe identiche: con un
               mutuo lungo sono centinaia di righe tutte uguali, e non si sa da
               quale in poi si sta guardando. Le passate si spengono, la
@@ -5168,35 +5205,35 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
               {soloFuture ? t('debtInstallmentsAll') : t('debtInstallmentsOnlyFuture')}
             </Button>
           </div>
-          <div className="max-h-72 overflow-auto rounded-lg border border-black/8"><table className="w-full text-xs"><thead className="sticky top-0 bg-[#f4f5f1]"><tr><th className="px-3 py-2 text-left">#</th><th className="px-3 py-2 text-left">{t('date')}</th><th className="px-3 py-2 text-right">{t('amount')}</th><th className="px-3 py-2 text-right">{t('interestShare')}</th><th className="px-3 py-2 text-right">{t('theoreticalRemaining')}</th></tr></thead><tbody>{item.schedule.filter((row) => !soloFuture || row.dueOn >= data.asOf).map((row) => {
+          <div className="max-h-72 overflow-auto rounded-lg border border-[var(--money-velo)]/8"><table className="w-full text-xs"><thead className="sticky top-0 bg-[var(--money-superficie-hover)]"><tr><th className="px-3 py-2 text-left">#</th><th className="px-3 py-2 text-left">{t('date')}</th><th className="px-3 py-2 text-right">{t('amount')}</th><th className="px-3 py-2 text-right">{t('interestShare')}</th><th className="px-3 py-2 text-right">{t('theoreticalRemaining')}</th></tr></thead><tbody>{item.schedule.filter((row) => !soloFuture || row.dueOn >= data.asOf).map((row) => {
             const scaduta = row.dueOn < data.asOf;
             const prossima = item.nextPayment?.number === row.number;
-            return <tr key={row.number} className={`border-t border-black/5 ${prossima ? 'bg-[#fff9f6] font-medium' : scaduta ? 'text-[#5e6c68]' : ''}`}><td className="whitespace-nowrap px-3 py-2">{row.number}{prossima && <span className="ml-2 rounded-full bg-[#fce9e3] px-1.5 py-0.5 text-[10px] font-medium text-[#a94f3a]">{t('debtInstallmentNext')}</span>}</td><td className="px-3 py-2">{formatDate(`${row.dueOn}T12:00:00`)}</td><td className="px-3 py-2 text-right">{formatEuro(row.payment)}</td><td className="px-3 py-2 text-right">{formatEuro(row.interest)}</td><td className="px-3 py-2 text-right">{formatEuro(row.remaining)}</td></tr>;
+            return <tr key={row.number} className={`border-t border-[var(--money-velo)]/5 ${prossima ? 'bg-[var(--money-allarme-velo)] font-medium' : scaduta ? 'text-[var(--money-testo-tenue)]' : ''}`}><td className="whitespace-nowrap px-3 py-2">{row.number}{prossima && <span className="ml-2 rounded-full bg-[var(--money-allarme-tenue)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--money-allarme)]">{t('debtInstallmentNext')}</span>}</td><td className="px-3 py-2">{formatDate(`${row.dueOn}T12:00:00`)}</td><td className="px-3 py-2 text-right">{formatEuro(row.payment)}</td><td className="px-3 py-2 text-right">{formatEuro(row.interest)}</td><td className="px-3 py-2 text-right">{formatEuro(row.remaining)}</td></tr>;
           })}</tbody>{/* Il totale degli interessi del piano: le celle sopra sono l'interesse della
               singola rata, e la somma non si vedeva da nessuna parte. Resta in fondo
               alla tabella mentre si scorre, cosi' non serve arrivare all'ultima rata
               per saperlo. */}
-            <tfoot className="sticky bottom-0"><tr className="border-t border-black/10 bg-[#eceee9] font-semibold"><td className="px-3 py-2" colSpan={3}>{t('totalInterest')}</td><td className="px-3 py-2 text-right tabular-nums">{formatEuro(item.totalInterest)}</td><td /></tr></tfoot></table></div>
-        </> : <p className="text-sm text-[#5e6c68]">{item.scheduleIssue ? t(`debtIssue_${item.scheduleIssue}` as TranslationKey) : t('debtScheduleEmpty')}</p>}</div>
+            <tfoot className="sticky bottom-0"><tr className="border-t border-[var(--money-velo)]/10 bg-[var(--money-superficie-hover)] font-semibold"><td className="px-3 py-2" colSpan={3}>{t('totalInterest')}</td><td className="px-3 py-2 text-right tabular-nums">{formatEuro(item.totalInterest)}</td><td /></tr></tfoot></table></div>
+        </> : <p className="text-sm text-[var(--money-testo-tenue)]">{item.scheduleIssue ? t(`debtIssue_${item.scheduleIssue}` as TranslationKey) : t('debtScheduleEmpty')}</p>}</div>
         <div><p className="mb-3 text-sm font-semibold">{t('debtRegister')}</p>{item.movements.length ? (() => {
           const paymentByTransaction = new Map(item.payments.flatMap((payment) => payment.transactionIds.map((id) => [id, payment] as const)));
-          return <div className="max-h-[34rem] overflow-auto rounded-lg border border-black/8"><table className="w-full text-xs"><thead className="sticky top-0 bg-[#f4f5f1]"><tr><th className="px-3 py-2 text-left">{t('date')}</th><th className="px-3 py-2 text-left">{t('fieldDescription')}</th><th className="px-3 py-2 text-right">{t('principalShare')}</th><th className="px-3 py-2 text-right">{t('debtInterestCharges')}</th><th className="px-3 py-2 text-right">{t('debtEffect')}</th></tr></thead><tbody>{item.movements.map((movement) => {
+          return <div className="max-h-[34rem] overflow-auto rounded-lg border border-[var(--money-velo)]/8"><table className="w-full text-xs"><thead className="sticky top-0 bg-[var(--money-superficie-hover)]"><tr><th className="px-3 py-2 text-left">{t('date')}</th><th className="px-3 py-2 text-left">{t('fieldDescription')}</th><th className="px-3 py-2 text-right">{t('principalShare')}</th><th className="px-3 py-2 text-right">{t('debtInterestCharges')}</th><th className="px-3 py-2 text-right">{t('debtEffect')}</th></tr></thead><tbody>{item.movements.map((movement) => {
             const payment = paymentByTransaction.get(movement.id);
             const label = payment ? t(payment.kind === 'drawdown' ? 'debtDrawdown' : payment.kind === 'charge' ? 'debtCharge' : 'debtRepayment') : t(({ Income: 'incomeType', Expenses: 'expensesType', Transfers: 'transfersType', Investment: 'investmentType', Debt: 'debtTypeMovement' } as Record<string, TranslationKey>)[movement.type] ?? 'relatedMovements');
             const effect = movement.effect;
-            return <tr key={movement.id} className={`border-t border-black/5 ${payment && !payment.classified ? 'bg-[#fce9e3]' : ''}`}><td className="whitespace-nowrap px-3 py-2">{formatDate(`${movement.occurredOn}T12:00:00`)}</td><td className="px-3 py-2"><p className="font-medium">{label}</p><p className="text-[#5e6c68]">{movement.description}</p>{payment && !payment.classified && <p className="font-medium text-[#a94f3a]">{t('debtUnclassified')}</p>}<Button type="button" size="sm" variant="ghost" className="mt-1 h-7 px-2" onClick={() => void editMovement(movement.id)}><Pencil className="size-3.5" />{t('edit')}</Button></td><td className="px-3 py-2 text-right tabular-nums">{payment ? formatEuro(payment.principal) : '—'}</td><td className="px-3 py-2 text-right tabular-nums">{payment ? formatEuro(payment.interest) : '—'}</td><td className={`px-3 py-2 text-right font-semibold tabular-nums ${effect > 0 ? 'text-[#a94f3a]' : 'text-[#237056]'}`}>{effect > 0 ? '+' : ''}{formatEuro(effect)}</td></tr>;
+            return <tr key={movement.id} className={`border-t border-[var(--money-velo)]/5 ${payment && !payment.classified ? 'bg-[var(--money-allarme-tenue)]' : ''}`}><td className="whitespace-nowrap px-3 py-2">{formatDate(`${movement.occurredOn}T12:00:00`)}</td><td className="px-3 py-2"><p className="font-medium">{label}</p><p className="text-[var(--money-testo-tenue)]">{movement.description}</p>{payment && !payment.classified && <p className="font-medium text-[var(--money-allarme)]">{t('debtUnclassified')}</p>}<Button type="button" size="sm" variant="ghost" className="mt-1 h-7 px-2" onClick={() => void editMovement(movement.id)}><Pencil className="size-3.5" />{t('edit')}</Button></td><td className="px-3 py-2 text-right tabular-nums">{payment ? formatEuro(payment.principal) : '—'}</td><td className="px-3 py-2 text-right tabular-nums">{payment ? formatEuro(payment.interest) : '—'}</td><td className={`px-3 py-2 text-right font-semibold tabular-nums ${effect > 0 ? 'text-[var(--money-allarme)]' : 'text-[var(--money-ok)]'}`}>{effect > 0 ? '+' : ''}{formatEuro(effect)}</td></tr>;
           })}</tbody></table></div>;
-        })() : <p className="text-sm text-[#5e6c68]">{t('noTransactions')}</p>}</div>
+        })() : <p className="text-sm text-[var(--money-testo-tenue)]">{t('noTransactions')}</p>}</div>
       </div>}
       </CardContent>
     </Card>)}
-    {data.orphaned.map((item) => <Card key={`orphan-${item.accountId}`}><CardContent className="flex items-center justify-between gap-3 p-5"><div><p className="font-medium">{t(item.kind === 'credit_line' ? 'debtKindCreditLine' : 'debtKindTermLoan')} · {item.accountId}</p><p className="text-sm text-[#5e6c68]">{t('debtWithoutAccount')}</p>{item.notes && <p className="text-sm">{item.notes}</p>}</div><Button variant="outline" onClick={() => requestDelete(item.accountId, t(item.kind === 'credit_line' ? 'debtKindCreditLine' : 'debtKindTermLoan'), null)}>{t('delete')}</Button></CardContent></Card>)}
+    {data.orphaned.map((item) => <Card key={`orphan-${item.accountId}`}><CardContent className="flex items-center justify-between gap-3 p-5"><div><p className="font-medium">{t(item.kind === 'credit_line' ? 'debtKindCreditLine' : 'debtKindTermLoan')} · {item.accountId}</p><p className="text-sm text-[var(--money-testo-tenue)]">{t('debtWithoutAccount')}</p>{item.notes && <p className="text-sm">{item.notes}</p>}</div><Button variant="outline" onClick={() => requestDelete(item.accountId, t(item.kind === 'credit_line' ? 'debtKindCreditLine' : 'debtKindTermLoan'), null)}>{t('delete')}</Button></CardContent></Card>)}
     <Dialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open && !deleteBusy) setDeleting(null); }}>
       <DialogContent>
         <DialogHeader><DialogTitle>{t('delete')} · {deleting?.name}</DialogTitle><DialogDescription>{t(deleting?.accountName != null ? 'debtDeleteLinkedDesc' : 'debtDeleteOrphanDesc')}</DialogDescription></DialogHeader>
         {deleting?.accountName != null && <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={confirmAccount} disabled={deleteBusy} onChange={(event) => setConfirmAccount(event.target.checked)} />{t('debtDeleteAlsoAccount', { name: deleting.accountName })}</label>}
         {deleteBusy && <p role="status" className="text-sm">{t('debtDeleteBusy')}</p>}
-        {deleteError && <p role="alert" className="text-sm text-[#a94f3a]">{deleteError}</p>}
+        {deleteError && <p role="alert" className="text-sm text-[var(--money-allarme)]">{deleteError}</p>}
         <DialogFooter><Button variant="outline" disabled={deleteBusy} onClick={() => setDeleting(null)}>{t('cancel')}</Button><Button variant="destructive" disabled={deleteBusy || (deleting?.accountName != null && !confirmAccount)} onClick={() => void removeDebt()}>{t('delete')}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
@@ -5206,51 +5243,51 @@ function LiabilitiesView({ apiUrl, accounts, version, onDeleted, onNewAccount, o
         {/* Le condizioni salvate qui riscrivono anche il confronto dei mesi
             passati: il piano non e' una fotografia, e il numero sulla card si
             muove. Meglio dirlo prima di cambiare il tasso, non dopo. */}
-        <p className="rounded-lg bg-[#f7f8f5] px-3 py-2 text-[11px] leading-4 text-[#5e6c68]">{t('debtPlanRecalculated')}</p>
+        <p className="rounded-lg bg-[var(--money-superficie-tenue)] px-3 py-2 text-[11px] leading-4 text-[var(--money-testo-tenue)]">{t('debtPlanRecalculated')}</p>
         {editing && <form key={editing.accountId} onSubmit={save} className="space-y-4">
-          <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('debtKind')}
-            <select name="kind" value={tipoProfilo} onChange={(event) => { setTipoProfilo(event.target.value as 'term_loan' | 'credit_line'); if (event.target.value === 'term_loan' && !drawdowns.length) setDrawdowns([{ occurredOn: today, amount: editing.kind === 'credit_line' ? Math.max(editing.exposure, 1) : Math.max(editing.outstanding, 1) }]); }} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring">
+          <label className="block space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('debtKind')}
+            <select name="kind" value={tipoProfilo} onChange={(event) => { setTipoProfilo(event.target.value as 'term_loan' | 'credit_line'); if (event.target.value === 'term_loan' && !drawdowns.length) setDrawdowns([{ occurredOn: today, amount: editing.kind === 'credit_line' ? Math.max(editing.exposure, 1) : Math.max(editing.outstanding, 1) }]); }} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm outline-none focus:border-ring">
               <option value="term_loan">{t('debtKindTermLoan')}</option>
               <option value="credit_line">{t('debtKindCreditLine')}</option>
             </select>
-            <span className="block pt-1 font-normal leading-5 text-[#5e6c68]">{t('debtKindHint')}</span>
+            <span className="block pt-1 font-normal leading-5 text-[var(--money-testo-tenue)]">{t('debtKindHint')}</span>
           </label>
           {tipoProfilo === 'credit_line' && <div className="grid grid-cols-2 gap-3">
-            <label className="space-y-1 text-xs font-medium text-[#52615d]">{t('debtCreditLimit')}
+            <label className="space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('debtCreditLimit')}
               <Input name="credit_limit" type="number" min="0" step="0.01" placeholder={t('debtNoLimitPlaceholder')} defaultValue={editing.profile?.creditLimit ?? ''} />
             </label>
-            <label className="space-y-1 text-xs font-medium text-[#52615d]">{t('startDate')}
+            <label className="space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('startDate')}
               <Input required name="start_date" type="date" defaultValue={editing.profile?.startDate ?? today} />
             </label>
           </div>}
           <div className="grid grid-cols-2 gap-3">
-            <label className="space-y-1 text-xs font-medium text-[#52615d]">{t('debtType')}<select name="debt_type" defaultValue={editing.profile?.debtType ?? 'other'} className="h-10 w-full rounded-lg border border-input bg-white px-2 text-sm"><option value="mortgage">{t('debtType_mortgage')}</option><option value="personal">{t('debtType_personal')}</option><option value="leasing">{t('debtType_leasing')}</option><option value="revolving">{t('debtType_revolving')}</option><option value="margin">{t('debtType_margin')}</option><option value="informal">{t('debtType_informal')}</option><option value="other">{t('debtType_other')}</option></select></label>
-            <div className="rounded-lg bg-[#f7f8f5] p-3 text-xs text-[#52615d]"><p>{t(tipoProfilo === 'credit_line' ? 'debtExposure' : 'startingAmount')}</p><p className="mt-1 text-lg font-semibold text-[#17231f]">{formatEuro(tipoProfilo === 'credit_line' ? (editing.kind === 'credit_line' ? editing.exposure : editing.actualTotalDebt ?? 0) : drawdowns.reduce((sum, row) => sum + Number(row.amount || 0), 0))}</p></div>
+            <label className="space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('debtType')}<select name="debt_type" defaultValue={editing.profile?.debtType ?? 'other'} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2 text-sm"><option value="mortgage">{t('debtType_mortgage')}</option><option value="personal">{t('debtType_personal')}</option><option value="leasing">{t('debtType_leasing')}</option><option value="revolving">{t('debtType_revolving')}</option><option value="margin">{t('debtType_margin')}</option><option value="informal">{t('debtType_informal')}</option><option value="other">{t('debtType_other')}</option></select></label>
+            <div className="rounded-lg bg-[var(--money-superficie-tenue)] p-3 text-xs text-[var(--money-testo-muto)]"><p>{t(tipoProfilo === 'credit_line' ? 'debtExposure' : 'startingAmount')}</p><p className="mt-1 text-lg font-semibold text-[var(--money-testo)]">{formatEuro(tipoProfilo === 'credit_line' ? (editing.kind === 'credit_line' ? editing.exposure : editing.actualTotalDebt ?? 0) : drawdowns.reduce((sum, row) => sum + Number(row.amount || 0), 0))}</p></div>
           </div>
-          {tipoProfilo === 'term_loan' && <div className="space-y-2 rounded-xl border border-black/8 p-3">
-            <div><p className="text-xs font-semibold text-[#52615d]">{t('plannedDrawdowns')}</p><p className="text-[11px] text-[#5e6c68]">{t('plannedDrawdownsHint')}</p></div>
+          {tipoProfilo === 'term_loan' && <div className="space-y-2 rounded-xl border border-[var(--money-velo)]/8 p-3">
+            <div><p className="text-xs font-semibold text-[var(--money-testo-muto)]">{t('plannedDrawdowns')}</p><p className="text-[11px] text-[var(--money-testo-tenue)]">{t('plannedDrawdownsHint')}</p></div>
             {drawdowns.map((row, index) => <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2"><Input aria-label={t('date')} required type="date" value={row.occurredOn} onChange={(event) => setDrawdowns((values) => values.map((value, position) => position === index ? { ...value, occurredOn: event.target.value } : value))} /><NumeroField aria-label={t('amount')} required min="0.01" step="0.01" value={row.amount} onChange={(numero) => setDrawdowns((values) => values.map((value, position) => position === index ? { ...value, amount: numero } : value))} /><Button aria-label={t('delete')} type="button" variant="ghost" size="icon" disabled={drawdowns.length === 1} onClick={() => setDrawdowns((values) => values.filter((_, position) => position !== index))}><Trash2 className="size-4" /></Button></div>)}
             <Button type="button" size="sm" variant="outline" onClick={() => setDrawdowns((values) => [...values, { occurredOn: values.at(-1)?.occurredOn ?? today, amount: 0 }])}><Plus className="size-4" />{t('addDrawdown')}</Button>
           </div>}
           <div className="grid grid-cols-2 gap-3">
-            <label className="space-y-1 text-xs font-medium text-[#52615d]">{t('annualRate')} %<Input required min="0" step="0.0001" type="number" name="annual_rate" defaultValue={editing.profile?.annualRate ?? 0} /></label>
-            <label className="space-y-1 text-xs font-medium text-[#52615d]">{t('rateType')}<select name="rate_type" defaultValue={editing.profile?.rateType ?? 'fixed'} className="h-10 w-full rounded-lg border border-input bg-white px-2 text-sm"><option value="fixed">{t('debtRate_fixed')}</option><option value="variable">{t('debtRate_variable')}</option><option value="mixed">{t('debtRate_mixed')}</option></select></label>
+            <label className="space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('annualRate')} %<Input required min="0" step="0.0001" type="number" name="annual_rate" defaultValue={editing.profile?.annualRate ?? 0} /></label>
+            <label className="space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('rateType')}<select name="rate_type" defaultValue={editing.profile?.rateType ?? 'fixed'} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2 text-sm"><option value="fixed">{t('debtRate_fixed')}</option><option value="variable">{t('debtRate_variable')}</option><option value="mixed">{t('debtRate_mixed')}</option></select></label>
           </div>
           {tipoProfilo === 'term_loan' && <div className="grid grid-cols-2 gap-3">
-            <label className="space-y-1 text-xs font-medium text-[#52615d]">{t('frequency')}<select name="payment_frequency" defaultValue={editing.profile?.paymentFrequency ?? 'monthly'} className="h-10 w-full rounded-lg border border-input bg-white px-2 text-sm"><option value="monthly">{t('debtFrequency_monthly')}</option><option value="quarterly">{t('debtFrequency_quarterly')}</option><option value="annual">{t('debtFrequency_annual')}</option></select></label>
-            <label className="space-y-1 text-xs font-medium text-[#52615d]">{t('paymentStructure')}<select name="payment_structure" defaultValue={editing.profile?.paymentStructure ?? 'amortizing'} className="h-10 w-full rounded-lg border border-input bg-white px-2 text-sm"><option value="amortizing">{t('debtPlanFixedPayment')}</option><option value="constant_principal">{t('debtPlanConstantPrincipal')}</option><option value="interest_only">{t('debtPlanInterestOnly')}</option><option value="bullet">{t('debtPlanBullet')}</option></select></label>
+            <label className="space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('frequency')}<select name="payment_frequency" defaultValue={editing.profile?.paymentFrequency ?? 'monthly'} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2 text-sm"><option value="monthly">{t('debtFrequency_monthly')}</option><option value="quarterly">{t('debtFrequency_quarterly')}</option><option value="annual">{t('debtFrequency_annual')}</option></select></label>
+            <label className="space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('paymentStructure')}<select name="payment_structure" defaultValue={editing.profile?.paymentStructure ?? 'amortizing'} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2 text-sm"><option value="amortizing">{t('debtPlanFixedPayment')}</option><option value="constant_principal">{t('debtPlanConstantPrincipal')}</option><option value="interest_only">{t('debtPlanInterestOnly')}</option><option value="bullet">{t('debtPlanBullet')}</option></select></label>
             {/* Durante il preammortamento gli interessi si pagano ogni scadenza
                 oppure si sommano al debito. I contratti fanno entrambe le cose
                 e non si deduce da nient'altro: va scelto. */}
-            <label className="col-span-2 space-y-1 text-xs font-medium text-[#52615d]">{t('graceInterestLabel')}<select name="grace_interest" defaultValue={editing.profile?.graceInterest ?? 'paid'} className="h-10 w-full rounded-lg border border-input bg-white px-2 text-sm"><option value="paid">{t('graceInterestPaid')}</option><option value="capitalised">{t('graceInterestCapitalised')}</option></select><span className="block font-normal leading-4 text-[#5e6c68]">{t('graceInterestHint')}</span></label>
+            <label className="col-span-2 space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('graceInterestLabel')}<select name="grace_interest" defaultValue={editing.profile?.graceInterest ?? 'paid'} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2 text-sm"><option value="paid">{t('graceInterestPaid')}</option><option value="capitalised">{t('graceInterestCapitalised')}</option></select><span className="block font-normal leading-4 text-[var(--money-testo-tenue)]">{t('graceInterestHint')}</span></label>
           </div>}
           <div className="grid grid-cols-2 gap-3">
-            {tipoProfilo === 'term_loan' && <label className="space-y-1 text-xs font-medium text-[#52615d]">{t('repaymentStart')}<Input required type="date" name="repayment_start_date" defaultValue={editing.profile?.repaymentStartDate ?? drawdowns.at(-1)?.occurredOn ?? today} /></label>}
-            <label className="space-y-1 text-xs font-medium text-[#52615d]">{t('fieldDeadline')}<Input required type="date" name="end_date" defaultValue={editing.profile?.endDate ?? defaultEnd} /></label>
+            {tipoProfilo === 'term_loan' && <label className="space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('repaymentStart')}<Input required type="date" name="repayment_start_date" defaultValue={editing.profile?.repaymentStartDate ?? drawdowns.at(-1)?.occurredOn ?? today} /></label>}
+            <label className="space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldDeadline')}<Input required type="date" name="end_date" defaultValue={editing.profile?.endDate ?? defaultEnd} /></label>
           </div>
-          <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('status')}<select name="status" defaultValue={editing.profile?.status ?? 'active'} className="h-10 w-full rounded-lg border border-input bg-white px-2 text-sm"><option value="active">{t('debtStatus_active')}</option><option value="paid">{t('debtStatus_paid')}</option><option value="suspended">{t('debtStatus_suspended')}</option></select></label>
-          <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('note')}<Input name="notes" defaultValue={editing.profile?.notes ?? ''} /></label>
-          {error && <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}
+          <label className="block space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('status')}<select name="status" defaultValue={editing.profile?.status ?? 'active'} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2 text-sm"><option value="active">{t('debtStatus_active')}</option><option value="paid">{t('debtStatus_paid')}</option><option value="suspended">{t('debtStatus_suspended')}</option></select></label>
+          <label className="block space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('note')}<Input name="notes" defaultValue={editing.profile?.notes ?? ''} /></label>
+          {error && <p className="rounded-lg bg-[var(--money-allarme-velo)] px-3 py-2 text-xs text-[var(--money-allarme)]">{error}</p>}
           <DialogFooter><Button type="button" variant="outline" onClick={() => setEditing(null)}>{t('cancel')}</Button><Button type="submit" disabled={busy}>{busy ? t('savingEllipsis') : t('save')}</Button></DialogFooter>
         </form>}
       </DialogContent>
@@ -5304,17 +5341,17 @@ function TargetWeightsEditor({ posizioni, onInstrumentSave }: {
   // La riga apribile si porta il triangolo del browser e un fondo che cambia
   // al passaggio: senza, non si capisce che sotto la tabella delle proposte
   // comincia un'altra cosa, non un secondo pezzo della stessa.
-  return <details className="group border-t border-black/6">
-    <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3 text-sm font-medium text-[#52615d] transition hover:bg-[#f8f9f6] [&::-webkit-details-marker]:hidden">
+  return <details className="group border-t border-[var(--money-velo)]/6">
+    <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3 text-sm font-medium text-[var(--money-testo-muto)] transition hover:bg-[var(--money-superficie-tenue)] [&::-webkit-details-marker]:hidden">
       {t('allocWeightsEditor')}
-      <ChevronDown className="size-4 shrink-0 text-black/45 transition group-open:rotate-180" />
+      <ChevronDown className="size-4 shrink-0 text-[var(--money-velo)]/45 transition group-open:rotate-180" />
     </summary>
     <div className="overflow-x-auto"><table className="w-full text-sm">
-      <thead className="text-xs text-[#5e6c68]"><tr>
+      <thead className="text-xs text-[var(--money-testo-tenue)]"><tr>
         <th className="px-5 py-2 text-left">{t('instrument')}</th>
         <th className="px-3 py-2 text-right">{t('allocTargetWeight')}</th>
       </tr></thead>
-      <tbody className="divide-y divide-black/5">{modificabili.map((p) => <tr key={p.instrumentId}>
+      <tbody className="divide-y divide-[var(--money-velo)]/5">{modificabili.map((p) => <tr key={p.instrumentId}>
         <td className="px-5 py-2">{p.name}</td>
         <td className="px-3 py-2 text-right">
           <Input type="number" step="0.1" min={0} max={100} value={valore(p)} placeholder="—"
@@ -5322,16 +5359,16 @@ function TargetWeightsEditor({ posizioni, onInstrumentSave }: {
             className="ml-auto h-8 w-24 text-right" />
         </td>
       </tr>)}</tbody>
-      <tfoot><tr className="border-t border-black/10">
-        <td className="px-5 py-3 text-xs font-medium text-[#52615d]">{t('allocWeightsTotal')}</td>
-        <td className={`px-3 py-3 text-right font-semibold tabular-nums ${inLinea ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>
+      <tfoot><tr className="border-t border-[var(--money-velo)]/10">
+        <td className="px-5 py-3 text-xs font-medium text-[var(--money-testo-muto)]">{t('allocWeightsTotal')}</td>
+        <td className={`px-3 py-3 text-right font-semibold tabular-nums ${inLinea ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'}`}>
           {formatPercentRatio(totale / 100)}
         </td>
       </tr></tfoot>
     </table></div>
-    {errore && <p className="mx-5 mb-3 rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{errore}</p>}
+    {errore && <p className="mx-5 mb-3 rounded-lg bg-[var(--money-allarme-velo)] px-3 py-2 text-xs text-[var(--money-allarme)]">{errore}</p>}
     <div className="flex items-center justify-end gap-3 px-5 pb-4">
-      {cambiate.length > 0 && <span className="text-xs text-[#5e6c68]">{t('allocWeightsChanged', { count: cambiate.length })}</span>}
+      {cambiate.length > 0 && <span className="text-xs text-[var(--money-testo-tenue)]">{t('allocWeightsChanged', { count: cambiate.length })}</span>}
       <Button size="sm" disabled={salvando || cambiate.length === 0} onClick={salva}
         className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{t('save')}</Button>
     </div>
@@ -5346,24 +5383,24 @@ function RebalanceCard({ riordino, posizioni, onInstrumentSave }: {
   const { t, formatEuro, formatNumber, formatPercentRatio } = useI18n();
   const percentuale = (valore: number) => formatPercentRatio(valore);
   const deriva = (valore: number) => formatPercentRatio(valore, { signDisplay: 'always' });
-  return <Card className="border-black/6 bg-white shadow-sm">
-    <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('allocRebalance')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('allocRebalanceSubtitle')}</p></CardHeader>
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
+    <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('allocRebalance')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('allocRebalanceSubtitle')}</p></CardHeader>
     <CardContent className="p-0">
       {/* L'avviso sta sopra la tabella perche' e' l'unica cosa che puo' rendere
           sbagliati tutti i numeri sotto: se i pesi non tornano, la colpa non e'
           del calcolo. Senza pesi obiettivo, pero', non c'e' nessuna somma da
           correggere: li' l'avviso direbbe "sommano a 0%, non al 100%" sopra la
           riga che spiega che non c'e' niente da riequilibrare. */}
-      {riordino.total > 0 && riordino.warnings.includes('pesi_non_sommano_a_cento') && <p role="alert" className="mx-5 mt-3 rounded-lg border border-[#f2d7cb] bg-[#fdf1ec] px-3 py-2 text-xs text-[#a94f3a]">{t('allocTargetSum', { sum: percentuale(riordino.declaredWeight) })}</p>}
+      {riordino.total > 0 && riordino.warnings.includes('pesi_non_sommano_a_cento') && <p role="alert" className="mx-5 mt-3 rounded-lg border border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-velo)] px-3 py-2 text-xs text-[var(--money-allarme)]">{t('allocTargetSum', { sum: percentuale(riordino.declaredWeight) })}</p>}
       {riordino.total <= 0
-        ? <p className="px-5 py-6 text-sm text-[#5e6c68]">{t('allocNoTargets')}</p>
+        ? <p className="px-5 py-6 text-sm text-[var(--money-testo-tenue)]">{t('allocNoTargets')}</p>
         : riordino.rows.length === 0
-          ? <p className="px-5 py-6 text-sm font-medium text-[#237056]">{t('allocInLine')}</p>
+          ? <p className="px-5 py-6 text-sm font-medium text-[var(--money-ok)]">{t('allocInLine')}</p>
           : <div className="overflow-x-auto"><table className="min-w-[640px] w-full text-sm">
-            <thead className="bg-[#f4f5f1] text-xs text-[#52615d]"><tr><th className="px-5 py-3 text-left">{t('instrument')}</th><th className="px-3 py-3 text-right">{t('allocCurrentWeight')}</th><th className="px-3 py-3 text-right">{t('allocTargetWeight')}</th><th className="px-3 py-3 text-right">{t('allocDrift')}</th><th className="px-5 py-3 text-right">{t('allocAmount')}</th></tr></thead>
-            <tbody className="divide-y divide-black/5">{riordino.rows.map((riga) => {
+            <thead className="bg-[var(--money-superficie-hover)] text-xs text-[var(--money-testo-muto)]"><tr><th className="px-5 py-3 text-left">{t('instrument')}</th><th className="px-3 py-3 text-right">{t('allocCurrentWeight')}</th><th className="px-3 py-3 text-right">{t('allocTargetWeight')}</th><th className="px-3 py-3 text-right">{t('allocDrift')}</th><th className="px-5 py-3 text-right">{t('allocAmount')}</th></tr></thead>
+            <tbody className="divide-y divide-[var(--money-velo)]/5">{riordino.rows.map((riga) => {
               const comprare = riga.amount < 0;
-              const tono = comprare ? 'text-[#237056]' : 'text-[#7d6119]';
+              const tono = comprare ? 'text-[var(--money-ok)]' : 'text-[var(--money-attenzione)]';
               return <tr key={riga.name}>
                 <td className="px-5 py-3 font-medium">{riga.name}</td>
                 <td className="px-3 py-3 text-right tabular-nums">{percentuale(riga.currentWeight)}</td>
@@ -5395,16 +5432,16 @@ function RendimentoCard({ titolo, spiegazione, esito }: {
   esito: InvestmentReturns['twr'];
 }) {
   const { t, formatNumber, formatPercentRatio } = useI18n();
-  return <Card className="border-black/6 bg-white shadow-sm">
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
     <CardContent className="p-5">
-      <p className="mb-4 text-sm font-medium text-[#5e6c68]">{titolo}</p>
+      <p className="mb-4 text-sm font-medium text-[var(--money-testo-tenue)]">{titolo}</p>
       {/* Il motivo sta al posto del numero, in grigio: non un trattino e non
           uno zero, perche' "non ho guadagnato niente" e' un'altra cosa da
           "non si puo' sapere". */}
       {esito.value === null
-        ? <p className="text-base font-medium text-[#5e6c68]">{t(MOTIVI_RENDIMENTO[esito.reason ?? ''] ?? 'returnReasonUnknown')}</p>
-        : <p className={`text-[25px] font-semibold tracking-[-0.03em] tabular-nums ${esito.value >= 0 ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>{formatPercentRatio(esito.value, { signDisplay: 'always' })}</p>}
-      <p className="mt-2 text-xs text-[#237056]">{spiegazione}</p>
+        ? <p className="text-base font-medium text-[var(--money-testo-tenue)]">{t(MOTIVI_RENDIMENTO[esito.reason ?? ''] ?? 'returnReasonUnknown')}</p>
+        : <p className={`text-[25px] font-semibold tracking-[-0.03em] tabular-nums ${esito.value >= 0 ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'}`}>{formatPercentRatio(esito.value, { signDisplay: 'always' })}</p>}
+      <p className="mt-2 text-xs text-[var(--money-ok)]">{spiegazione}</p>
     </CardContent>
   </Card>;
 }
@@ -5731,15 +5768,15 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><MetricCard title={t('portfolioValue')} value={dashboard.snapshot.marketValue} change={dashboard.snapshot.period ? t('excelHistory', { period: formatDate(`${dashboard.snapshot.period}T12:00:00`, { month: 'long', year: 'numeric' }) }) : t('noHistory')} icon={Landmark} tone="worth" /><MetricCard title={t('investedCapital')} value={dashboard.snapshot.investedCapital} change={t('netContributionsOverTime')} icon={CircleDollarSign} tone="saving" /><MetricCard title={t('gainLoss')} value={dashboard.snapshot.gain} change={t('percentOnCapital', { percent: formatPercentPoints(dashboard.snapshot.returnRate) })} icon={TrendingUp} tone={dashboard.snapshot.gain >= 0 ? 'income' : 'expense'} /><MetricCard title={t('connectedQuotes')} value={dashboard.ledger.quotedPositions} valueLabel={`${dashboard.ledger.quotedPositions}/${dashboard.ledger.activePositions}`} change={t('withLocalCache')} icon={RefreshCw} tone="worth" /><RendimentoCard titolo={t('twrReturn')} spiegazione={t('twrHint')} esito={dashboard.returns.twr} /><RendimentoCard titolo={t('xirrReturn')} spiegazione={t('xirrHint')} esito={dashboard.returns.xirr} /></div>
       {/* Il metodo si dichiara: chi legge un rendimento ha diritto di sapere su
           cosa e' calcolato, e da quando. */}
-      {dashboard.returns.since && <p className="text-xs text-[#5e6c68]">{t('returnsMethod', { from: formatDate(`${dashboard.returns.since}T12:00:00`, { month: 'long', year: 'numeric' }), to: formatDate(`${dashboard.returns.asOf}T12:00:00`, { month: 'long', year: 'numeric' }) })}</p>}
-      <Card className="border-black/6 bg-white shadow-sm"><CardHeader className="flex-row items-start justify-between gap-4"><div><CardTitle className="text-[17px]">{t('valueAndInvestedCapital')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('valueAndInvestedCapitalSubtitle')}</p></div><Button type="button" variant="outline" disabled={busy} onClick={async () => { setBusy(true); setError(''); try { const outcome = await onRefresh(); if (outcome.errors.length) setError(t('quotesRefreshedWithErrors', { ok: outcome.updated, ko: outcome.errors.length })); else if (outcome.updated === 0) setError(t('noTickersConfigured')); } catch { setError(t('cannotReachQuoteSource')); } finally { setBusy(false); } }}><RefreshCw className={`size-4 ${busy ? 'animate-spin' : ''}`} />{t('refreshQuotes')}</Button></CardHeader><CardContent>
-        <div className="mb-3 flex w-fit gap-1 rounded-lg border border-black/6 bg-[#f4f5f1] p-1 text-xs">
+      {dashboard.returns.since && <p className="text-xs text-[var(--money-testo-tenue)]">{t('returnsMethod', { from: formatDate(`${dashboard.returns.since}T12:00:00`, { month: 'long', year: 'numeric' }), to: formatDate(`${dashboard.returns.asOf}T12:00:00`, { month: 'long', year: 'numeric' }) })}</p>}
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader className="flex-row items-start justify-between gap-4"><div><CardTitle className="text-[17px]">{t('valueAndInvestedCapital')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('valueAndInvestedCapitalSubtitle')}</p></div><Button type="button" variant="outline" disabled={busy} onClick={async () => { setBusy(true); setError(''); try { const outcome = await onRefresh(); if (outcome.errors.length) setError(t('quotesRefreshedWithErrors', { ok: outcome.updated, ko: outcome.errors.length })); else if (outcome.updated === 0) setError(t('noTickersConfigured')); } catch { setError(t('cannotReachQuoteSource')); } finally { setBusy(false); } }}><RefreshCw className={`size-4 ${busy ? 'animate-spin' : ''}`} />{t('refreshQuotes')}</Button></CardHeader><CardContent>
+        <div className="mb-3 flex w-fit gap-1 rounded-lg border border-[var(--money-velo)]/6 bg-[var(--money-superficie-hover)] p-1 text-xs">
           {/* Con l'indice configurato la seconda lettura non e' una percentuale:
               sono due curve cumulate che partono da 100. Il pulsante lo dice,
               altrimenti promette "in %" e mostra dei punti. */}
           {([['amount', t('inEuro')], ['return', indice ? t('historyCompareMode') : t('inPercent')]] as const).map(([value, label]) => (
             <button key={value} type="button" onClick={() => setHistoryMode(value)}
-              className={`rounded-md px-2.5 py-1 font-medium transition ${historyMode === value ? 'bg-white text-[#173b33] shadow-sm' : 'text-[#5e6c68] hover:text-[#173b33]'}`}>
+              className={`rounded-md px-2.5 py-1 font-medium transition ${historyMode === value ? 'bg-[var(--money-superficie)] text-[var(--money-marca)] shadow-sm' : 'text-[var(--money-testo-tenue)] hover:text-[var(--money-marca)]'}`}>
               {label}
             </button>
           ))}
@@ -5757,20 +5794,20 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
         )}
         {/* Il confronto parte dove le due storie si sovrappongono, e lo dice:
             altrimenti sembra che il grafico abbia perso dei mesi. */}
-        {historyMode === 'return' && indice && dashboard.benchmark.from && <p className="mt-3 text-xs text-[#5e6c68]">{t('benchmarkSince', { symbol: indice, from: formatDate(`${dashboard.benchmark.from}T12:00:00`, { month: 'long', year: 'numeric' }) })}</p>}
+        {historyMode === 'return' && indice && dashboard.benchmark.from && <p className="mt-3 text-xs text-[var(--money-testo-tenue)]">{t('benchmarkSince', { symbol: indice, from: formatDate(`${dashboard.benchmark.from}T12:00:00`, { month: 'long', year: 'numeric' }) })}</p>}
         {/* Configurato ma senza niente da confrontare non e' la stessa cosa di
             non configurato, e tacerlo lascerebbe credere che il campo non
             serva a niente. */}
         {/* Il confronto si legge in punti, non in percentuale: l'asse non porta
             il segno e le schede sopra si', quindi senza questa riga le due
             coppie di cifre sembrano la stessa unita' di misura. */}
-        {historyMode === 'return' && indice && <p className="mt-3 text-xs text-[#5e6c68]">{t('benchmarkCurveUnit')}</p>}
-        {historyMode === 'return' && dashboard.benchmark.symbol && !indice && <p className="mt-3 text-xs text-[#5e6c68]">{t('benchmarkNoComparison', { symbol: dashboard.benchmark.symbol })}</p>}
-        {error && <p className="mt-3 rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}
+        {historyMode === 'return' && indice && <p className="mt-3 text-xs text-[var(--money-testo-tenue)]">{t('benchmarkCurveUnit')}</p>}
+        {historyMode === 'return' && dashboard.benchmark.symbol && !indice && <p className="mt-3 text-xs text-[var(--money-testo-tenue)]">{t('benchmarkNoComparison', { symbol: dashboard.benchmark.symbol })}</p>}
+        {error && <p className="mt-3 rounded-lg bg-[var(--money-allarme-velo)] px-3 py-2 text-xs text-[var(--money-allarme)]">{error}</p>}
       </CardContent>
       </Card>
-      <Card className="border-black/6 bg-white shadow-sm">
-        <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('monthlyContributions')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('monthlyContributionsSubtitle')}</p></CardHeader>
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
+        <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('monthlyContributions')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('monthlyContributionsSubtitle')}</p></CardHeader>
         <CardContent>
           <ChartContainer config={{ amount: { label: t('monthlyContributions'), color: '#6d8ff4' } }} className="h-[220px] w-full">
             <BarChart accessibilityLayer data={dashboard.contributions}>
@@ -5785,7 +5822,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
           </ChartContainer>
         </CardContent>
       </Card>
-      <Card className="border-black/6 bg-white shadow-sm"><CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0"><div><CardTitle className="text-[17px]">{t('positions')}</CardTitle><p className="text-xs text-[#5e6c68]">{showClosedPositions ? t('positionsSubtitleAll') : t('positionsSubtitle')}</p></div><label className="flex items-center gap-2 text-xs font-medium text-[#52615d]"><input type="checkbox" checked={showClosedPositions} onChange={(event) => setShowClosedPositions(event.target.checked)} className="size-4 accent-[var(--money-primary)]" />{t('showClosedPositions', { count: dashboard.positions.filter((p) => !viva(p)).length })}</label></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1060px] w-full text-sm"><thead className="bg-[#f4f5f1] text-xs text-[#52615d]"><tr><th className="px-5 py-3 text-left">{t('instrument')}</th><th className="px-3 py-3 text-right">{t('quantity')}</th><th className="px-3 py-3 text-right">{t('cost')}</th><th className="px-3 py-3 text-right">{t('value')}</th><th className="px-3 py-3 text-right">{t('profitLoss')}</th><th className="px-3 py-3 text-right">{t('ledgerIncome')}</th><th className="px-3 py-3 text-right">{t('ledgerFees')}</th><th className="px-3 py-3 text-right">{t('priceSource')}</th><th className="px-5 py-3 text-right">{t('configure')}</th></tr></thead><tbody className="divide-y divide-black/5">{dashboard.positions.filter((position) => showClosedPositions || viva(position)).map((position) => <tr key={position.name} className={viva(position) ? undefined : 'bg-[#fafaf8] text-[#5e6c68]'}><td className="px-5 py-3"><p className="font-medium">{position.name}{!viva(position) && <span className="ml-2 rounded-full bg-black/6 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[#5e6c68]">{t('closed')}</span>}</p><p className="mt-0.5 text-xs text-[#5e6c68]">{position.assetClass} · {position.area}</p></td><td className="px-3 py-3 text-right tabular-nums">{position.units.toLocaleString(locale, { maximumFractionDigits: 4 })}</td><td className="px-3 py-3 text-right tabular-nums">{position.isOpen ? formatEuro(position.costBasis) : '—'}</td><td className="px-3 py-3 text-right font-semibold tabular-nums">{position.isOpen ? formatEuro(position.marketValue) : '—'}</td><td className={`px-3 py-3 text-right font-semibold tabular-nums ${position.totalGain >= 0 ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>{formatEuro(position.totalGain)}{!position.isOpen && <span className="ml-1 text-[10px] font-normal uppercase tracking-wide">{t('realizedResult')}</span>}{position.returnRate !== null && <span className="ml-1 text-xs">({(position.returnRate * 100).toLocaleString(locale, { maximumFractionDigits: 1 })}%)</span>}</td><td className="px-3 py-3 text-right tabular-nums text-[#237056]">{position.incomeReceived !== 0 ? formatEuro(position.incomeReceived) : '—'}</td><td className="px-3 py-3 text-right tabular-nums text-[#a94f3a]">{position.feesPaid !== 0 ? formatEuro(position.feesPaid) : '—'}</td><td className="px-3 py-3 text-right text-xs">{position.isOpen ? (position.hasQuote ? t('cachedQuote') : t('lastLedgerPrice')) : '—'}</td><td className="px-5 py-3 text-right">{position.instrumentId ? <Button size="sm" variant="ghost" onClick={() => { setConfiguring(position); setError(''); }}><Pencil className="size-4" />{t('configure')}</Button> : '—'}</td></tr>)}</tbody></table></div>{/* I proventi si leggono in fondo, tutti insieme: sono la parte che il guadagno non mostra, perche' un dividendo non e' una plusvalenza. */}<div className="flex items-center justify-between border-t border-black/6 px-5 py-3"><span className="text-xs text-[#52615d]">{t('ledgerIncomeTotal')}</span><span className="font-semibold tabular-nums">{formatEuro(dashboard.positions.reduce((somma, position) => somma + position.incomeReceived, 0))}</span></div></CardContent></Card>
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0"><div><CardTitle className="text-[17px]">{t('positions')}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{showClosedPositions ? t('positionsSubtitleAll') : t('positionsSubtitle')}</p></div><label className="flex items-center gap-2 text-xs font-medium text-[var(--money-testo-muto)]"><input type="checkbox" checked={showClosedPositions} onChange={(event) => setShowClosedPositions(event.target.checked)} className="size-4 accent-[var(--money-primary)]" />{t('showClosedPositions', { count: dashboard.positions.filter((p) => !viva(p)).length })}</label></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1060px] w-full text-sm"><thead className="bg-[var(--money-superficie-hover)] text-xs text-[var(--money-testo-muto)]"><tr><th className="px-5 py-3 text-left">{t('instrument')}</th><th className="px-3 py-3 text-right">{t('quantity')}</th><th className="px-3 py-3 text-right">{t('cost')}</th><th className="px-3 py-3 text-right">{t('value')}</th><th className="px-3 py-3 text-right">{t('profitLoss')}</th><th className="px-3 py-3 text-right">{t('ledgerIncome')}</th><th className="px-3 py-3 text-right">{t('ledgerFees')}</th><th className="px-3 py-3 text-right">{t('priceSource')}</th><th className="px-5 py-3 text-right">{t('configure')}</th></tr></thead><tbody className="divide-y divide-[var(--money-velo)]/5">{dashboard.positions.filter((position) => showClosedPositions || viva(position)).map((position) => <tr key={position.name} className={viva(position) ? undefined : 'bg-[var(--money-superficie-tenue)] text-[var(--money-testo-tenue)]'}><td className="px-5 py-3"><p className="font-medium">{position.name}{!viva(position) && <span className="ml-2 rounded-full bg-[var(--money-velo)]/6 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--money-testo-tenue)]">{t('closed')}</span>}</p><p className="mt-0.5 text-xs text-[var(--money-testo-tenue)]">{position.assetClass} · {position.area}</p></td><td className="px-3 py-3 text-right tabular-nums">{position.units.toLocaleString(locale, { maximumFractionDigits: 4 })}</td><td className="px-3 py-3 text-right tabular-nums">{position.isOpen ? formatEuro(position.costBasis) : '—'}</td><td className="px-3 py-3 text-right font-semibold tabular-nums">{position.isOpen ? formatEuro(position.marketValue) : '—'}</td><td className={`px-3 py-3 text-right font-semibold tabular-nums ${position.totalGain >= 0 ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'}`}>{formatEuro(position.totalGain)}{!position.isOpen && <span className="ml-1 text-[10px] font-normal uppercase tracking-wide">{t('realizedResult')}</span>}{position.returnRate !== null && <span className="ml-1 text-xs">({(position.returnRate * 100).toLocaleString(locale, { maximumFractionDigits: 1 })}%)</span>}</td><td className="px-3 py-3 text-right tabular-nums text-[var(--money-ok)]">{position.incomeReceived !== 0 ? formatEuro(position.incomeReceived) : '—'}</td><td className="px-3 py-3 text-right tabular-nums text-[var(--money-allarme)]">{position.feesPaid !== 0 ? formatEuro(position.feesPaid) : '—'}</td><td className="px-3 py-3 text-right text-xs">{position.isOpen ? (position.hasQuote ? t('cachedQuote') : t('lastLedgerPrice')) : '—'}</td><td className="px-5 py-3 text-right">{position.instrumentId ? <Button size="sm" variant="ghost" onClick={() => { setConfiguring(position); setError(''); }}><Pencil className="size-4" />{t('configure')}</Button> : '—'}</td></tr>)}</tbody></table></div>{/* I proventi si leggono in fondo, tutti insieme: sono la parte che il guadagno non mostra, perche' un dividendo non e' una plusvalenza. */}<div className="flex items-center justify-between border-t border-[var(--money-velo)]/6 px-5 py-3"><span className="text-xs text-[var(--money-testo-muto)]">{t('ledgerIncomeTotal')}</span><span className="font-semibold tabular-nums">{formatEuro(dashboard.positions.reduce((somma, position) => somma + position.incomeReceived, 0))}</span></div></CardContent></Card>
       <RebalanceCard riordino={dashboard.rebalance} posizioni={dashboard.positions} onInstrumentSave={onInstrumentSave} />
     </div>}
 
@@ -5794,8 +5831,8 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
         {/* L'esito dell'import sta dove sta il pulsante: l'elenco di Scalable e
             il CSV partono dalla stessa riga, e chi lo preme guarda qui. */}
         {importFeedback && (importFeedback.ok
-          ? <p role="status" className="rounded-xl border border-black/6 bg-white px-4 py-2 text-sm text-[#3a4a46] shadow-sm shadow-black/[0.02]">{importFeedback.message}</p>
-          : <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#a94f3a]">{importFeedback.message}</p>)}
+          ? <p role="status" className="rounded-xl border border-[var(--money-velo)]/6 bg-[var(--money-superficie)] px-4 py-2 text-sm text-[var(--money-testo)] shadow-sm shadow-black/[0.02]">{importFeedback.message}</p>
+          : <p role="alert" className="rounded-xl border border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-tenue)] px-4 py-2 text-sm text-[var(--money-allarme)]">{importFeedback.message}</p>)}
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => { onImportFeedback(null); setScalableOpen(true); }}><Upload className="size-4" />{t('scalableImport')}</Button>
           <Button variant="outline" onClick={() => void chooseLedgerCsv()}><FileSpreadsheet className="size-4" />{t('importFromCsv')}</Button>
@@ -5803,17 +5840,17 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
             <Plus className="size-4" />{t('newOperation')}
           </Button>
         </div>
-        <Card className="border-black/6 bg-white shadow-sm">
+        <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
           <CardHeader className="gap-4">
             <div>
               <CardTitle className="text-[17px]">{t('portfolioOperations')}</CardTitle>
-              <p className="mt-1 text-xs text-[#5e6c68]">{t('resultsOfTotal', { count: filteredLedger.length, total: ledger.length })}</p>
+              <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('resultsOfTotal', { count: filteredLedger.length, total: ledger.length })}</p>
             </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(190px,1fr)_150px_180px_130px_150px]">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-black/35" />
-                <Input aria-label={t('searchInLedger')} value={ledgerSearchQuery} onChange={(event) => setLedgerSearchQuery(event.target.value)} className="h-10 bg-[#fafaf8] pl-9" placeholder={t('searchInLedgerPlaceholder')} />
-                {ledgerSearchQuery && <button aria-label={t('clearSearch')} onClick={() => setLedgerSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-black/40 hover:text-black"><X className="size-4" /></button>}
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--money-velo)]/35" />
+                <Input aria-label={t('searchInLedger')} value={ledgerSearchQuery} onChange={(event) => setLedgerSearchQuery(event.target.value)} className="h-10 bg-[var(--money-superficie-tenue)] pl-9" placeholder={t('searchInLedgerPlaceholder')} />
+                {ledgerSearchQuery && <button aria-label={t('clearSearch')} onClick={() => setLedgerSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--money-velo)]/40 hover:text-[var(--money-velo)]"><X className="size-4" /></button>}
               </div>
               <FilterSelect label={t('filterByType')} value={ledgerTypeFilter} onChange={setLedgerTypeFilter} options={[['all', t('allTypes')], ...(Object.keys(LEDGER_TYPE_LABEL) as LedgerOperationType[]).map((tipo) => [tipo, t(LEDGER_TYPE_LABEL[tipo])] as [string, string])]} />
               <FilterSelect label={t('filterByInstrument')} value={ledgerInstrumentFilter} onChange={setLedgerInstrumentFilter} options={[['all', t('allInstruments')], ...ledgerInstruments.map((name) => [name, name] as [string, string])]} />
@@ -5826,7 +5863,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
               <>
                 <div className="overflow-x-auto">
                   <table className="min-w-[980px] w-full text-sm">
-                    <thead className="bg-[#f4f5f1] text-xs text-[#52615d]">
+                    <thead className="bg-[var(--money-superficie-hover)] text-xs text-[var(--money-testo-muto)]">
                       <tr>
                         <th className="w-10 px-3 py-3"><input type="checkbox" aria-label={t('selectFiltered')} checked={visibleLedger.length > 0 && visibleLedger.every((row) => ledgerSelection.has(row.id))} onChange={(event) => setLedgerSelection((current) => { const next = new Set(current); visibleLedger.forEach((row) => event.target.checked ? next.add(row.id) : next.delete(row.id)); return next; })} className="size-4 accent-[var(--money-primary)]" /></th>
                         <th className="px-5 py-3 text-left">{t('date')}</th>
@@ -5840,15 +5877,15 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
                         <th className="px-5 py-3" />
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-black/5">
+                    <tbody className="divide-y divide-[var(--money-velo)]/5">
                       {visibleLedger.map((row) => (
                         <tr key={row.id}>
                           <td className="px-3 py-3 text-center"><input type="checkbox" aria-label={`${t('selectMovement', { description: row.name })}`} checked={ledgerSelection.has(row.id)} onChange={(event) => setLedgerSelection((current) => { const next = new Set(current); event.target.checked ? next.add(row.id) : next.delete(row.id); return next; })} className="size-4 accent-[var(--money-primary)]" /></td>
                           <td className="px-5 py-3 text-xs">{formatDate(`${row.occurredOn}T12:00:00`)}</td>
                           <td className="px-3 py-3 font-medium"><span className="flex items-center gap-1.5"><span title={row.linked ? t('ledgerLinkedHint') : t('ledgerUnlinkedHint')} aria-label={row.linked ? t('ledgerLinked') : t('ledgerUnlinked')} className="flex shrink-0">{row.linked
-                            ? <Link2 className="size-3.5 text-[#237056]" />
-                            : <Unlink className="size-3.5 text-[#c3ccc8]" />}</span>{row.name}</span>{row.notes && <p className="mt-0.5 text-xs font-normal text-[#5e6c68]">{row.notes}</p>}</td>
-                          <td className={`px-3 py-3 text-xs font-semibold ${row.transactionType === 'Buy' ? 'text-[#237056]' : row.transactionType === 'Sell' ? 'text-[#a94f3a]' : 'text-[#52615d]'}`}>{t(LEDGER_TYPE_LABEL[row.transactionType])}</td>
+                            ? <Link2 className="size-3.5 text-[var(--money-ok)]" />
+                            : <Unlink className="size-3.5 text-[var(--money-icona)]" />}</span>{row.name}</span>{row.notes && <p className="mt-0.5 text-xs font-normal text-[var(--money-testo-tenue)]">{row.notes}</p>}</td>
+                          <td className={`px-3 py-3 text-xs font-semibold ${row.transactionType === 'Buy' ? 'text-[var(--money-ok)]' : row.transactionType === 'Sell' ? 'text-[var(--money-allarme)]' : 'text-[var(--money-testo-muto)]'}`}>{t(LEDGER_TYPE_LABEL[row.transactionType])}</td>
                           <td className="px-3 py-3 text-right tabular-nums">{formatEuro(row.amount)}</td>
                           <td className="px-3 py-3 text-right tabular-nums">{row.units.toLocaleString(locale, { maximumFractionDigits: 5 })}</td>
                           <td className="px-3 py-3 text-right tabular-nums font-semibold">{row.runningUnits.toLocaleString(locale, { maximumFractionDigits: 5 })}</td>
@@ -5857,7 +5894,7 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
                           <td className="px-5 py-3">
                             <div className="flex justify-end">
                               <Button size="icon" variant="ghost" aria-label={`${t('edit')} ${row.name}`} onClick={() => { setEditing(row); setError(''); }}><Pencil className="size-4" /></Button>
-                              <Button size="icon" variant="ghost" aria-label={`${t('delete')} ${row.name}`} className="text-[#a94f3a]" onClick={() => void onDelete(row)}><Trash2 className="size-4" /></Button>
+                              <Button size="icon" variant="ghost" aria-label={`${t('delete')} ${row.name}`} className="text-[var(--money-allarme)]" onClick={() => void onDelete(row)}><Trash2 className="size-4" /></Button>
                             </div>
                           </td>
                         </tr>
@@ -5866,24 +5903,24 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
                   </table>
                 </div>
                 {visibleLedger.length < filteredLedger.length && (
-                  <div className="border-t border-black/5 py-4 text-center">
+                  <div className="border-t border-[var(--money-velo)]/5 py-4 text-center">
                     <Button type="button" variant="outline" onClick={() => setLedgerVisibleLimit((current) => current + 100)}>{t('showMore100')}</Button>
                   </div>
                 )}
               </>
             ) : (
-              <p className="py-12 text-center text-sm text-[#5e6c68]">{t('noOperationsMatchFilters')}</p>
+              <p className="py-12 text-center text-sm text-[var(--money-testo-tenue)]">{t('noOperationsMatchFilters')}</p>
             )}
           </CardContent>
         </Card>
-        {ledgerBulkError && <p role="alert" className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{ledgerBulkError}</p>}
-        {ledgerSelection.size > 0 && <div className="sticky bottom-4 z-20 flex flex-wrap items-center gap-3 rounded-xl border bg-white p-4 shadow-lg">
+        {ledgerBulkError && <p role="alert" className="rounded-lg bg-[var(--money-allarme-velo)] px-3 py-2 text-xs text-[var(--money-allarme)]">{ledgerBulkError}</p>}
+        {ledgerSelection.size > 0 && <div className="sticky bottom-4 z-20 flex flex-wrap items-center gap-3 rounded-xl border bg-[var(--money-superficie)] p-4 shadow-lg">
           <span className="text-sm font-medium">{t('selectedCount', { count: ledgerSelection.size })}</span>
-          <select aria-label={t('bulkField')} value={ledgerBulkField} onChange={(event) => { const value = event.target.value as typeof ledgerBulkField; setLedgerBulkField(value); setLedgerBulkValue(''); setLedgerBulkError(''); if (value === 'link') void loadLedgerLinkTransactions().catch(() => setLedgerBulkError(t('bulkFailed'))); }} className="h-10 rounded-lg border border-input bg-white px-2.5 text-sm">
+          <select aria-label={t('bulkField')} value={ledgerBulkField} onChange={(event) => { const value = event.target.value as typeof ledgerBulkField; setLedgerBulkField(value); setLedgerBulkValue(''); setLedgerBulkError(''); if (value === 'link') void loadLedgerLinkTransactions().catch(() => setLedgerBulkError(t('bulkFailed'))); }} className="h-10 rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm">
             <option value="name">{t('fieldName')}</option><option value="transaction_type">{t('type')}</option><option value="currency">{t('currency')}</option><option value="link">{t('linkToTransaction')}</option>
           </select>
-          {ledgerBulkField === 'transaction_type' ? <select aria-label={t('bulkValue')} value={ledgerBulkValue} onChange={(event) => setLedgerBulkValue(event.target.value)} className="h-10 rounded-lg border border-input bg-white px-2.5 text-sm"><option value="">{t('bulkValue')}</option><option value="Buy">{t('buy')}</option><option value="Sell">{t('sell')}</option></select>
-            : ledgerBulkField === 'link' ? <><Input aria-label={t('searchInMovements')} value={ledgerLinkQuery} onChange={(event) => setLedgerLinkQuery(event.target.value)} placeholder={t('searchInMovementsPlaceholder')} className="w-52" /><select aria-label={t('linkToTransaction')} value={ledgerBulkValue} onChange={(event) => setLedgerBulkValue(event.target.value)} className="h-10 max-w-[360px] rounded-lg border border-input bg-white px-2.5 text-sm"><option value="">{t('bulkValue')}</option>{ledgerLinkCandidates.map((transaction) => <option key={transaction.id} value={transaction.id}>{formatDate(`${transaction.occurredOn}T12:00:00`)} · {transaction.description} · {formatEuro(Math.abs(transaction.amount))}</option>)}</select></>
+          {ledgerBulkField === 'transaction_type' ? <select aria-label={t('bulkValue')} value={ledgerBulkValue} onChange={(event) => setLedgerBulkValue(event.target.value)} className="h-10 rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm"><option value="">{t('bulkValue')}</option><option value="Buy">{t('buy')}</option><option value="Sell">{t('sell')}</option></select>
+            : ledgerBulkField === 'link' ? <><Input aria-label={t('searchInMovements')} value={ledgerLinkQuery} onChange={(event) => setLedgerLinkQuery(event.target.value)} placeholder={t('searchInMovementsPlaceholder')} className="w-52" /><select aria-label={t('linkToTransaction')} value={ledgerBulkValue} onChange={(event) => setLedgerBulkValue(event.target.value)} className="h-10 max-w-[360px] rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm"><option value="">{t('bulkValue')}</option>{ledgerLinkCandidates.map((transaction) => <option key={transaction.id} value={transaction.id}>{formatDate(`${transaction.occurredOn}T12:00:00`)} · {transaction.description} · {formatEuro(Math.abs(transaction.amount))}</option>)}</select></>
             : <Input aria-label={ledgerBulkField === 'name' ? t('fieldName') : t('currency')} value={ledgerBulkValue} onChange={(event) => setLedgerBulkValue(event.target.value)} className="w-48" />}
           <Button disabled={ledgerBulkBusy || !ledgerBulkValue} onClick={() => void applyLedgerBulk()}>{t('applySelected')}</Button>
           <Button variant="outline" onClick={() => { setLedgerSelection(new Set()); setLedgerBulkError(''); }}>{t('cancel')}</Button>
@@ -5894,44 +5931,44 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
     {tab === 'instruments' && <InstrumentAnalysisView apiUrl={apiUrl} positions={dashboard.positions} onGoToLedger={() => setTab('ledger')} />}
 
     {tab === 'allocation' && <div className="space-y-5">
-      <Card className={`border shadow-sm ${allocation.coverage.coveredPercent >= 99 ? 'border-[#b9ddce] bg-[#f0f8f4]' : 'border-[#efc4b8] bg-[#fff6f3]'}`}>
+      <Card className={`border shadow-sm ${allocation.coverage.coveredPercent >= 99 ? 'border-[var(--money-ok-bordo)] bg-[var(--money-ok-tenue)]' : 'border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-velo)]'}`}>
         <CardContent className="flex flex-col gap-3 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-start gap-3">
-              {allocation.coverage.coveredPercent >= 99 ? <CheckCircle2 className="mt-0.5 size-5 text-[#237056]" /> : <AlertCircle className="mt-0.5 size-5 text-[#a94f3a]" />}
+              {allocation.coverage.coveredPercent >= 99 ? <CheckCircle2 className="mt-0.5 size-5 text-[var(--money-ok)]" /> : <AlertCircle className="mt-0.5 size-5 text-[var(--money-allarme)]" />}
               <div>
                 <p className="text-sm font-semibold">{t('allocationCoverage', { percent: formatPercentNumber(allocation.coverage.coveredPercent) })}</p>
-                <p className="mt-1 text-xs leading-5 text-[#52615d]">{allocation.coverage.lastFetch ? t('allocationLastFetch', { date: new Date(allocation.coverage.lastFetch).toLocaleString(locale) }) : t('allocationNeverFetched')}</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--money-testo-muto)]">{allocation.coverage.lastFetch ? t('allocationLastFetch', { date: new Date(allocation.coverage.lastFetch).toLocaleString(locale) }) : t('allocationNeverFetched')}</p>
               </div>
             </div>
             <div className="flex flex-col items-end gap-1">
               <Button type="button" variant="outline" disabled={refreshingProfiles} onClick={() => void refreshProfiles()}>
                 <RefreshCw className={`size-4 ${refreshingProfiles ? 'animate-spin' : ''}`} />{t('refreshComposition')}
               </Button>
-              {profileMessage && <span className="max-w-[320px] text-right text-xs text-[#a94f3a]">{profileMessage}</span>}
+              {profileMessage && <span className="max-w-[320px] text-right text-xs text-[var(--money-allarme)]">{profileMessage}</span>}
             </div>
           </div>
           {allocation.coverage.missing.length > 0 && <ul className="space-y-1 text-xs">
-            {allocation.coverage.missing.slice(0, 5).map((item) => <li key={item.instrument} className="flex justify-between gap-3 rounded-lg bg-white/70 px-3 py-1.5">
+            {allocation.coverage.missing.slice(0, 5).map((item) => <li key={item.instrument} className="flex justify-between gap-3 rounded-lg bg-[var(--money-superficie)]/70 px-3 py-1.5">
               <span className="font-medium">{item.instrument}</span>
-              <span className="text-[#5e6c68]">{formatEuro(item.value)} · {item.reason === 'no_ticker' ? t('allocationNoTicker') : sourceErrorLabel(t, item.code)}</span>
+              <span className="text-[var(--money-testo-tenue)]">{formatEuro(item.value)} · {item.reason === 'no_ticker' ? t('allocationNoTicker') : sourceErrorLabel(t, item.code)}</span>
             </li>)}
             {/* L'elenco si ferma a cinque: senza questa riga il totale degli
                 strumenti senza dati restava un numero da indovinare. */}
-            {allocation.coverage.missing.length > 5 && <li className="px-3 pt-1 text-[#5e6c68]">{t('allocationMissingMore', { count: allocation.coverage.missing.length - 5 })}</li>}
+            {allocation.coverage.missing.length > 5 && <li className="px-3 pt-1 text-[var(--money-testo-tenue)]">{t('allocationMissingMore', { count: allocation.coverage.missing.length - 5 })}</li>}
           </ul>}
         </CardContent>
       </Card>
-      <div className="flex flex-wrap gap-2">{([['instrument', t('dimInstrument')], ['sector', t('dimSector')], ['assetType', t('dimAssetType')], ['holdings', t('dimHoldings')], ['currency', t('dimCurrency')]] as const).map(([value, label]) => <Button key={value} type="button" variant={allocationDimension === value ? 'default' : 'outline'} className={allocationDimension === value ? 'bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]' : 'bg-white'} onClick={() => setAllocationDimension(value)}>{label}</Button>)}</div>
-      <Card className="border-black/6 bg-white shadow-sm">
-        <CardHeader><CardTitle className="text-[17px]">{t('allocationForDimension', { dimension: ({ instrument: t('dimInstrument'), sector: t('dimSector'), assetType: t('dimAssetType'), holdings: t('dimHoldings'), currency: t('dimCurrency') })[allocationDimension] })}</CardTitle><p className="text-xs text-[#5e6c68]">{t('estimatedValueFromLedger', { amount: formatEuro(allocation.total) })}</p></CardHeader>
+      <div className="flex flex-wrap gap-2">{([['instrument', t('dimInstrument')], ['sector', t('dimSector')], ['assetType', t('dimAssetType')], ['holdings', t('dimHoldings')], ['currency', t('dimCurrency')]] as const).map(([value, label]) => <Button key={value} type="button" variant={allocationDimension === value ? 'default' : 'outline'} className={allocationDimension === value ? 'bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]' : 'bg-[var(--money-superficie)]'} onClick={() => setAllocationDimension(value)}>{label}</Button>)}</div>
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
+        <CardHeader><CardTitle className="text-[17px]">{t('allocationForDimension', { dimension: ({ instrument: t('dimInstrument'), sector: t('dimSector'), assetType: t('dimAssetType'), holdings: t('dimHoldings'), currency: t('dimCurrency') })[allocationDimension] })}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{t('estimatedValueFromLedger', { amount: formatEuro(allocation.total) })}</p></CardHeader>
         <CardContent className="space-y-4">
           {allocation.allocations[allocationDimension].length === 0
-            ? <p className="py-6 text-center text-sm text-[#5e6c68]">{t('allocationNoData')}</p>
+            ? <p className="py-6 text-center text-sm text-[var(--money-testo-tenue)]">{t('allocationNoData')}</p>
             : allocation.allocations[allocationDimension].map((item) => <div key={item.label}>
                 <div className="mb-2 flex justify-between gap-4 text-sm"><span className="font-medium">{item.label === '__unavailable__' ? t('allocationUnavailable') : item.label}</span><span className="tabular-nums">{formatPercentNumber(item.weight)}%</span></div>
-                <div className="h-2 overflow-hidden rounded-full bg-[#edf0ed]"><div className={`h-full rounded-full ${item.label === '__unavailable__' ? 'bg-[#c9a99b]' : 'bg-[#6d8ff4]'}`} style={{ width: `${Math.min(item.weight, 100)}%` }} /></div>
-                <div className="mt-1.5 text-xs text-[#5e6c68]">{formatEuro(item.value)}</div>
+                <div className="h-2 overflow-hidden rounded-full bg-[var(--money-superficie-hover)]"><div className={`h-full rounded-full ${item.label === '__unavailable__' ? 'bg-[var(--money-dato)]' : 'bg-[var(--money-barra)]'}`} style={{ width: `${Math.min(item.weight, 100)}%` }} /></div>
+                <div className="mt-1.5 text-xs text-[var(--money-testo-tenue)]">{formatEuro(item.value)}</div>
               </div>)}
         </CardContent>
       </Card>
@@ -5964,33 +6001,33 @@ function InvestmentsView({ dashboard, ledger, allocation, apiUrl, onQuotesChange
         <div className="min-h-0 flex-1 space-y-4 overflow-auto pr-1">
           {!ledgerCsvPreview.length ? <>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {([['date', t('date')], ['name', t('instrument')], ['type', t('type')], ['amount', t('amount')], ['units', t('units')], ['price', t('price')], ['currency', t('currency')]] as const).map(([field, label]) => <label key={field} className="space-y-1 text-xs font-medium text-[#52615d]">{label}<select value={ledgerCsvMapping[field] ?? ''} onChange={(event) => setLedgerCsvMapping((current) => ({ ...current, [field]: event.target.value }))} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm"><option value="">{t('bulkValue')}</option>{ledgerCsvHeaders.map((header) => <option key={header} value={header}>{header}</option>)}</select></label>)}
+              {([['date', t('date')], ['name', t('instrument')], ['type', t('type')], ['amount', t('amount')], ['units', t('units')], ['price', t('price')], ['currency', t('currency')]] as const).map(([field, label]) => <label key={field} className="space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{label}<select value={ledgerCsvMapping[field] ?? ''} onChange={(event) => setLedgerCsvMapping((current) => ({ ...current, [field]: event.target.value }))} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm"><option value="">{t('bulkValue')}</option>{ledgerCsvHeaders.map((header) => <option key={header} value={header}>{header}</option>)}</select></label>)}
             </div>
-            {ledgerCsvSample.length > 0 && <div className="overflow-x-auto rounded-lg border border-black/8"><table className="min-w-full text-xs"><thead className="bg-[#f4f5f1]"><tr>{ledgerCsvHeaders.map((header) => <th key={header} className="whitespace-nowrap px-3 py-2 text-left">{header}</th>)}</tr></thead><tbody>{ledgerCsvSample.map((row, index) => <tr key={index} className="border-t border-black/5">{ledgerCsvHeaders.map((header) => <td key={header} className="whitespace-nowrap px-3 py-2">{row[header]}</td>)}</tr>)}</tbody></table></div>}
-          </> : <div className="overflow-x-auto rounded-lg border border-black/8"><table className="min-w-[900px] w-full text-sm"><thead className="bg-[#f4f5f1] text-xs text-[#52615d]"><tr><th className="px-3 py-3">{t('statementSelect')}</th><th className="px-3 py-3 text-left">{t('date')}</th><th className="px-3 py-3 text-left">{t('instrument')}</th><th className="px-3 py-3 text-left">{t('type')}</th><th className="px-3 py-3 text-right">{t('amount')}</th><th className="px-3 py-3 text-right">{t('units')}</th><th className="px-3 py-3 text-right">{t('price')}</th><th className="px-3 py-3 text-left">{t('currency')}</th><th className="px-3 py-3 text-left" /></tr></thead><tbody className="divide-y divide-black/5">{ledgerCsvPreview.map((item) => <tr key={item.row} className={item.duplicate || item.error ? 'bg-[#fafaf8] text-[#5e6c68]' : ''}><td className="px-3 py-3 text-center"><input type="checkbox" disabled={item.duplicate || Boolean(item.error)} checked={ledgerCsvSelection.has(item.row)} aria-label={t('statementSelectRow', { row: item.row })} onChange={(event) => setLedgerCsvSelection((current) => { const next = new Set(current); event.target.checked ? next.add(item.row) : next.delete(item.row); return next; })} className="size-4 accent-[var(--money-primary)]" /></td><td className="px-3 py-3">{item.occurred_on ?? '—'}</td><td className="px-3 py-3 font-medium">{item.name ?? '—'}</td><td className="px-3 py-3">{item.transaction_type ?? '—'}</td><td className="px-3 py-3 text-right tabular-nums">{item.amount == null ? '—' : formatEuro(item.amount)}</td><td className="px-3 py-3 text-right tabular-nums">{item.units ?? '—'}</td><td className="px-3 py-3 text-right tabular-nums">{item.price ?? '—'}</td><td className="px-3 py-3">{item.currency ?? '—'}</td><td className="px-3 py-3 text-xs text-[#a94f3a]">{item.duplicate ? t('statementDuplicate') : item.error ? t('statementRequiredFields') : ''}</td></tr>)}</tbody></table></div>}
-          {ledgerCsvError && <p role="alert" className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{ledgerCsvError}</p>}
+            {ledgerCsvSample.length > 0 && <div className="overflow-x-auto rounded-lg border border-[var(--money-velo)]/8"><table className="min-w-full text-xs"><thead className="bg-[var(--money-superficie-hover)]"><tr>{ledgerCsvHeaders.map((header) => <th key={header} className="whitespace-nowrap px-3 py-2 text-left">{header}</th>)}</tr></thead><tbody>{ledgerCsvSample.map((row, index) => <tr key={index} className="border-t border-[var(--money-velo)]/5">{ledgerCsvHeaders.map((header) => <td key={header} className="whitespace-nowrap px-3 py-2">{row[header]}</td>)}</tr>)}</tbody></table></div>}
+          </> : <div className="overflow-x-auto rounded-lg border border-[var(--money-velo)]/8"><table className="min-w-[900px] w-full text-sm"><thead className="bg-[var(--money-superficie-hover)] text-xs text-[var(--money-testo-muto)]"><tr><th className="px-3 py-3">{t('statementSelect')}</th><th className="px-3 py-3 text-left">{t('date')}</th><th className="px-3 py-3 text-left">{t('instrument')}</th><th className="px-3 py-3 text-left">{t('type')}</th><th className="px-3 py-3 text-right">{t('amount')}</th><th className="px-3 py-3 text-right">{t('units')}</th><th className="px-3 py-3 text-right">{t('price')}</th><th className="px-3 py-3 text-left">{t('currency')}</th><th className="px-3 py-3 text-left" /></tr></thead><tbody className="divide-y divide-[var(--money-velo)]/5">{ledgerCsvPreview.map((item) => <tr key={item.row} className={item.duplicate || item.error ? 'bg-[var(--money-superficie-tenue)] text-[var(--money-testo-tenue)]' : ''}><td className="px-3 py-3 text-center"><input type="checkbox" disabled={item.duplicate || Boolean(item.error)} checked={ledgerCsvSelection.has(item.row)} aria-label={t('statementSelectRow', { row: item.row })} onChange={(event) => setLedgerCsvSelection((current) => { const next = new Set(current); event.target.checked ? next.add(item.row) : next.delete(item.row); return next; })} className="size-4 accent-[var(--money-primary)]" /></td><td className="px-3 py-3">{item.occurred_on ?? '—'}</td><td className="px-3 py-3 font-medium">{item.name ?? '—'}</td><td className="px-3 py-3">{item.transaction_type ?? '—'}</td><td className="px-3 py-3 text-right tabular-nums">{item.amount == null ? '—' : formatEuro(item.amount)}</td><td className="px-3 py-3 text-right tabular-nums">{item.units ?? '—'}</td><td className="px-3 py-3 text-right tabular-nums">{item.price ?? '—'}</td><td className="px-3 py-3">{item.currency ?? '—'}</td><td className="px-3 py-3 text-xs text-[var(--money-allarme)]">{item.duplicate ? t('statementDuplicate') : item.error ? t('statementRequiredFields') : ''}</td></tr>)}</tbody></table></div>}
+          {ledgerCsvError && <p role="alert" className="rounded-lg bg-[var(--money-allarme-velo)] px-3 py-2 text-xs text-[var(--money-allarme)]">{ledgerCsvError}</p>}
         </div>
         <DialogFooter><Button type="button" variant="outline" onClick={() => setLedgerCsvOpen(false)}>{t('cancel')}</Button>{ledgerCsvPreview.length ? <Button disabled={ledgerCsvBusy || !ledgerCsvSelection.size} onClick={() => void importLedgerCsv()}>{t('statementConfirm', { count: ledgerCsvSelection.size })}</Button> : <Button disabled={ledgerCsvBusy || Object.values(ledgerCsvMapping).length !== 7 || Object.values(ledgerCsvMapping).some((value) => !value) || new Set(Object.values(ledgerCsvMapping)).size !== 7} onClick={() => void previewLedgerCsv()}>{t('statementPreview')}</Button>}</DialogFooter>
       </DialogContent>
     </Dialog>
 
-    <Dialog open={editing !== undefined} onOpenChange={(open) => { if (!open) setEditing(undefined); }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{editing ? t('editOperation') : t('newInvestmentOperation')}</DialogTitle><DialogDescription>{t('investmentDialogDesc')}</DialogDescription></DialogHeader><form key={editing?.id ?? 'new-investment'} onSubmit={saveLedger} className="space-y-4"><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('date')}<Input required name="occurred_on" type="date" defaultValue={editing?.occurredOn ?? new Date().toISOString().slice(0, 10)} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('operation')}<select required name="transaction_type" value={ledgerTypeInput} onChange={(event) => cambiaTipoLedger(event.target.value as LedgerOperationType)} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm">{(Object.keys(LEDGER_TYPE_LABEL) as LedgerOperationType[]).map((tipo) => <option key={tipo} value={tipo}>{t(LEDGER_TYPE_LABEL[tipo])}</option>)}</select></label></div><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('instrument')}<div className="relative">
+    <Dialog open={editing !== undefined} onOpenChange={(open) => { if (!open) setEditing(undefined); }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{editing ? t('editOperation') : t('newInvestmentOperation')}</DialogTitle><DialogDescription>{t('investmentDialogDesc')}</DialogDescription></DialogHeader><form key={editing?.id ?? 'new-investment'} onSubmit={saveLedger} className="space-y-4"><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('date')}<Input required name="occurred_on" type="date" defaultValue={editing?.occurredOn ?? new Date().toISOString().slice(0, 10)} /></label><label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('operation')}<select required name="transaction_type" value={ledgerTypeInput} onChange={(event) => cambiaTipoLedger(event.target.value as LedgerOperationType)} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm">{(Object.keys(LEDGER_TYPE_LABEL) as LedgerOperationType[]).map((tipo) => <option key={tipo} value={tipo}>{t(LEDGER_TYPE_LABEL[tipo])}</option>)}</select></label></div><label className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('instrument')}<div className="relative">
       <Input required name="name" autoComplete="off" value={instrumentQuery}
         onChange={(event) => { setInstrumentQuery(event.target.value); setSuggestionsOpen(true); }}
         onFocus={() => setSuggestionsOpen(true)}
         onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 150)}
         placeholder={t('instrumentPlaceholder')} />
-      {suggestionsOpen && instrumentSuggestions.length > 0 && <div className="absolute z-30 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-black/10 bg-white shadow-lg">
+      {suggestionsOpen && instrumentSuggestions.length > 0 && <div className="absolute z-30 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-[var(--money-velo)]/10 bg-[var(--money-superficie)] shadow-lg">
         {instrumentSuggestions.map((item) => <button key={item.id} type="button"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => { setInstrumentQuery(item.name); setSuggestionsOpen(false); }}
-          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs font-normal hover:bg-[#f4f5f1]">
-          <span>{item.name}</span><span className="shrink-0 text-[#5e6c68]">{item.providerSymbol || '—'}</span>
+          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs font-normal hover:bg-[var(--money-superficie-hover)]">
+          <span>{item.name}</span><span className="shrink-0 text-[var(--money-testo-tenue)]">{item.providerSymbol || '—'}</span>
         </button>)}
       </div>}
-      {suggestionsOpen && instrumentSuggestions.length === 0 && <p className="mt-1 font-normal text-[#5e6c68]">{t('noInstrumentMatch')}</p>}
-    </div></label><div className="grid grid-cols-3 gap-3">{tipoSplit ? <input type="hidden" name="amount" value="0" /> : <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('amount')}<Input required name="amount" min="0.01" step="0.01" type="number" value={amountInput} onChange={(event) => setAmountInput(event.target.value)} /></label>}{tipoContante ? null : <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('units')}<Input required name="units" min="0.00000001" step="0.00000001" type="number" value={unitsInput} onChange={(event) => setUnitsInput(event.target.value)} /></label>}{tipoSplit ? <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('ledgerSplitRatio')}<Input required name="units" min="0.00000001" step="0.00000001" type="number" value={unitsInput} onChange={(event) => setUnitsInput(event.target.value)} /></label> : null}{tipoContante ? null : <label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('priceComputed')}<Input readOnly required name="price" type="number" value={derivedPrice} tabIndex={-1} className="bg-[#f4f5f1] text-[#52615d]" /></label>}</div>{tipoSplit && <p className="text-[11px] leading-4 text-[#5e6c68]">{t('ledgerSplitHint')}</p>}<div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('currency')}<select name="currency" defaultValue={editing?.currency ?? 'EUR'} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm"><option>EUR</option><option>USD</option></select></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('fee')}<Input name="fee" min="0" step="0.01" type="number" defaultValue={editing?.fee ?? 0} /></label></div><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('note')}<Input name="notes" defaultValue={editing?.notes ?? ''} placeholder={t('optional')} /></label>{!editing && !tipoSplit && <><div className="space-y-2 rounded-lg border border-[#5c8f82]/20 bg-[#f6f9f7] p-3"><label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-[#3b6a5b]"><input type="checkbox" checked={linkTransactionOpen} onChange={(event) => setLinkTransactionOpen(event.target.checked)} className="size-4 accent-[var(--money-primary)]" />{t('linkToTransaction')}</label>{linkTransactionOpen && <div className="grid grid-cols-2 gap-2 pt-1"><label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldDate')}<Input name="tx_occurred_on" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className="h-8 bg-white text-xs" /></label><label className="space-y-1 text-[10px] font-medium text-[#52615d]">{t('fieldAccount')}<select required name="tx_account_name" defaultValue="" className="h-8 w-full rounded-md border border-input bg-white px-2 text-xs"><option value="">{t('noAccount')}</option>{accounts.filter(a => a.isActive !== false).map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}</select></label><label className="space-y-1 text-[10px] font-medium text-[#52615d] col-span-2">{t('fieldCategory')}<Input name="tx_category" defaultValue="Investimenti" className="h-8 bg-white text-xs" /></label><label className="space-y-1 text-[10px] font-medium text-[#52615d] col-span-2">{t('fieldDescription')}<Input name="tx_details" defaultValue="" placeholder={t('optionalNote')} className="h-8 bg-white text-xs" /></label></div>}</div><label className="flex items-center gap-2 text-xs text-[#5e6c68]"><input type="checkbox" name="force_duplicate" className="size-4 accent-[var(--money-primary)]" />{t('allowLedgerDuplicate')}</label></>}{error && <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => setEditing(undefined)}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('save')}</Button></DialogFooter></form></DialogContent></Dialog>
-    <Dialog open={Boolean(configuring)} onOpenChange={(open) => { if (!open) setConfiguring(null); }}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>{t('configureQuoteAndClassification')}</DialogTitle><DialogDescription>{t('configureQuoteAndClassificationDesc')}</DialogDescription></DialogHeader>{configuring && <form key={configuring.instrumentId} onSubmit={saveInstrument} className="space-y-4"><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('sourceSymbol')}<Input name="provider_symbol" defaultValue={configuring.providerSymbol ?? ''} placeholder={t('symbolExample')} /></label><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('assetClassLabel')}<Input name="asset_class" defaultValue={configuring.assetClass} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('area')}<Input name="area" defaultValue={configuring.area} /></label></div><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('sector')}<Input name="sector" defaultValue={configuring.sector} /></label><label className="space-y-1.5 text-xs font-medium text-[#52615d]">{t('currency')}<Input name="currency" defaultValue={configuring.currency} /></label></div><label className="block space-y-1.5 text-xs font-medium text-[#52615d]">{t('allocTargetWeightField')}<Input name="target_weight" type="number" step="0.1" min={0} max={100} defaultValue={configuring.targetWeight === null ? '' : String(Math.round(configuring.targetWeight * 1000) / 10)} placeholder={t('weightExample')} /><span className="block text-[11px] font-normal text-[#5e6c68]">{t('allocTargetWeightHelp')}</span></label>{error && <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => setConfiguring(null)}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{t('saveConfiguration')}</Button></DialogFooter></form>}</DialogContent></Dialog>
+      {suggestionsOpen && instrumentSuggestions.length === 0 && <p className="mt-1 font-normal text-[var(--money-testo-tenue)]">{t('noInstrumentMatch')}</p>}
+    </div></label><div className="grid grid-cols-3 gap-3">{tipoSplit ? <input type="hidden" name="amount" value="0" /> : <label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('amount')}<Input required name="amount" min="0.01" step="0.01" type="number" value={amountInput} onChange={(event) => setAmountInput(event.target.value)} /></label>}{tipoContante ? null : <label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('units')}<Input required name="units" min="0.00000001" step="0.00000001" type="number" value={unitsInput} onChange={(event) => setUnitsInput(event.target.value)} /></label>}{tipoSplit ? <label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('ledgerSplitRatio')}<Input required name="units" min="0.00000001" step="0.00000001" type="number" value={unitsInput} onChange={(event) => setUnitsInput(event.target.value)} /></label> : null}{tipoContante ? null : <label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('priceComputed')}<Input readOnly required name="price" type="number" value={derivedPrice} tabIndex={-1} className="bg-[var(--money-superficie-hover)] text-[var(--money-testo-muto)]" /></label>}</div>{tipoSplit && <p className="text-[11px] leading-4 text-[var(--money-testo-tenue)]">{t('ledgerSplitHint')}</p>}<div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('currency')}<select name="currency" defaultValue={editing?.currency ?? 'EUR'} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm"><option>EUR</option><option>USD</option></select></label><label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fee')}<Input name="fee" min="0" step="0.01" type="number" defaultValue={editing?.fee ?? 0} /></label></div><label className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('note')}<Input name="notes" defaultValue={editing?.notes ?? ''} placeholder={t('optional')} /></label>{!editing && !tipoSplit && <><div className="space-y-2 rounded-lg border border-[var(--money-anello)]/20 bg-[var(--money-superficie-tenue)] p-3"><label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-[var(--money-ok)]"><input type="checkbox" checked={linkTransactionOpen} onChange={(event) => setLinkTransactionOpen(event.target.checked)} className="size-4 accent-[var(--money-primary)]" />{t('linkToTransaction')}</label>{linkTransactionOpen && <div className="grid grid-cols-2 gap-2 pt-1"><label className="space-y-1 text-[10px] font-medium text-[var(--money-testo-muto)]">{t('fieldDate')}<Input name="tx_occurred_on" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className="h-8 bg-[var(--money-superficie)] text-xs" /></label><label className="space-y-1 text-[10px] font-medium text-[var(--money-testo-muto)]">{t('fieldAccount')}<select required name="tx_account_name" defaultValue="" className="h-8 w-full rounded-md border border-input bg-[var(--money-superficie)] px-2 text-xs"><option value="">{t('noAccount')}</option>{accounts.filter(a => a.isActive !== false).map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}</select></label><label className="space-y-1 text-[10px] font-medium text-[var(--money-testo-muto)] col-span-2">{t('fieldCategory')}<Input name="tx_category" defaultValue="Investimenti" className="h-8 bg-[var(--money-superficie)] text-xs" /></label><label className="space-y-1 text-[10px] font-medium text-[var(--money-testo-muto)] col-span-2">{t('fieldDescription')}<Input name="tx_details" defaultValue="" placeholder={t('optionalNote')} className="h-8 bg-[var(--money-superficie)] text-xs" /></label></div>}</div><label className="flex items-center gap-2 text-xs text-[var(--money-testo-tenue)]"><input type="checkbox" name="force_duplicate" className="size-4 accent-[var(--money-primary)]" />{t('allowLedgerDuplicate')}</label></>}{error && <p className="rounded-lg bg-[var(--money-allarme-velo)] px-3 py-2 text-xs text-[var(--money-allarme)]">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => setEditing(undefined)}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('save')}</Button></DialogFooter></form></DialogContent></Dialog>
+    <Dialog open={Boolean(configuring)} onOpenChange={(open) => { if (!open) setConfiguring(null); }}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>{t('configureQuoteAndClassification')}</DialogTitle><DialogDescription>{t('configureQuoteAndClassificationDesc')}</DialogDescription></DialogHeader>{configuring && <form key={configuring.instrumentId} onSubmit={saveInstrument} className="space-y-4"><label className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('sourceSymbol')}<Input name="provider_symbol" defaultValue={configuring.providerSymbol ?? ''} placeholder={t('symbolExample')} /></label><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('assetClassLabel')}<Input name="asset_class" defaultValue={configuring.assetClass} /></label><label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('area')}<Input name="area" defaultValue={configuring.area} /></label></div><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('sector')}<Input name="sector" defaultValue={configuring.sector} /></label><label className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('currency')}<Input name="currency" defaultValue={configuring.currency} /></label></div><label className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('allocTargetWeightField')}<Input name="target_weight" type="number" step="0.1" min={0} max={100} defaultValue={configuring.targetWeight === null ? '' : String(Math.round(configuring.targetWeight * 1000) / 10)} placeholder={t('weightExample')} /><span className="block text-[11px] font-normal text-[var(--money-testo-tenue)]">{t('allocTargetWeightHelp')}</span></label>{error && <p className="rounded-lg bg-[var(--money-allarme-velo)] px-3 py-2 text-xs text-[var(--money-allarme)]">{error}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => setConfiguring(null)}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{t('saveConfiguration')}</Button></DialogFooter></form>}</DialogContent></Dialog>
   </div>;
 }
 
@@ -6081,40 +6118,40 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
         bilancio: quattro card grandi occupavano mezzo schermo per ripeterli.
         Patrimonio netto e liquidita' restano grandi perche' sono le uniche due
         cifre che non compaiono altrove. */}
-    <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-xl border border-black/7 bg-white px-4 py-3 text-xs shadow-sm shadow-black/[0.02]">
+    <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] px-4 py-3 text-xs shadow-sm shadow-black/[0.02]">
       {([[t('groupBank'), totali.gruppo.bank], [t('bsOtherAssets'), totali.gruppo.asset - investimenti],
          [t('bsInvestments'), investimenti], [t('balanceSheetLiabilitiesOnly'), passivita]] as const)
         .map(([etichetta, valore]) => (
           <span key={etichetta} className="flex items-baseline gap-1.5">
-            <span className="text-[#5e6c68]">{etichetta}</span>
-            <b className="tabular-nums text-[13px] text-[#1f2c28]">{formatEuro(valore)}</b>
+            <span className="text-[var(--money-testo-tenue)]">{etichetta}</span>
+            <b className="tabular-nums text-[13px] text-[var(--money-testo)]">{formatEuro(valore)}</b>
           </span>
         ))}
     </div>
 
     {(data.currencies ?? []).length > 0 && (
-      <Card className="border-black/6 bg-white shadow-sm">
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-[17px]">{t('netWorthInCurrencies')}</CardTitle>
-          <p className="mt-1 text-xs text-[#5e6c68]">{t('netWorthInCurrenciesSubtitle')}</p>
+          <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('netWorthInCurrenciesSubtitle')}</p>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {(data.currencies ?? []).map((entry) => (
-            <div key={entry.code} className="rounded-xl border border-black/6 px-3 py-2.5">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5e6c68]">{entry.code}</p>
+            <div key={entry.code} className="rounded-xl border border-[var(--money-velo)]/6 px-3 py-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--money-testo-tenue)]">{entry.code}</p>
               {entry.available && entry.total !== null ? (
                 <>
-                  <p className="mt-0.5 text-lg font-semibold tabular-nums text-[#173b33]">
+                  <p className="mt-0.5 text-lg font-semibold tabular-nums text-[var(--money-marca)]">
                     {entry.total.toLocaleString(locale, { minimumFractionDigits: entry.inverted ? 4 : 2, maximumFractionDigits: entry.inverted ? 4 : 2 })}
                   </p>
                   {entry.change !== null && (
-                    <p className={`text-xs tabular-nums ${entry.change >= 0 ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>
+                    <p className={`text-xs tabular-nums ${entry.change >= 0 ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'}`}>
                       {entry.change >= 0 ? '+' : ''}{entry.change.toLocaleString(locale, { maximumFractionDigits: entry.inverted ? 4 : 2 })}
                       {entry.changePercent !== null && ` (${entry.changePercent >= 0 ? '+' : ''}${entry.changePercent.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%)`}
                     </p>
                   )}
                   {entry.rate !== null && (
-                    <p className="mt-1 text-[11px] text-[#5e6c68]">
+                    <p className="mt-1 text-[11px] text-[var(--money-testo-tenue)]">
                       {entry.inverted
                         ? `1 ${entry.code} = ${entry.rate.toLocaleString(locale, { maximumFractionDigits: 2 })} EUR`
                         : `1 EUR = ${entry.rate.toLocaleString(locale, { maximumFractionDigits: 4 })} ${entry.code}`}
@@ -6122,7 +6159,7 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
                   )}
                 </>
               ) : (
-                <p className="mt-1 text-xs text-[#a3adaa]">{t('netWorthRateMissing')}</p>
+                <p className="mt-1 text-xs text-[var(--money-testo-spento)]">{t('netWorthRateMissing')}</p>
               )}
             </div>
           ))}
@@ -6148,8 +6185,8 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
         Lo stato era una Card grande con dentro la formula, affiancata a un
         pulsante: due elementi di peso diverso che si contendevano la riga. La
         formula e' una spiegazione, non un titolo, e sta nel tooltip. */}
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-black/7 bg-white px-4 py-3 shadow-sm shadow-black/[0.02]">
-      <label className="flex items-center gap-2 text-xs font-medium text-[#52615d]">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] px-4 py-3 shadow-sm shadow-black/[0.02]">
+      <label className="flex items-center gap-2 text-xs font-medium text-[var(--money-testo-muto)]">
         <input type="checkbox" checked={hideZeroBalances} onChange={(event) => setHideZeroBalances(event.target.checked)} className="size-4 accent-[var(--money-primary)]" />
         {t('hideZeroBalanceAccounts')}
       </label>
@@ -6157,27 +6194,27 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
           dei due `select` appartiene la scritta: il clic finiva sul primo anche
           quando serviva il secondo. Fuori c'e' un `span`, e ogni `select` ha la
           sua etichetta legata per `id`. */}
-      <span className="flex items-center gap-2 text-xs font-medium text-[#52615d]">
+      <span className="flex items-center gap-2 text-xs font-medium text-[var(--money-testo-muto)]">
         <label htmlFor="account-order">{t('accountOrder')}</label>
-        <select id="account-order" value={accountOrder} onChange={(event) => setAccountOrder(event.target.value as 'balance' | 'name' | 'added')} className="h-8 rounded-lg border border-black/7 bg-white px-2 text-xs"><option value="balance">{t('accountOrderBalance')}</option><option value="name">{t('accountOrderName')}</option><option value="added">{t('accountOrderAdded')}</option></select>
+        <select id="account-order" value={accountOrder} onChange={(event) => setAccountOrder(event.target.value as 'balance' | 'name' | 'added')} className="h-8 rounded-lg border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] px-2 text-xs"><option value="balance">{t('accountOrderBalance')}</option><option value="name">{t('accountOrderName')}</option><option value="added">{t('accountOrderAdded')}</option></select>
         <label className="sr-only" htmlFor="account-order-direction">{t('accountOrderDirection')}</label>
-        <select id="account-order-direction" value={accountOrderDirection} onChange={(event) => setAccountOrderDirection(event.target.value as 'asc' | 'desc')} className="h-8 rounded-lg border border-black/7 bg-white px-2 text-xs"><option value="asc">{t('ascending')}</option><option value="desc">{t('descending')}</option></select>
+        <select id="account-order-direction" value={accountOrderDirection} onChange={(event) => setAccountOrderDirection(event.target.value as 'asc' | 'desc')} className="h-8 rounded-lg border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] px-2 text-xs"><option value="asc">{t('ascending')}</option><option value="desc">{t('descending')}</option></select>
       </span>
       {alPresente && <Button onClick={() => onNewAccount()} size="sm" className="ml-auto h-8 rounded-lg bg-[var(--money-primary)] px-3 text-xs text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-3.5" />{t('newAccount')}</Button>}
     </div>
-    {!alPresente && <p className="rounded-xl border border-black/7 bg-[#fafaf8] px-4 py-2.5 text-xs text-[#5e6c68]">{t('pastPeriodReadOnly')}</p>}
+    {!alPresente && <p className="rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie-tenue)] px-4 py-2.5 text-xs text-[var(--money-testo-tenue)]">{t('pastPeriodReadOnly')}</p>}
 
     <div className="grid gap-5 xl:grid-cols-2">
       <div className="space-y-5">
-        <div className="flex items-baseline justify-between gap-3 border-b border-black/8 pb-1.5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#5e6c68]">{t('balanceSheetAssets')}</p>
+        <div className="flex items-baseline justify-between gap-3 border-b border-[var(--money-velo)]/8 pb-1.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--money-testo-tenue)]">{t('balanceSheetAssets')}</p>
           <p className="text-sm font-semibold tabular-nums">{formatEuro(totaleAttivo)}</p>
         </div>
         {colonnaAttivo.map(({ group, items, totalCount, total }) => <AccountGroupCard key={group} group={group} label={groupLabel[group]} items={items} totalCount={totalCount} total={total} netWorth={data.totals.netWorth} azioni={alPresente} expanded={expandedGroupOverride[group] ?? items.length <= 6} onToggleExpand={() => setExpandedGroupOverride((prev) => ({ ...prev, [group]: !(prev[group] ?? items.length <= 6) }))} onEdit={onAccountEdit} onValuations={onAccountValuations} onDelete={(account) => void onAccountDelete(account)} />)}
       </div>
       <div className="space-y-5">
-        <div className="flex items-baseline justify-between gap-3 border-b border-black/8 pb-1.5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#5e6c68]">{t('balanceSheetLiabilitiesEquity')}</p>
+        <div className="flex items-baseline justify-between gap-3 border-b border-[var(--money-velo)]/8 pb-1.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--money-testo-tenue)]">{t('balanceSheetLiabilitiesEquity')}</p>
           <p className="text-sm font-semibold tabular-nums">{formatEuro(passivita + capitaleProprio)}</p>
         </div>
         {colonnaPassivo.map(({ group, items, totalCount, total }) => <AccountGroupCard key={group} group={group} label={groupLabel[group]} items={items} totalCount={totalCount} total={total} netWorth={data.totals.netWorth} azioni={alPresente} expanded={expandedGroupOverride[group] ?? items.length <= 6} onToggleExpand={() => setExpandedGroupOverride((prev) => ({ ...prev, [group]: !(prev[group] ?? items.length <= 6) }))} onEdit={onAccountEdit} onValuations={onAccountValuations} onDelete={(account) => void onAccountDelete(account)} />)}
@@ -6322,20 +6359,20 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
     }
   }
 
-  return <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
-    <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between"><div><CardTitle className="text-[17px]">{t('monthlyBudgetEditable')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('monthlyBudgetEditableSubtitle')}</p></div><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" disabled={!canEdit || Boolean(busy)} onClick={() => void copyBudget('month')}><Copy className="size-4" />{t('priorMonthAction')}</Button><Button type="button" variant="outline" disabled={!canEdit || Boolean(busy)} onClick={() => void copyBudget('year')}><Copy className="size-4" />{t('priorYearAction')}</Button></div></CardHeader>
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
+    <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between"><div><CardTitle className="text-[17px]">{t('monthlyBudgetEditable')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('monthlyBudgetEditableSubtitle')}</p></div><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" disabled={!canEdit || Boolean(busy)} onClick={() => void copyBudget('month')}><Copy className="size-4" />{t('priorMonthAction')}</Button><Button type="button" variant="outline" disabled={!canEdit || Boolean(busy)} onClick={() => void copyBudget('year')}><Copy className="size-4" />{t('priorYearAction')}</Button></div></CardHeader>
     <CardContent>
-      {!canEdit && <p className="mb-4 rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{t('budgetEditRestricted', { years: editableYears.join(', ') })}</p>}
-      {error && <p className="mb-3 rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}
-      <div className="hidden gap-2 pb-2 text-[11px] font-medium uppercase tracking-wide text-[#5e6c68] sm:grid sm:grid-cols-[minmax(170px,1fr)_130px_120px_130px_auto]">
+      {!canEdit && <p className="mb-4 rounded-lg bg-[var(--money-allarme-velo)] px-3 py-2 text-xs text-[var(--money-allarme)]">{t('budgetEditRestricted', { years: editableYears.join(', ') })}</p>}
+      {error && <p className="mb-3 rounded-lg bg-[var(--money-allarme-tenue)] px-3 py-2 text-xs text-[var(--money-allarme)]">{error}</p>}
+      <div className="hidden gap-2 pb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--money-testo-tenue)] sm:grid sm:grid-cols-[minmax(170px,1fr)_130px_120px_130px_auto]">
         <span>{t('category')}</span>
         <span>{t('categoryGroup')}</span>
         <span>{t('budget')}</span>
         <span className="text-right">{actualLabel}</span>
         <span className="w-[72px]" />
       </div>
-      <div className="divide-y divide-black/5">{gruppi.flatMap(({ padre, voci }) => [
-        ...(padre ? [<p key={`gruppo-${padre}`} className="bg-[#f6f8f6] px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#5b6b66]">{padre}</p>] : []),
+      <div className="divide-y divide-[var(--money-velo)]/5">{gruppi.flatMap(({ padre, voci }) => [
+        ...(padre ? [<p key={`gruppo-${padre}`} className="bg-[var(--money-superficie-tenue)] px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--money-testo-tenue)]">{padre}</p>] : []),
         ...voci.map((item) => {
         const draft = drafts[item.id] ?? { category: item.category, amount: item.amount.toFixed(2) };
         const changed = draft.category !== item.category || Number(draft.amount) !== item.amount;
@@ -6345,7 +6382,7 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
         const usefulSuggestion = suggestion && suggestion.median > 0 ? suggestion : undefined;
         return <div key={item.id} className="grid gap-2 py-3 sm:items-start sm:grid-cols-[minmax(170px,1fr)_130px_120px_130px_auto]">
           <div className="flex min-w-0 items-start gap-1.5">
-            {padre && <span aria-hidden className="mt-3.5 h-3 w-px shrink-0 bg-[#dfe4e1]" />}
+            {padre && <span aria-hidden className="mt-3.5 h-3 w-px shrink-0 bg-[var(--money-superficie-hover)]" />}
             <div className="min-w-0 flex-1">
             {/* Si sceglie, non si scrive: un campo libero qui faceva nascere una
                 categoria nuova a ogni errore di battitura, e spostare una riga
@@ -6353,7 +6390,7 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
                 categorie si creano e si rinominano nella scheda Categorie. */}
             <select aria-label={`${t('category')} ${item.categoryLabel}`} disabled={!canEdit} value={draft.category}
                     onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: { ...draft, category: event.target.value } }))}
-                    className="h-9 w-full rounded-md border border-input bg-[#fafaf8] px-2 text-sm outline-none focus:border-ring">
+                    className="h-9 w-full rounded-md border border-input bg-[var(--money-superficie-tenue)] px-2 text-sm outline-none focus:border-ring">
               {/* La sua resta in elenco anche se un'altra riga la usa gia': senza,
                   una riga aperta si troverebbe la tendina vuota della sua voce. */}
               {!categorieDelVerso.some((nome) => nome.trim().toLowerCase() === item.category.trim().toLowerCase())
@@ -6364,30 +6401,30 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
                   || !data.items.some((altra) => altra.id !== item.id && altra.category.trim().toLowerCase() === chiave);
               }).map((nome) => <option key={nome} value={nome}>{nome}</option>)}
             </select>
-            {usefulSuggestion && <button type="button" disabled={!canEdit || Boolean(busy)} title={t('budgetSuggestionTitle', { average: formatEuro(usefulSuggestion.average), max: formatEuro(usefulSuggestion.max) })} onClick={() => void usaSuggerimento(item, draft.category, usefulSuggestion.median)} className="mt-1 text-left text-[11px] leading-4 text-[#237056] hover:underline disabled:cursor-default disabled:text-[#9aa5a2] disabled:no-underline">
+            {usefulSuggestion && <button type="button" disabled={!canEdit || Boolean(busy)} title={t('budgetSuggestionTitle', { average: formatEuro(usefulSuggestion.average), max: formatEuro(usefulSuggestion.max) })} onClick={() => void usaSuggerimento(item, draft.category, usefulSuggestion.median)} className="mt-1 text-left text-[11px] leading-4 text-[var(--money-ok)] hover:underline disabled:cursor-default disabled:text-[var(--money-testo-spento)] disabled:no-underline">
               {t('budgetSuggestion', { amount: formatEuro(usefulSuggestion.median), months: usefulSuggestion.monthsWithSpending, total: usefulSuggestion.monthsConsidered })}
             </button>}
             </div>
           </div>
-          <Input aria-label={`${t('budget')} ${item.categoryLabel}`} disabled={!canEdit} min="0" step="0.01" type="number" value={draft.amount} onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: { ...draft, amount: event.target.value } }))} className="h-9 bg-[#fafaf8]" />
-          <div className="text-right text-xs leading-4 text-[#5e6c68] sm:pt-2">
+          <Input aria-label={`${t('budget')} ${item.categoryLabel}`} disabled={!canEdit} min="0" step="0.01" type="number" value={draft.amount} onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: { ...draft, amount: event.target.value } }))} className="h-9 bg-[var(--money-superficie-tenue)]" />
+          <div className="text-right text-xs leading-4 text-[var(--money-testo-tenue)] sm:pt-2">
             <span className="sm:hidden">{actualLabel}: </span>{formatEuro(item.actual)}
-            {item.previousLeftover !== 0 && <span className="block text-[#5e6c68]">{item.previousLeftover > 0 ? t('budgetPreviousLeft', { amount: formatEuro(item.previousLeftover) }) : t('budgetPreviousOver', { amount: formatEuro(Math.abs(item.previousLeftover)) })}</span>}
+            {item.previousLeftover !== 0 && <span className="block text-[var(--money-testo-tenue)]">{item.previousLeftover > 0 ? t('budgetPreviousLeft', { amount: formatEuro(item.previousLeftover) }) : t('budgetPreviousOver', { amount: formatEuro(Math.abs(item.previousLeftover)) })}</span>}
           </div>
           <div className="flex justify-end gap-1">
             <Button type="button" size="icon" variant="ghost" aria-label={`${t('save')} ${item.categoryLabel}`} disabled={!canEdit || !changed || Boolean(busy)} onClick={() => void save(item)}><Save className="size-4" /></Button>
-            <Button type="button" size="icon" variant="ghost" aria-label={`${t('delete')} ${item.categoryLabel}`} disabled={!canEdit || Boolean(busy)} onClick={() => void remove(item)} className="text-[#a94f3a]"><Trash2 className="size-4" /></Button>
+            <Button type="button" size="icon" variant="ghost" aria-label={`${t('delete')} ${item.categoryLabel}`} disabled={!canEdit || Boolean(busy)} onClick={() => void remove(item)} className="text-[var(--money-allarme)]"><Trash2 className="size-4" /></Button>
           </div>
         </div>;
       })])}</div>
       {/* Dove il suggerimento serve davvero: le categorie che hanno speso e non
           hanno ancora una riga. Premerne una riempie il modulo qui sotto —
           categoria e importo — e resta da premere Aggiungi. */}
-      {canEdit && senzaRiga.length > 0 && <div className="mt-4 rounded-xl border border-black/6 bg-[#f9fbf9] p-3">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-[#5e6c68]">{t('budgetSuggestedNew')}</p>
-        <div className="mt-2 flex flex-wrap gap-2">{senzaRiga.map((voce) => <button key={voce.category} type="button" disabled={Boolean(busy)} title={t('budgetSuggestionTitle', { average: formatEuro(voce.average), max: formatEuro(voce.max) })} onClick={() => { setNewCategory(voce.category); setNewAmount(voce.median.toFixed(2)); }} className="rounded-full border border-black/10 bg-white px-3 py-1 text-xs text-[#237056] transition hover:border-[#397867] disabled:cursor-default disabled:text-[#9aa5a2]">{voce.category} · {t('budgetSuggestion', { amount: formatEuro(voce.median), months: voce.monthsWithSpending, total: voce.monthsConsidered })}</button>)}</div>
+      {canEdit && senzaRiga.length > 0 && <div className="mt-4 rounded-xl border border-[var(--money-velo)]/6 bg-[var(--money-superficie-tenue)] p-3">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--money-testo-tenue)]">{t('budgetSuggestedNew')}</p>
+        <div className="mt-2 flex flex-wrap gap-2">{senzaRiga.map((voce) => <button key={voce.category} type="button" disabled={Boolean(busy)} title={t('budgetSuggestionTitle', { average: formatEuro(voce.average), max: formatEuro(voce.max) })} onClick={() => { setNewCategory(voce.category); setNewAmount(voce.median.toFixed(2)); }} className="rounded-full border border-[var(--money-velo)]/10 bg-[var(--money-superficie)] px-3 py-1 text-xs text-[var(--money-ok)] transition hover:border-[var(--money-ok)] disabled:cursor-default disabled:text-[var(--money-testo-spento)]">{voce.category} · {t('budgetSuggestion', { amount: formatEuro(voce.median), months: voce.monthsWithSpending, total: voce.monthsConsidered })}</button>)}</div>
       </div>}
-      {canEdit && <form onSubmit={create} className="mt-4 grid gap-2 rounded-xl bg-[#f4f5f1] p-3 sm:grid-cols-[1fr_150px_auto]"><select required value={newCategory} onChange={(event) => setNewCategory(event.target.value)} className="h-10 rounded-md border border-input bg-white px-2 text-sm"><option value="">{t('budgetPickCategory')}</option>{categorieDisponibili.map((nome) => <option key={nome} value={nome}>{nome}</option>)}</select><Input required min="0" step="0.01" type="number" value={newAmount} onChange={(event) => setNewAmount(event.target.value)} placeholder={t('budgetPlaceholder')} className="h-10 bg-white" /><Button type="submit" disabled={Boolean(busy)} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('add')}</Button></form>}
+      {canEdit && <form onSubmit={create} className="mt-4 grid gap-2 rounded-xl bg-[var(--money-superficie-hover)] p-3 sm:grid-cols-[1fr_150px_auto]"><select required value={newCategory} onChange={(event) => setNewCategory(event.target.value)} className="h-10 rounded-md border border-input bg-[var(--money-superficie)] px-2 text-sm"><option value="">{t('budgetPickCategory')}</option>{categorieDisponibili.map((nome) => <option key={nome} value={nome}>{nome}</option>)}</select><Input required min="0" step="0.01" type="number" value={newAmount} onChange={(event) => setNewAmount(event.target.value)} placeholder={t('budgetPlaceholder')} className="h-10 bg-[var(--money-superficie)]" /><Button type="submit" disabled={Boolean(busy)} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('add')}</Button></form>}
     </CardContent>
   </Card>;
 }
@@ -6428,7 +6465,7 @@ function NotesView({ notes, onSave, onDelete }: { notes: NoteData[]; onSave: (no
     try { await onDelete(note); }
     catch { setDeleteError(t('cannotDeleteNote')); }
   }
-  return <div className="space-y-5"><Card className="border-black/6 bg-white shadow-sm"><CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle className="text-[17px]">{t('notesTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('notesSubtitle', { count: filtered.length, total: notes.length })}</p></div><Button onClick={() => { setEditing(null); setCreating(true); setSaveError(''); }} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('newNote')}</Button></CardHeader><CardContent><div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-black/35" /><Input aria-label={t('searchInTitlesAndText')} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('searchInTitlesAndText')} className="h-10 bg-[#fafaf8] pl-9" /></div></CardContent></Card>{deleteError && <p role="alert" className="rounded-lg bg-[#fce9e3] px-3 py-2 text-sm text-[#a94f3a]">{deleteError}</p>}<div className="grid gap-4 lg:grid-cols-2">{filtered.map((note) => <Card key={note.id} className="border-black/6 bg-white shadow-sm"><CardContent className="p-5"><div className="flex gap-3"><StickyNote className="mt-0.5 size-4 shrink-0 text-[#237056]" /><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-semibold">{note.title}</p><p className="mt-0.5 text-xs text-[#5e6c68]">{sezione(note.section)}{note.status ? ` · ${note.status}` : ''}</p></div><div className="flex"><Button size="icon" variant="ghost" aria-label={`${t('edit')} ${note.title}`} onClick={() => { setEditing(note); setCreating(false); setSaveError(''); }}><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${note.title}`} onClick={() => void remove(note)} className="text-[#a94f3a]"><Trash2 className="size-4" /></Button></div></div><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#52615d]">{note.body}</p></div></div></CardContent></Card>)}</div>{!filtered.length && <Card><CardContent className="p-10 text-center text-sm text-[#5e6c68]">{t('noNotesFound')}</CardContent></Card>}<Dialog open={creating || editing !== null} onOpenChange={(open) => { if (!open) { setCreating(false); setEditing(null); setSaveError(''); } }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{editing ? t('editNote') : t('newNoteTitle')}</DialogTitle><DialogDescription>{t('noteDialogDesc')}</DialogDescription></DialogHeader><form key={editing?.id ?? 'new-note'} onSubmit={save} className="space-y-3"><label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('section')}<Input name="section" list="note-sections" placeholder={t('navAppunti')} defaultValue={editing && editing.section !== 'Appunti' ? editing.section : ''} className="h-10 bg-white" /></label><datalist id="note-sections">{sections.map((section) => <option key={section} value={section} />)}</datalist><label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('title')}<Input required name="title" defaultValue={editing?.title ?? ''} /></label><label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('text')}<textarea name="body" defaultValue={editing?.body ?? ''} className="min-h-28 w-full rounded-lg border border-input bg-white p-2.5 text-sm" /></label><label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('status')}<Input name="status" defaultValue={editing?.status ?? ''} placeholder={t('statusPlaceholder')} /></label>{saveError && <p role="alert" className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{saveError}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => { setCreating(false); setEditing(null); setSaveError(''); }}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('save')}</Button></DialogFooter></form></DialogContent></Dialog></div>;
+  return <div className="space-y-5"><Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle className="text-[17px]">{t('notesTitle')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('notesSubtitle', { count: filtered.length, total: notes.length })}</p></div><Button onClick={() => { setEditing(null); setCreating(true); setSaveError(''); }} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('newNote')}</Button></CardHeader><CardContent><div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--money-velo)]/35" /><Input aria-label={t('searchInTitlesAndText')} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('searchInTitlesAndText')} className="h-10 bg-[var(--money-superficie-tenue)] pl-9" /></div></CardContent></Card>{deleteError && <p role="alert" className="rounded-lg bg-[var(--money-allarme-tenue)] px-3 py-2 text-sm text-[var(--money-allarme)]">{deleteError}</p>}<div className="grid gap-4 lg:grid-cols-2">{filtered.map((note) => <Card key={note.id} className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardContent className="p-5"><div className="flex gap-3"><StickyNote className="mt-0.5 size-4 shrink-0 text-[var(--money-ok)]" /><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-semibold">{note.title}</p><p className="mt-0.5 text-xs text-[var(--money-testo-tenue)]">{sezione(note.section)}{note.status ? ` · ${note.status}` : ''}</p></div><div className="flex"><Button size="icon" variant="ghost" aria-label={`${t('edit')} ${note.title}`} onClick={() => { setEditing(note); setCreating(false); setSaveError(''); }}><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${note.title}`} onClick={() => void remove(note)} className="text-[var(--money-allarme)]"><Trash2 className="size-4" /></Button></div></div><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[var(--money-testo-muto)]">{note.body}</p></div></div></CardContent></Card>)}</div>{!filtered.length && <Card><CardContent className="p-10 text-center text-sm text-[var(--money-testo-tenue)]">{t('noNotesFound')}</CardContent></Card>}<Dialog open={creating || editing !== null} onOpenChange={(open) => { if (!open) { setCreating(false); setEditing(null); setSaveError(''); } }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{editing ? t('editNote') : t('newNoteTitle')}</DialogTitle><DialogDescription>{t('noteDialogDesc')}</DialogDescription></DialogHeader><form key={editing?.id ?? 'new-note'} onSubmit={save} className="space-y-3"><label className="block space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('section')}<Input name="section" list="note-sections" placeholder={t('navAppunti')} defaultValue={editing && editing.section !== 'Appunti' ? editing.section : ''} className="h-10 bg-[var(--money-superficie)]" /></label><datalist id="note-sections">{sections.map((section) => <option key={section} value={section} />)}</datalist><label className="block space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('title')}<Input required name="title" defaultValue={editing?.title ?? ''} /></label><label className="block space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('text')}<textarea name="body" defaultValue={editing?.body ?? ''} className="min-h-28 w-full rounded-lg border border-input bg-[var(--money-superficie)] p-2.5 text-sm" /></label><label className="block space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('status')}<Input name="status" defaultValue={editing?.status ?? ''} placeholder={t('statusPlaceholder')} /></label>{saveError && <p role="alert" className="rounded-lg bg-[var(--money-allarme-tenue)] px-3 py-2 text-xs text-[var(--money-allarme)]">{saveError}</p>}<DialogFooter><Button type="button" variant="outline" onClick={() => { setCreating(false); setEditing(null); setSaveError(''); }}>{t('cancel')}</Button><Button type="submit" disabled={busy} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('save')}</Button></DialogFooter></form></DialogContent></Dialog></div>;
 }
 
 
@@ -6472,10 +6509,10 @@ function BackupsCard({ apiUrl, onRestored }: { apiUrl: string; onRestored: () =>
   }
 
   return (
-    <Card className="border-black/6 bg-white shadow-sm">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
       <CardHeader>
         <CardTitle className="text-[17px]">{t('backups')}</CardTitle>
-        <p className="mt-1 text-xs text-[#5e6c68]">{t('backupsHint')} {t('backupGlobalScope')}</p>
+        <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('backupsHint')} {t('backupGlobalScope')}</p>
       </CardHeader>
       <CardContent className="space-y-3">
         <Button
@@ -6488,12 +6525,12 @@ function BackupsCard({ apiUrl, onRestored }: { apiUrl: string; onRestored: () =>
         >
           <Database className={`size-4 ${busy ? 'animate-pulse' : ''}`} />{t('backupCreate')}
         </Button>
-        {items.length === 0 && <p className="text-xs text-[#5e6c68]">{t('backupNone')}</p>}
+        {items.length === 0 && <p className="text-xs text-[var(--money-testo-tenue)]">{t('backupNone')}</p>}
         {items.length > 0 && (
-          <ul className="divide-y divide-black/5 rounded-xl border border-black/6">
+          <ul className="divide-y divide-[var(--money-velo)]/5 rounded-xl border border-[var(--money-velo)]/6">
             {items.map((item) => (
               <li key={item.filename} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                <span className="text-xs text-[#52615d]">
+                <span className="text-xs text-[var(--money-testo-muto)]">
                   {/* La dimensione col separatore delle migliaia della lingua
                       scelta, e senza decimali inutili: un backup da 1,4 MB si
                       legge "1.400 kB", che e' quello che serve sapere qui. */}
@@ -6512,12 +6549,12 @@ function BackupsCard({ apiUrl, onRestored }: { apiUrl: string; onRestored: () =>
                           () => fetch(`${apiUrl}/api/backups/${encodeURIComponent(item.filename)}/restore`, { method: 'POST' }),
                           () => t('backupRestored', { date: when(item.created_at) }),
                         ).then(ok => { if (ok) void onRestored(); }))}
-                    className="bg-[#a94f3a] text-white hover:bg-[#8f4530]"
+                    className="bg-[var(--money-allarme)] text-white hover:bg-[var(--money-allarme-hover)]"
                   >
                     {confirming.azione === 'delete' ? t('backupDeleteConfirm') : t('backupRestoreConfirm')}
                   </Button>
                   <Button variant="outline" disabled={busy} onClick={() => setConfirming(null)}>{t('cancel')}</Button>
-                  <p className="w-full text-xs text-[#a94f3a]">{confirming.azione === 'delete'
+                  <p className="w-full text-xs text-[var(--money-allarme)]">{confirming.azione === 'delete'
                     ? t('backupDeleteWarning', { date: when(item.created_at) })
                     : t('backupGlobalConfirm', { date: when(item.created_at) })}</p>
                   </>
@@ -6525,7 +6562,7 @@ function BackupsCard({ apiUrl, onRestored }: { apiUrl: string; onRestored: () =>
                   <span className="flex items-center gap-3">
                     <button
                       onClick={() => { setConfirming({ filename: item.filename, azione: 'restore' }); setOutcome(null); }}
-                      className="text-xs font-medium text-[#237056] hover:underline"
+                      className="text-xs font-medium text-[var(--money-ok)] hover:underline"
                     >
                       {t('backupRestore')}
                     </button>
@@ -6535,7 +6572,7 @@ function BackupsCard({ apiUrl, onRestored }: { apiUrl: string; onRestored: () =>
                     <button
                       aria-label={`${t('delete')} ${when(item.created_at)}`}
                       onClick={() => { setConfirming({ filename: item.filename, azione: 'delete' }); setOutcome(null); }}
-                      className="text-xs font-medium text-[#a94f3a] hover:underline"
+                      className="text-xs font-medium text-[var(--money-allarme)] hover:underline"
                     >
                       {t('delete')}
                     </button>
@@ -6545,7 +6582,7 @@ function BackupsCard({ apiUrl, onRestored }: { apiUrl: string; onRestored: () =>
             ))}
           </ul>
         )}
-        {outcome && <p className={`text-xs ${outcome.ok ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>{outcome.message}</p>}
+        {outcome && <p className={`text-xs ${outcome.ok ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'}`}>{outcome.message}</p>}
       </CardContent>
     </Card>
   );
@@ -6557,15 +6594,15 @@ function ImportDataCard({ onImportData, importing }: { onImportData: (file: File
   const [file, setFile] = useState<File | null>(null);
   const [outcome, setOutcome] = useState<{ ok: boolean; message: string } | null>(null);
   return (
-    <Card className="border-black/6 bg-white shadow-sm">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
       <CardHeader>
         <CardTitle className="text-[17px]">{t('importData')}</CardTitle>
-        <p className="mt-1 text-xs text-[#5e6c68]">{t('importDataHint')}</p>
+        <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('importDataHint')}</p>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{t('importDataReplace')}</p>
+        <p className="rounded-lg bg-[var(--money-allarme-velo)] px-3 py-2 text-xs text-[var(--money-allarme)]">{t('importDataReplace')}</p>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="cursor-pointer rounded-lg border border-black/10 px-3 py-2 text-xs font-medium text-[#52615d] hover:bg-black/[0.03]">
+          <label className="cursor-pointer rounded-lg border border-[var(--money-velo)]/10 px-3 py-2 text-xs font-medium text-[var(--money-testo-muto)] hover:bg-[var(--money-velo)]/[0.03]">
             {file ? file.name : t('importDataChoose')}
             <input
               ref={inputRef}
@@ -6594,7 +6631,7 @@ function ImportDataCard({ onImportData, importing }: { onImportData: (file: File
             {importing ? t('importingEllipsis') : t('importDataConfirm')}
           </Button>
         </div>
-        {outcome && <p className={`text-xs ${outcome.ok ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>{outcome.message}</p>}
+        {outcome && <p className={`text-xs ${outcome.ok ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'}`}>{outcome.message}</p>}
       </CardContent>
     </Card>
   );
@@ -6602,7 +6639,7 @@ function ImportDataCard({ onImportData, importing }: { onImportData: (file: File
 
 function ReportsView({ year, month, downloadBusy, downloadError, canManageBackups, onDownload, onDownloadData, onImportData, importing, apiUrl, onReload }: { year: number; month: number; downloadBusy: boolean; downloadError: string; canManageBackups: boolean; onDownloadData: () => void; onImportData: (file: File) => Promise<string>; importing: boolean; apiUrl: string; onReload: () => Promise<void>; onDownload: (kind: 'excel' | 'pdf') => void }) {
   const { t, monthNames } = useI18n();
-  return <div className="space-y-5">{downloadBusy && <p role="status">{t('downloadPreparing')}</p>}{downloadError && <p role="alert" className="text-sm text-[#a94f3a]">{downloadError}</p>}<Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('exportReport')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('exportReportForPeriod', { period: formatPeriodRef(monthNames, year, month) })} · {t('exportReportSubtitle')}</p></CardHeader><CardContent className="flex flex-wrap gap-3"><Button disabled={downloadBusy} onClick={() => onDownload('excel')} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileSpreadsheet className="size-4" />{t('downloadExcel')}</Button><Button disabled={downloadBusy} variant="outline" onClick={() => onDownload('pdf')}><Download className="size-4" />{t('downloadPdf')}</Button></CardContent></Card><Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('dataExchangeTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('downloadDataHint')}</p></CardHeader><CardContent><Button disabled={downloadBusy} variant="outline" onClick={onDownloadData}><Download className="size-4" />{t('downloadData')}</Button></CardContent></Card><ImportDataCard onImportData={onImportData} importing={importing} />{canManageBackups && <BackupsCard apiUrl={apiUrl} onRestored={onReload} />}</div>;
+  return <div className="space-y-5">{downloadBusy && <p role="status">{t('downloadPreparing')}</p>}{downloadError && <p role="alert" className="text-sm text-[var(--money-allarme)]">{downloadError}</p>}<Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('exportReport')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('exportReportForPeriod', { period: formatPeriodRef(monthNames, year, month) })} · {t('exportReportSubtitle')}</p></CardHeader><CardContent className="flex flex-wrap gap-3"><Button disabled={downloadBusy} onClick={() => onDownload('excel')} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><FileSpreadsheet className="size-4" />{t('downloadExcel')}</Button><Button disabled={downloadBusy} variant="outline" onClick={() => onDownload('pdf')}><Download className="size-4" />{t('downloadPdf')}</Button></CardContent></Card><Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('dataExchangeTitle')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('downloadDataHint')}</p></CardHeader><CardContent><Button disabled={downloadBusy} variant="outline" onClick={onDownloadData}><Download className="size-4" />{t('downloadData')}</Button></CardContent></Card><ImportDataCard onImportData={onImportData} importing={importing} />{canManageBackups && <BackupsCard apiUrl={apiUrl} onRestored={onReload} />}</div>;
 }
 
 // Quello che il modulo del movimento ha letto dai campi mentre li si compila.
@@ -6633,7 +6670,7 @@ type ImpostazioniDellaPagina = {
 
 /** La scheda che tiene le impostazioni di una pagina: titolo e righe. */
 function CardImpostazioni({ titolo, sottotitolo, errore, children }: { titolo: string; sottotitolo?: string; errore?: string; children: ReactNode }) {
-  return <Card className="border-black/6 bg-white shadow-sm"><CardHeader><CardTitle className="text-[17px]">{titolo}</CardTitle>{sottotitolo && <p className="mt-1 text-xs leading-5 text-[#5e6c68]">{sottotitolo}</p>}</CardHeader><CardContent className="space-y-4">{children}{errore && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#a94f3a]">{errore}</p>}</CardContent></Card>;
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{titolo}</CardTitle>{sottotitolo && <p className="mt-1 text-xs leading-5 text-[var(--money-testo-tenue)]">{sottotitolo}</p>}</CardHeader><CardContent className="space-y-4">{children}{errore && <p role="alert" className="rounded-xl border border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-tenue)] px-4 py-2 text-sm text-[var(--money-allarme)]">{errore}</p>}</CardContent></Card>;
 }
 
 // Valute in cui rileggere il patrimonio. Non e' un elenco chiuso: qualunque
@@ -6648,10 +6685,10 @@ function SettingCurrencies({ label, value, saving, onChange }: {
   const codes = value.split(',').map((code) => code.trim().toUpperCase()).filter(Boolean);
   const save = (next: string[]) => onChange(Array.from(new Set(next)).join(','));
   return (
-    <div className="space-y-1.5 text-xs font-medium text-[#52615d]">
+    <div className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">
       <span className="flex items-center justify-between">
         <span>{label}</span>
-        {saving && <span className="font-normal text-[#5e6c68]">{t('savingEllipsis')}</span>}
+        {saving && <span className="font-normal text-[var(--money-testo-tenue)]">{t('savingEllipsis')}</span>}
       </span>
       <div className="flex flex-wrap items-center gap-2">
         {codes.map((code) => (
@@ -6676,7 +6713,7 @@ function SettingCurrencies({ label, value, saving, onChange }: {
           setNuova('');
         }}>
           <Input value={nuova} onChange={(event) => setNuova(event.target.value)} list="valute-comuni"
-                 placeholder={t('addCurrency')} aria-label={t('addCurrency')} className="h-8 w-28 bg-white text-xs" />
+                 placeholder={t('addCurrency')} aria-label={t('addCurrency')} className="h-8 w-28 bg-[var(--money-superficie)] text-xs" />
           <datalist id="valute-comuni">{COMMON_CURRENCIES.filter((code) => !codes.includes(code)).map((code) => <option key={code} value={code} />)}</datalist>
           <Button type="submit" size="sm" variant="outline" className="h-8 px-2 text-xs" disabled={!nuova.trim()}>{t('add')}</Button>
         </form>
@@ -6695,7 +6732,7 @@ function SettingSelect({ label, value, options, saving, onChange, disabled, hint
   // prima voce dell'elenco dice una cosa che nel database non c'e'.
   const voci = unset === undefined ? uniqueOptions(value, options) : ['', ...uniqueOptions(value, options)];
   const etichette = unset === undefined ? labels : { '': unset, ...labels };
-  return <label className="block space-y-1.5 text-xs font-medium text-[#52615d]"><span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[#5e6c68]">{t('savingEllipsis')}</span>}</span><select value={value} onChange={(event) => onChange(event.target.value)} disabled={saving || disabled} className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm text-[#17211f] outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-[#f4f5f1] disabled:opacity-60">{voci.map((option) => <option key={option} value={option}>{etichette?.[option] ?? option}</option>)}</select>{hint && <p className="font-normal leading-4 text-[#5e6c68]">{hint}</p>}</label>;
+  return <label className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]"><span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[var(--money-testo-tenue)]">{t('savingEllipsis')}</span>}</span><select value={value} onChange={(event) => onChange(event.target.value)} disabled={saving || disabled} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm text-[var(--money-testo)] outline-none focus:border-ring focus:ring-3 focus:ring-ring/20 disabled:cursor-not-allowed disabled:bg-[var(--money-superficie-hover)] disabled:opacity-60">{voci.map((option) => <option key={option} value={option}>{etichette?.[option] ?? option}</option>)}</select>{hint && <p className="font-normal leading-4 text-[var(--money-testo-tenue)]">{hint}</p>}</label>;
 }
 
 // Il paese dove sono tassati gli investimenti. Serve a mostrare la nota che
@@ -6712,7 +6749,7 @@ function SettingCountry({ label, value, saving, onChange, hint }: { label: strin
     <SettingSelect label={label} value={value} saving={saving} onChange={onChange} hint={hint} unset={t('taxCountryUnset')}
       options={COUNTRIES.map((paese) => paese.code)}
       labels={Object.fromEntries(COUNTRIES.map((paese) => [paese.code, countryLabel(paese.code, lang)]))} />
-    {nota && <p className="rounded-xl border border-black/[0.06] bg-[#fafaf8] px-3 py-2 font-normal leading-relaxed text-[#52615d]">{nota.body}</p>}
+    {nota && <p className="rounded-xl border border-[var(--money-velo)]/[0.06] bg-[var(--money-superficie-tenue)] px-3 py-2 font-normal leading-relaxed text-[var(--money-testo-muto)]">{nota.body}</p>}
   </div>;
 }
 
@@ -6748,27 +6785,27 @@ function SettingBenchmark({ label, value, saving, onChange, hint, apiUrl }: { la
     onChange(symbol);
   }
 
-  return <div className="space-y-1.5 text-xs font-medium text-[#52615d]">
-    <span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[#5e6c68]">{t('savingEllipsis')}</span>}</span>
+  return <div className="space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">
+    <span className="flex items-center justify-between"><span>{label}</span>{saving && <span className="font-normal text-[var(--money-testo-tenue)]">{t('savingEllipsis')}</span>}</span>
     {/* Senza valore la riga dice una frase intera, e una frase non si taglia:
         si manda a capo. `h-10` fisso la costringerebbe a stare su una riga
         sola, e a 390 px e' la riga che allarga la scheda oltre lo schermo. */}
-    <div className="flex min-h-10 items-center justify-between gap-2 rounded-lg border border-input bg-[#fafaf8] px-2.5 py-1.5 text-sm text-[#17211f]">
-      <span className="min-w-0 flex-1 break-words">{value ? <>{value}<span className="text-[#5e6c68]">{scelto ? ` · ${scelto.name}` : ''}</span></> : t('benchmarkNone')}</span>
-      {value && <button type="button" disabled={saving} onClick={() => void scegli('')} className="shrink-0 font-normal text-[#5e6c68] hover:text-[#17211f]">{t('benchmarkClear')}</button>}
+    <div className="flex min-h-10 items-center justify-between gap-2 rounded-lg border border-input bg-[var(--money-superficie-tenue)] px-2.5 py-1.5 text-sm text-[var(--money-testo)]">
+      <span className="min-w-0 flex-1 break-words">{value ? <>{value}<span className="text-[var(--money-testo-tenue)]">{scelto ? ` · ${scelto.name}` : ''}</span></> : t('benchmarkNone')}</span>
+      {value && <button type="button" disabled={saving} onClick={() => void scegli('')} className="shrink-0 font-normal text-[var(--money-testo-tenue)] hover:text-[var(--money-testo)]">{t('benchmarkClear')}</button>}
     </div>
-    <p className="pt-1 font-normal leading-4 text-[#5e6c68]">{t('benchmarkSuggestions')}</p>
+    <p className="pt-1 font-normal leading-4 text-[var(--money-testo-tenue)]">{t('benchmarkSuggestions')}</p>
     <div className="flex flex-wrap gap-1.5 pt-1">
       {BENCHMARKS.map((indice) => <button key={indice.symbol} type="button" disabled={saving} onClick={() => void scegli(indice.symbol)}
-        className={`rounded-full border px-2.5 py-1 text-[11px] font-normal ${indice.symbol === value ? 'border-[var(--money-deep)] bg-[var(--money-deep)] text-white' : 'border-black/10 bg-white text-[#52615d] hover:bg-[#f4f5f1]'}`}>{indice.name}</button>)}
+        className={`rounded-full border px-2.5 py-1 text-[11px] font-normal ${indice.symbol === value ? 'border-[var(--money-deep)] bg-[var(--money-deep)] text-white' : 'border-[var(--money-velo)]/10 bg-[var(--money-superficie)] text-[var(--money-testo-muto)] hover:bg-[var(--money-superficie-hover)]'}`}>{indice.name}</button>)}
     </div>
     <div className="flex flex-wrap items-center gap-2 pt-1">
-      <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('tickerSearchPlaceholder')} className="h-9 w-[280px] bg-white"
+      <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('tickerSearchPlaceholder')} className="h-9 w-[280px] bg-[var(--money-superficie)]"
         onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void cerca(); } }} />
       <Button type="button" size="sm" variant="outline" disabled={searching} onClick={() => void cerca()}>{searching ? t('searchingEllipsis') : t('tickerSearch')}</Button>
     </div>
     <TickerResults items={results} onPick={(symbol) => void scegli(symbol)} />
-    {!searching && results.length === 0 && <p className="font-normal leading-4 text-[#5e6c68]">{hint}</p>}
+    {!searching && results.length === 0 && <p className="font-normal leading-4 text-[var(--money-testo-tenue)]">{hint}</p>}
   </div>;
 }
 
@@ -6804,22 +6841,22 @@ function EquityCard({ versati, rivalutazione, resto, passivita, haPortafoglio }:
   // in cima e le voci sotto non possono piu' raccontare cose diverse.
   const totale = voci.reduce((somma, [, valore]) => somma + valore, 0);
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
       <CardHeader className="flex-row items-center justify-between">
         <div>
           <CardTitle className="text-[17px]">{t('equityTitle')}</CardTitle>
-          <p className="mt-1 text-xs text-[#5e6c68]">{t('equityFormula')}</p>
+          <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('equityFormula')}</p>
         </div>
         <p className="font-semibold tabular-nums">{formatEuro(totale)}</p>
       </CardHeader>
-      <CardContent className="divide-y divide-black/5 border-t border-black/5 pt-2">
+      <CardContent className="divide-y divide-[var(--money-velo)]/5 border-t border-[var(--money-velo)]/5 pt-2">
         {voci.map(([etichetta, valore, spiegazione]) => (
           <div key={etichetta} className="flex items-start justify-between gap-3 py-3">
             <div className="min-w-0">
               <p className="text-sm font-medium">{etichetta}</p>
-              {spiegazione && <p className="mt-0.5 text-xs leading-5 text-[#5e6c68]">{spiegazione}</p>}
+              {spiegazione && <p className="mt-0.5 text-xs leading-5 text-[var(--money-testo-tenue)]">{spiegazione}</p>}
             </div>
-            <p className={`shrink-0 text-sm font-semibold tabular-nums ${valore < 0 ? 'text-[#a94f3a]' : ''}`}>{valore > 0 && etichetta === t('equityRevaluation') ? '+' : ''}{formatEuro(valore)}</p>
+            <p className={`shrink-0 text-sm font-semibold tabular-nums ${valore < 0 ? 'text-[var(--money-allarme)]' : ''}`}>{valore > 0 && etichetta === t('equityRevaluation') ? '+' : ''}{formatEuro(valore)}</p>
           </div>
         ))}
       </CardContent>
@@ -6848,7 +6885,7 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
   const { t, formatEuro, formatMoney, formatPercentNumber } = useI18n();
   const hiddenCount = totalCount - items.length;
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
       {/* L'intestazione si apre e si chiude col clic, ma non diceva di essere un
           interruttore ne' si poteva raggiungere da tastiera: chi non usa il mouse
           non poteva chiudere un gruppo, e nessuno sentiva se era aperto o chiuso.
@@ -6862,18 +6899,18 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
         className="flex-row cursor-pointer items-center justify-between select-none">
         <div>
           <CardTitle className="text-[17px]">{label}</CardTitle>
-          <p className="mt-1 text-xs text-[#5e6c68]">{hiddenCount > 0 ? t('accountsVisibleOfTotal', { visible: items.length, total: totalCount }) : t('accountsCount', { count: totalCount })}</p>
+          <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{hiddenCount > 0 ? t('accountsVisibleOfTotal', { visible: items.length, total: totalCount }) : t('accountsCount', { count: totalCount })}</p>
         </div>
         <div className="flex items-center gap-2">
           <p className="mr-1 font-semibold tabular-nums">{formatEuro(total)}</p>
-          <ChevronDown className={`size-4 shrink-0 text-black/40 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`size-4 shrink-0 text-[var(--money-velo)]/40 transition-transform ${expanded ? 'rotate-180' : ''}`} />
         </div>
       </CardHeader>
       {expanded && (items.length === 0 ? (
-        <p className="border-t border-black/5 px-5 pt-3 text-xs text-[#5e6c68]">{t('accountsAllHiddenZero')}</p>
+        <p className="border-t border-[var(--money-velo)]/5 px-5 pt-3 text-xs text-[var(--money-testo-tenue)]">{t('accountsAllHiddenZero')}</p>
       ) : (
-        <CardContent className="divide-y divide-black/5 border-t border-black/5 pt-2">{items.map((account) => { const valore = account.value; const quota = account.valueInEuro; const share = account.countsInNetWorth === false || !netWorth || quota === null ? null : Math.abs(quota) / Math.abs(netWorth) * 100; return <div key={account.id} className="py-3.5"><div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-[#edf0ed] text-[#4e6c64]"><Landmark className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{account.name}</p>{account.notes && <p className="mt-0.5 line-clamp-2 text-xs text-[#5e6c68]">{account.notes}</p>}</div><div className="text-right"><p className="text-sm font-semibold tabular-nums">{formatMoney(valore, account.currency ?? 'EUR')}</p><p title={t('netWorthShareExplanation')} className="text-[11px] text-[#5e6c68]">{share !== null ? t('netWorthShare', { percent: formatPercentNumber(share) })
-                    : account.countsInNetWorth === false ? t('accountOutsideNetWorth') : '—'}</p></div>{azioni && <>{account.needsManualValuation && <Button size="icon" variant="ghost" aria-label={`${t('valuationsTitle')} ${account.name}`} onClick={() => onValuations(account)} className="text-[#52615d] hover:text-[#173b33]"><Gauge className="size-4" /></Button>}<Button size="icon" variant="ghost" aria-label={`${t('edit')} ${account.name}`} onClick={() => onEdit(account)} className="text-[#52615d] hover:text-[#173b33]"><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${account.name}`} onClick={() => onDelete(account)} className="text-[#a94f3a] hover:text-[#a04f3a]"><Trash2 className="size-4" /></Button></>}</div>{/* Costo e rivalutazione non compaiono qui: sono le prime due voci della card
+        <CardContent className="divide-y divide-[var(--money-velo)]/5 border-t border-[var(--money-velo)]/5 pt-2">{items.map((account) => { const valore = account.value; const quota = account.valueInEuro; const share = account.countsInNetWorth === false || !netWorth || quota === null ? null : Math.abs(quota) / Math.abs(netWorth) * 100; return <div key={account.id} className="py-3.5"><div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-[var(--money-superficie-hover)] text-[var(--money-ok)]"><Landmark className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{account.name}</p>{account.notes && <p className="mt-0.5 line-clamp-2 text-xs text-[var(--money-testo-tenue)]">{account.notes}</p>}</div><div className="text-right"><p className="text-sm font-semibold tabular-nums">{formatMoney(valore, account.currency ?? 'EUR')}</p><p title={t('netWorthShareExplanation')} className="text-[11px] text-[var(--money-testo-tenue)]">{share !== null ? t('netWorthShare', { percent: formatPercentNumber(share) })
+                    : account.countsInNetWorth === false ? t('accountOutsideNetWorth') : '—'}</p></div>{azioni && <>{account.needsManualValuation && <Button size="icon" variant="ghost" aria-label={`${t('valuationsTitle')} ${account.name}`} onClick={() => onValuations(account)} className="text-[var(--money-testo-muto)] hover:text-[var(--money-marca)]"><Gauge className="size-4" /></Button>}<Button size="icon" variant="ghost" aria-label={`${t('edit')} ${account.name}`} onClick={() => onEdit(account)} className="text-[var(--money-testo-muto)] hover:text-[var(--money-marca)]"><Pencil className="size-4" /></Button><Button size="icon" variant="ghost" aria-label={`${t('delete')} ${account.name}`} onClick={() => onDelete(account)} className="text-[var(--money-allarme)] hover:text-[var(--money-allarme-hover)]"><Trash2 className="size-4" /></Button></>}</div>{/* Costo e rivalutazione non compaiono qui: sono le prime due voci della card
     del capitale proprio, dove hanno anche la spiegazione. La riconciliazione
     invece riguarda solo questo conto e vale per tutti, broker compresi: il
     saldo iniziale e la differenza col dichiarato sono la sua storia, non il
@@ -6886,13 +6923,13 @@ function AccountGroupCard({ group, label, items, totalCount, total, netWorth, ex
     dicono un'altra cosa: senza questa riga la cifra in alto sembra sbagliata a
     chi ha in mente i soldi versati. Le stesse due parole del cruscotto
     investimenti ("capitale versato"), cosi' il numero si riconosce. */}
-{account.valuedByLedger && <p className="ml-12 mt-1.5 text-[11px] text-[#5e6c68]">{t('accountsMarketValue', { sum: formatMoney(account.calculatedBalance, account.currency ?? 'EUR') })}</p>}
-{azioni && Math.abs(account.startingBalance) > 0.005 && <p className="ml-12 mt-1.5 text-[11px] text-[#5e6c68]">{t('initial')} <b className="font-medium text-[#52615d]">{formatMoney(account.group === 'liability' ? Math.abs(account.startingBalance) : account.startingBalance, account.currency ?? 'EUR')}</b></p>}
+{account.valuedByLedger && <p className="ml-12 mt-1.5 text-[11px] text-[var(--money-testo-tenue)]">{t('accountsMarketValue', { sum: formatMoney(account.calculatedBalance, account.currency ?? 'EUR') })}</p>}
+{azioni && Math.abs(account.startingBalance) > 0.005 && <p className="ml-12 mt-1.5 text-[11px] text-[var(--money-testo-tenue)]">{t('initial')} <b className="font-medium text-[var(--money-testo-muto)]">{formatMoney(account.group === 'liability' ? Math.abs(account.startingBalance) : account.startingBalance, account.currency ?? 'EUR')}</b></p>}
 {/* Il valore di una casa e' fermo a quando l'hai stimato: senza questa riga
     l'unico modo di accorgersene era aprire le valutazioni una per una. Il
     numero c'e' solo quando c'e' una stima da datare - l'eta' la calcola il
     backend, perche' la soglia e' la stessa dell'avviso in cima alla pagina. */}
-{account.valuationNotice && <p className="ml-12 mt-1.5 text-[11px] text-[#5e6c68]">{account.valuationNotice.code === 'valuationStale'
+{account.valuationNotice && <p className="ml-12 mt-1.5 text-[11px] text-[var(--money-testo-tenue)]">{account.valuationNotice.code === 'valuationStale'
   ? t('accountsValuationStale', { days: account.valuationNotice.days })
   : t('valuationsEmpty')}</p>}</div>; })}</CardContent>
       ))}
@@ -6978,47 +7015,47 @@ function BalanceSheetChart({ apiUrl, primoAnno }: { apiUrl: string; primoAnno: n
     : dati?.side === 'liabilities' ? t('balanceSheetLiabilitiesOnly') : t('balanceSheetAssets');
 
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
       <CardHeader className="gap-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <CardTitle className="text-[17px]">{t('bsChartTitle')}</CardTitle>
             {/* La briciola nasce dai click che hai gia' fatto: un menu' ti
                 chiederebbe di scegliere fra livelli che non sai se ti interessano. */}
-            <nav aria-label={t('bsBreadcrumb')} className="mt-1 flex flex-wrap items-center gap-1 text-xs text-[#5e6c68]">
+            <nav aria-label={t('bsBreadcrumb')} className="mt-1 flex flex-wrap items-center gap-1 text-xs text-[var(--money-testo-tenue)]">
               {(dati?.breadcrumb ?? []).map((passo) => (
                 <span key={`${passo.level}-${passo.side ?? ''}`} className="flex items-center gap-1">
-                  <button type="button" onClick={() => risali(passo.level, passo.side)} className="rounded font-medium text-[#237056] underline-offset-2 hover:underline">
+                  <button type="button" onClick={() => risali(passo.level, passo.side)} className="rounded font-medium text-[var(--money-ok)] underline-offset-2 hover:underline">
                     {passo.label === 'networth' ? t('bsLevelNetWorth') : passo.label === 'assets' ? t('balanceSheetAssets') : t('balanceSheetLiabilitiesOnly')}
                   </button>
-                  <ChevronRight className="size-3 text-[#b3bcb8]" />
+                  <ChevronRight className="size-3 text-[var(--money-icona)]" />
                 </span>
               ))}
-              <span className="font-medium text-[#1f2c28]">{titoloLivello}</span>
+              <span className="font-medium text-[var(--money-testo)]">{titoloLivello}</span>
             </nav>
           </div>
           {/* L'intervallo e' quello del grafico, non il mese scelto in alto:
               la riga sopra i pulsanti lo dice, perche' due periodi nella stessa
               schermata senza una scritta sono due numeri che non tornano. */}
           <div className="flex flex-col items-end gap-1">
-            <span className="text-[11px] font-medium text-[#5e6c68]">{t('sharedRangeSelector')}</span>
+            <span className="text-[11px] font-medium text-[var(--money-testo-tenue)]">{t('sharedRangeSelector')}</span>
             <TabStrip variant="pillole" label={t('sharedRangeSelector')} value={mesi} onChange={setMesi}
               options={BALANCE_SHEET_RANGES.map((valore) => [valore, valore === 0 ? t('bsRangeAll') : t('bsRangeMonths', { count: valore })] as const)} />
           </div>
         </div>
       </CardHeader>
       <CardContent>
-        {errore ? <p role="alert" className="py-12 text-center text-sm text-[#a94f3a]">{t('bsChartFailed')}</p>
-          : righe.length === 0 ? <p className="py-12 text-center text-sm text-[#5e6c68]">{caricamento ? t('updating') : t('bsChartEmpty')}</p>
+        {errore ? <p role="alert" className="py-12 text-center text-sm text-[var(--money-allarme)]">{t('bsChartFailed')}</p>
+          : righe.length === 0 ? <p className="py-12 text-center text-sm text-[var(--money-testo-tenue)]">{caricamento ? t('updating') : t('bsChartEmpty')}</p>
           : <>
             <div className="mb-3 flex flex-wrap gap-1.5">
               {chiavi.map((chiave, indice) => (
                 <button key={chiave.key} type="button" onClick={() => scendi(chiave)} disabled={!chiave.drillTo}
                   title={chiave.drillTo ? t('bsDrillHint') : undefined}
-                  className={`flex items-center gap-2 rounded-full border border-[#cfd6d2] bg-white px-3 py-1 text-xs font-medium text-[#1f2c28] transition ${chiave.drillTo ? 'cursor-pointer hover:border-[#3f7d68] hover:bg-[#f2f7f4]' : 'cursor-default'}`}>
+                  className={`flex items-center gap-2 rounded-full border border-[var(--money-linea)] bg-[var(--money-superficie)] px-3 py-1 text-xs font-medium text-[var(--money-testo)] transition ${chiave.drillTo ? 'cursor-pointer hover:border-[var(--money-ok)] hover:bg-[var(--money-superficie-hover)]' : 'cursor-default'}`}>
                   <span className="size-2.5 rounded-full" style={{ backgroundColor: BALANCE_SHEET_COLORS[indice % BALANCE_SHEET_COLORS.length] }} />
                   {nomeVoce(chiave)}
-                  {chiave.drillTo && <ChevronRight className="size-3 text-[#8c9a95]" />}
+                  {chiave.drillTo && <ChevronRight className="size-3 text-[var(--money-icona)]" />}
                 </button>
               ))}
             </div>
@@ -7050,7 +7087,7 @@ function BalanceSheetChart({ apiUrl, primoAnno }: { apiUrl: string; primoAnno: n
                 </>}
               </ComposedChart>
             </ChartContainer>
-            {dati && dati.hidden > 0 && <p className="mt-2 text-xs text-[#5e6c68]">{t('accountHistoryHidden', { count: dati.hidden })}</p>}
+            {dati && dati.hidden > 0 && <p className="mt-2 text-xs text-[var(--money-testo-tenue)]">{t('accountHistoryHidden', { count: dati.hidden })}</p>}
           </>}
       </CardContent>
     </Card>
@@ -7082,7 +7119,7 @@ function FlowDonutCard({ income, expenses }: { income: number; expenses: number 
     { etichetta: t('expenses'), valore: expenses, colore: '#a94f3a' },
     { etichetta: t('savings'), valore: income - expenses, colore: '#5e6c68' },
   ];
-  return <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
     <CardContent className="flex items-center gap-5 p-5">
       {/* `-rotate-90`: un cerchio disegnato con `stroke-dasharray` parte dalle
           tre in punto, e l'anello deve partire dalle dodici. */}
@@ -7097,10 +7134,10 @@ function FlowDonutCard({ income, expenses }: { income: number; expenses: number 
         </>}
       </svg>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-[#5e6c68]">{t('homeFlow')}</p>
+        <p className="text-sm font-medium text-[var(--money-testo-tenue)]">{t('homeFlow')}</p>
         <dl className="mt-2 space-y-1.5">
           {righe.map((riga) => <div key={riga.etichetta} className="flex items-baseline justify-between gap-3">
-            <dt className="flex min-w-0 items-center gap-2 text-xs text-[#5e6c68]">
+            <dt className="flex min-w-0 items-center gap-2 text-xs text-[var(--money-testo-tenue)]">
               <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: riga.colore }} />
               <span className="truncate">{riga.etichetta}</span>
             </dt>
@@ -7138,21 +7175,21 @@ function HomeAccountsCard({ accounts, lastUsed, onPick, onAllAccounts }: { accou
     .sort((sinistra, destra) => (destra.usato ?? '').localeCompare(sinistra.usato ?? '')
                              || destra.conto.value - sinistra.conto.value);
   const mostrati = righe.slice(0, CONTI_IN_EVIDENZA);
-  return <Card className="flex flex-col border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+  return <Card className="flex flex-col border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
     <CardHeader className="pb-2">
       <CardTitle className="text-[17px]">{t('homeAccounts')}</CardTitle>
-      <p className="text-xs leading-5 text-[#5e6c68]">{t('homeAccountsHint')}</p>
+      <p className="text-xs leading-5 text-[var(--money-testo-tenue)]">{t('homeAccountsHint')}</p>
     </CardHeader>
     <CardContent className="flex min-h-0 flex-1 flex-col p-0">
       {mostrati.length === 0
-        ? <p className="px-4 pb-2 text-xs text-[#5e6c68]">{t('noAccount')}</p>
-        : <ul className="divide-y divide-black/[0.04]">
+        ? <p className="px-4 pb-2 text-xs text-[var(--money-testo-tenue)]">{t('noAccount')}</p>
+        : <ul className="divide-y divide-[var(--money-velo)]/[0.04]">
             {mostrati.map(({ conto, usato }) => <li key={conto.id}>
               <button type="button" onClick={() => onPick(conto.name)}
-                      className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition hover:bg-[#f6f8f6]">
+                      className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition hover:bg-[var(--money-superficie-tenue)]">
                 <span className="min-w-0">
-                  <span className="block truncate text-sm text-[#2f3a37]">{conto.name}</span>
-                  <span className="block truncate text-[11px] text-[#5e6c68]">{usato
+                  <span className="block truncate text-sm text-[var(--money-testo)]">{conto.name}</span>
+                  <span className="block truncate text-[11px] text-[var(--money-testo-tenue)]">{usato
                     ? `${t('homeLastUsed')} ${formatDate(`${usato}T12:00:00`)}`
                     : t('homeNeverUsed')}</span>
                 </span>
@@ -7161,7 +7198,7 @@ function HomeAccountsCard({ accounts, lastUsed, onPick, onAllAccounts }: { accou
             </li>)}
           </ul>}
       {righe.length > mostrati.length && <button type="button" onClick={onAllAccounts}
-        className="mt-auto flex items-center justify-end gap-1 border-t border-black/[0.04] px-4 py-2 text-[11px] text-[#5e6c68] transition hover:text-[#2f3a37]">
+        className="mt-auto flex items-center justify-end gap-1 border-t border-[var(--money-velo)]/[0.04] px-4 py-2 text-[11px] text-[var(--money-testo-tenue)] transition hover:text-[var(--money-testo)]">
         {t('allAccounts')}<ChevronRight className="size-3.5" />
       </button>}
     </CardContent>
@@ -7186,23 +7223,23 @@ function HomeAccountsCard({ accounts, lastUsed, onPick, onAllAccounts }: { accou
 function HomeRecentSpendingCard({ days }: { days: Summary['recentExpenses'] }) {
   const { t, formatEuro, formatCompactEuro, formatDate } = useI18n();
   const massimo = Math.max(...days.map((giorno) => giorno.amount), 0);
-  return <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
     <CardHeader className="pb-2">
       <CardTitle className="text-[17px]">{t('homeRecentSpending', { days: days.length })}</CardTitle>
-      <p className="text-xs leading-5 text-[#5e6c68]">{t('homeRecentSpendingHint')}</p>
+      <p className="text-xs leading-5 text-[var(--money-testo-tenue)]">{t('homeRecentSpendingHint')}</p>
     </CardHeader>
     <CardContent>
       <ul className="flex items-end gap-1.5">
         {days.map((giorno) => <li key={giorno.date} title={`${formatDate(`${giorno.date}T12:00:00`)}: ${formatEuro(giorno.amount)}`}
                                   className="flex min-w-0 flex-1 flex-col items-center gap-1">
-          <span className="h-4 truncate text-[10px] tabular-nums text-[#5e6c68]">
+          <span className="h-4 truncate text-[10px] tabular-nums text-[var(--money-testo-tenue)]">
             {giorno.amount ? formatCompactEuro(giorno.amount) : ''}
           </span>
           <span className="flex h-24 w-full items-end">
-            <span className="w-full rounded-t-md bg-[#a94f3a]/85"
+            <span className="w-full rounded-t-md bg-[var(--money-allarme)]/85"
                   style={{ height: massimo > 0 ? `${Math.max(giorno.amount, 0) / massimo * 100}%` : '0%' }} />
           </span>
-          <span className="text-[10px] text-[#5e6c68]">{formatDate(`${giorno.date}T12:00:00`, { day: '2-digit', month: '2-digit' })}</span>
+          <span className="text-[10px] text-[var(--money-testo-tenue)]">{formatDate(`${giorno.date}T12:00:00`, { day: '2-digit', month: '2-digit' })}</span>
         </li>)}
       </ul>
     </CardContent>
@@ -7211,50 +7248,50 @@ function HomeRecentSpendingCard({ days }: { days: Summary['recentExpenses'] }) {
 
 function MetricCard({ title, titleHint, value, valueLabel, change, delta, icon: Icon, tone, featured = false }: { title: string; titleHint?: string; value: number; valueLabel?: string; change: string; delta?: number; icon: typeof ArrowDownRight; tone: 'income' | 'expense' | 'saving' | 'worth'; featured?: boolean }) {
   const { formatEuro } = useI18n();
-  const styles = { income: 'bg-[#eaf5ef] text-[#237056]', expense: 'bg-[#fce9e3] text-[#a94f3a]', saving: 'bg-[#edf0ff] text-[#4a63b4]', worth: 'bg-[#f2efdb] text-[#7d6119]' };
+  const styles = { income: 'bg-[var(--money-ok-tenue)] text-[var(--money-ok)]', expense: 'bg-[var(--money-allarme-tenue)] text-[var(--money-allarme)]', saving: 'bg-[var(--money-risparmio-tenue)] text-[var(--money-risparmio)]', worth: 'bg-[var(--money-attenzione-tenue)] text-[var(--money-attenzione)]' };
   // Sulle spese un delta negativo e' una buona notizia; sulle altre voci il
   // delta positivo. Senza `delta` (es. card di Budget/Investimenti dove `change`
   // e' un'etichetta, non un confronto) si cade sul default storico: rosso per
   // le spese, verde-neutro per il resto.
   const changeColor = delta !== undefined
     ? (tone === 'expense'
-        ? (delta <= 0 ? 'text-[#237056]' : 'text-[#a94f3a]')
-        : (delta >= 0 ? 'text-[#237056]' : 'text-[#a94f3a]'))
-    : (tone === 'expense' ? 'text-[#a94f3a]' : 'text-[#237056]');
-  return <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]"><CardContent className={featured ? 'p-6' : 'p-5'}><div className="mb-4 flex items-center justify-between"><span title={titleHint} className={`${featured ? 'text-base' : 'text-sm'} font-medium text-[#5e6c68]`}>{title}</span><span className={`grid ${featured ? 'size-10' : 'size-8'} place-items-center rounded-lg ${styles[tone]}`}><Icon className={featured ? 'size-5' : 'size-4'} /></span></div><p className={`${featured ? 'text-[32px] sm:text-[36px]' : 'text-[25px]'} font-semibold tracking-[-0.03em] tabular-nums`}>{valueLabel ?? formatEuro(value)}</p><p className={`mt-2 text-xs ${changeColor}`}>{change}</p></CardContent></Card>;
+        ? (delta <= 0 ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]')
+        : (delta >= 0 ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'))
+    : (tone === 'expense' ? 'text-[var(--money-allarme)]' : 'text-[var(--money-ok)]');
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]"><CardContent className={featured ? 'p-6' : 'p-5'}><div className="mb-4 flex items-center justify-between"><span title={titleHint} className={`${featured ? 'text-base' : 'text-sm'} font-medium text-[var(--money-testo-tenue)]`}>{title}</span><span className={`grid ${featured ? 'size-10' : 'size-8'} place-items-center rounded-lg ${styles[tone]}`}><Icon className={featured ? 'size-5' : 'size-4'} /></span></div><p className={`${featured ? 'text-[32px] sm:text-[36px]' : 'text-[25px]'} font-semibold tracking-[-0.03em] tabular-nums`}>{valueLabel ?? formatEuro(value)}</p><p className={`mt-2 text-xs ${changeColor}`}>{change}</p></CardContent></Card>;
 }
 
 function NetWorthCard({ detail, comparison }: { detail: Summary['netWorthDetail']; comparison: Summary['netWorthComparison'] }) {
   const { t, formatEuro, locale, monthNames, formatPercentNumber } = useI18n();
   const gainPositive = detail.gain >= 0;
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
       <CardContent className="flex flex-col gap-5 p-5 lg:flex-row lg:items-center">
         <div className="flex flex-1 items-start gap-4">
-          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-[#f2efdb] text-[#7d6119]"><Landmark className="size-5" /></span>
+          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-[var(--money-attenzione-tenue)] text-[var(--money-attenzione)]"><Landmark className="size-5" /></span>
           <div>
-            <p className="text-sm font-medium text-[#5e6c68]">{t('netWorth')}</p>
+            <p className="text-sm font-medium text-[var(--money-testo-tenue)]">{t('netWorth')}</p>
             <p className="mt-1 text-[25px] font-semibold tracking-[-0.03em] tabular-nums">{formatEuro(detail.total)}</p>
-            <p className="mt-1 text-xs text-[#237056]">{formatComparisonChange(t, formatEuro, monthNames, comparison?.totalDelta, comparison)}</p>
+            <p className="mt-1 text-xs text-[var(--money-ok)]">{formatComparisonChange(t, formatEuro, monthNames, comparison?.totalDelta, comparison)}</p>
           </div>
         </div>
-        <div className="flex flex-col gap-2 border-t border-black/6 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-[#5e6c68]">{t('investmentPortfolioLabel')}</p>
+        <div className="flex flex-col gap-2 border-t border-[var(--money-velo)]/6 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--money-testo-tenue)]">{t('investmentPortfolioLabel')}</p>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <div>
-              <p className="text-[11px] text-[#5e6c68]">{t('marketValue')}</p>
+              <p className="text-[11px] text-[var(--money-testo-tenue)]">{t('marketValue')}</p>
               <p className="text-sm font-semibold">{formatEuro(detail.marketValue)}</p>
             </div>
             <div>
-              <p className="text-[11px] text-[#5e6c68]">{t('investedCapital')}</p>
+              <p className="text-[11px] text-[var(--money-testo-tenue)]">{t('investedCapital')}</p>
               <p className="text-sm font-semibold">{formatEuro(detail.investedCapital)}</p>
             </div>
             <div>
-              <p className="text-[11px] text-[#5e6c68]">{t('gainLoss')}</p>
-              <p className={`flex items-center gap-1 text-sm font-semibold ${gainPositive ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>
+              <p className="text-[11px] text-[var(--money-testo-tenue)]">{t('gainLoss')}</p>
+              <p className={`flex items-center gap-1 text-sm font-semibold ${gainPositive ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'}`}>
                 {gainPositive ? <TrendingUp className="size-3.5" /> : <TrendingDown className="size-3.5" />}
                 {gainPositive ? '+' : '−'}{formatEuro(Math.abs(detail.gain))}
-                {detail.gainPercent !== null && <span className="text-xs font-normal text-[#5e6c68]">{t('percentOnCapital', { percent: formatPercentNumber(detail.gainPercent) })}</span>}
+                {detail.gainPercent !== null && <span className="text-xs font-normal text-[var(--money-testo-tenue)]">{t('percentOnCapital', { percent: formatPercentNumber(detail.gainPercent) })}</span>}
               </p>
             </div>
           </div>
@@ -7266,7 +7303,7 @@ function NetWorthCard({ detail, comparison }: { detail: Summary['netWorthDetail'
 
 function SkeletonNetWorthCard() {
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
       <CardContent className="flex flex-col gap-5 p-5 lg:flex-row lg:items-center">
         <div className="flex flex-1 items-start gap-4">
           <SkeletonBlock className="size-10 shrink-0 rounded-lg" />
@@ -7276,7 +7313,7 @@ function SkeletonNetWorthCard() {
             <SkeletonBlock className="mt-2.5 h-3 w-40" />
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-6 border-t border-black/6 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+        <div className="flex flex-wrap items-center gap-6 border-t border-[var(--money-velo)]/6 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
           <SkeletonBlock className="h-10 w-24" />
           <SkeletonBlock className="h-10 w-24" />
           <SkeletonBlock className="h-10 w-24" />
@@ -7311,30 +7348,30 @@ function DebitCard({ apiUrl, version, onOpen }: { apiUrl: string; version: numbe
     .sort((x, y) => x.dueOn.localeCompare(y.dueOn))[0];
   const summary = data?.summary;
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
       <CardContent className="flex items-start gap-4 p-5">
-        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-[#f2efdb] text-[#7d6119]"><CreditCard className="size-5" /></span>
+        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-[var(--money-attenzione-tenue)] text-[var(--money-attenzione)]"><CreditCard className="size-5" /></span>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
-            <p className="text-sm font-medium text-[#5e6c68]">{t('debitCard')}</p>
-            {data && <p className="text-[11px] text-[#5e6c68]">{t('debtAsOf', { date: formatDate(`${data.asOf}T12:00:00`) })}</p>}
+            <p className="text-sm font-medium text-[var(--money-testo-tenue)]">{t('debitCard')}</p>
+            {data && <p className="text-[11px] text-[var(--money-testo-tenue)]">{t('debtAsOf', { date: formatDate(`${data.asOf}T12:00:00`) })}</p>}
           </div>
-          {errore || !summary ? <p className="mt-2 text-sm text-[#5e6c68]">{t('debitCardError')}</p>
-            : summary.total === 0 ? <p className="mt-2 text-sm text-[#5e6c68]">{t('debitCardNone')}</p>
+          {errore || !summary ? <p className="mt-2 text-sm text-[var(--money-testo-tenue)]">{t('debitCardError')}</p>
+            : summary.total === 0 ? <p className="mt-2 text-sm text-[var(--money-testo-tenue)]">{t('debitCardNone')}</p>
             : <>
               <p className="mt-1 text-2xl font-semibold tabular-nums">{formatEuro(summary.totalDebt)}</p>
-              <p className="mt-1 text-xs text-[#5e6c68]">
+              <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">
                 {t('debtMonthlyService')}: {formatEuro(summary.monthlyService)}
                 {summary.weightedRate != null && ` · ${t('debtAverageRate')}: ${formatPercentNumber(summary.weightedRate)}%`}
               </p>
-              {prossima && <p className="mt-2 text-xs text-[#52615d]">
+              {prossima && <p className="mt-2 text-xs text-[var(--money-testo-muto)]">
                 {t('theoreticalNextPayment')}: <b className="font-semibold tabular-nums">{formatEuro(prossima.payment)}</b> · {formatDate(`${prossima.dueOn}T12:00:00`)} · {prossima.name}
               </p>}
-              {summary.unclassifiedCount > 0 && <p className="mt-1 text-xs text-[#a94f3a]">
+              {summary.unclassifiedCount > 0 && <p className="mt-1 text-xs text-[var(--money-allarme)]">
                 {t('debtUnclassifiedSummary', { count: summary.unclassifiedCount, amount: formatEuro(summary.unclassifiedAmount) })}
               </p>}
             </>}
-          <button type="button" onClick={onOpen} className="mt-2 text-xs font-medium text-[#237056] hover:underline">{t('debitCardOpen')}</button>
+          <button type="button" onClick={onOpen} className="mt-2 text-xs font-medium text-[var(--money-ok)] hover:underline">{t('debitCardOpen')}</button>
         </div>
       </CardContent>
     </Card>
@@ -7343,7 +7380,7 @@ function DebitCard({ apiUrl, version, onOpen }: { apiUrl: string; version: numbe
 
 function SkeletonDebitCard() {
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
       <CardContent className="flex items-start gap-4 p-5">
         <SkeletonBlock className="size-10 shrink-0 rounded-lg" />
         <div>
@@ -7356,11 +7393,11 @@ function SkeletonDebitCard() {
 }
 
 function SkeletonBlock({ className }: { className: string }) {
-  return <div className={`animate-pulse rounded-md bg-black/[0.06] ${className}`} />;
+  return <div className={`animate-pulse rounded-md bg-[var(--money-velo)]/[0.06] ${className}`} />;
 }
 
 function SkeletonMetricCard() {
-  return <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]"><CardContent className="p-5"><div className="mb-4 flex items-center justify-between"><SkeletonBlock className="h-4 w-16" /><SkeletonBlock className="size-8 rounded-lg" /></div><SkeletonBlock className="h-7 w-28" /><SkeletonBlock className="mt-2.5 h-3 w-32" /></CardContent></Card>;
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]"><CardContent className="p-5"><div className="mb-4 flex items-center justify-between"><SkeletonBlock className="h-4 w-16" /><SkeletonBlock className="size-8 rounded-lg" /></div><SkeletonBlock className="h-7 w-28" /><SkeletonBlock className="mt-2.5 h-3 w-32" /></CardContent></Card>;
 }
 
 
@@ -7372,14 +7409,14 @@ function PeriodBreakdownCard({ breakdown, isWholeYear }: { breakdown: SummaryBre
   const pie = breakdown?.pie[tab];
 
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
       <CardHeader className="flex-row items-start justify-between pb-2">
-        <div><CardTitle className="text-[17px]">{t('categoryBreakdown')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{isWholeYear ? t('categoryBreakdownWholeYear') : t('categoryBreakdownPeriod')}</p></div>
-        <div className="flex gap-1.5">{BREAKDOWN_TABS.map(([value, label]) => <button key={value} type="button" onClick={() => setTab(value)} className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${tab === value ? 'bg-[var(--money-primary)] text-white' : 'bg-[#f4f5f1] text-[#5e6c68] hover:bg-[#eceee8]'}`}>{label}</button>)}</div>
+        <div><CardTitle className="text-[17px]">{t('categoryBreakdown')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{isWholeYear ? t('categoryBreakdownWholeYear') : t('categoryBreakdownPeriod')}</p></div>
+        <div className="flex gap-1.5">{BREAKDOWN_TABS.map(([value, label]) => <button key={value} type="button" onClick={() => setTab(value)} className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${tab === value ? 'bg-[var(--money-primary)] text-white' : 'bg-[var(--money-superficie-hover)] text-[var(--money-testo-tenue)] hover:bg-[var(--money-superficie-hover)]'}`}>{label}</button>)}</div>
       </CardHeader>
       <CardContent>
         {!pie || pie.items.length === 0 ? (
-          <div className="flex h-[260px] items-center justify-center text-sm text-[#5e6c68]">{t('noMovementsInPeriod')}</div>
+          <div className="flex h-[260px] items-center justify-center text-sm text-[var(--money-testo-tenue)]">{t('noMovementsInPeriod')}</div>
         ) : (
           <div className={isWholeYear ? 'grid gap-6 lg:grid-cols-[280px_1fr]' : 'grid gap-6 sm:grid-cols-[280px_1fr]'}>
             <ChartContainer config={pieConfig} className="mx-auto aspect-square h-[220px]">
@@ -7391,8 +7428,8 @@ function PeriodBreakdownCard({ breakdown, isWholeYear }: { breakdown: SummaryBre
               </PieChart>
             </ChartContainer>
             <div className="space-y-2.5 self-center">
-              {pie.items.map((item) => <div key={item.name} className="flex items-center justify-between gap-3 text-sm"><span className="flex min-w-0 items-center gap-2 text-[#52615d]"><i className="size-2.5 shrink-0 rounded-full" style={{ background: item.color }} /><span className="truncate">{item.name}</span></span><span className="flex shrink-0 items-baseline gap-2 tabular-nums"><span className="font-medium">{formatCompactEuro(item.value)}</span><span className="font-normal text-[#5e6c68]">{formatPercentNumber(pie.total ? (item.value / pie.total) * 100 : 0)}%</span></span></div>)}
-              <div className="flex items-center justify-between border-t border-black/8 pt-2.5 text-sm font-semibold"><span>{t('total')}</span><span className="tabular-nums">{formatCompactEuro(pie.total)}</span></div>
+              {pie.items.map((item) => <div key={item.name} className="flex items-center justify-between gap-3 text-sm"><span className="flex min-w-0 items-center gap-2 text-[var(--money-testo-muto)]"><i className="size-2.5 shrink-0 rounded-full" style={{ background: item.color }} /><span className="truncate">{item.name}</span></span><span className="flex shrink-0 items-baseline gap-2 tabular-nums"><span className="font-medium">{formatCompactEuro(item.value)}</span><span className="font-normal text-[var(--money-testo-tenue)]">{formatPercentNumber(pie.total ? (item.value / pie.total) * 100 : 0)}%</span></span></div>)}
+              <div className="flex items-center justify-between border-t border-[var(--money-velo)]/8 pt-2.5 text-sm font-semibold"><span>{t('total')}</span><span className="tabular-nums">{formatCompactEuro(pie.total)}</span></div>
             </div>
           </div>
         )}
@@ -7426,8 +7463,8 @@ function PeriodBreakdownTable({ breakdown }: { breakdown: SummaryBreakdown | nul
   // annulla la testata appiccicata delle sezioni. Qui non deve clippare niente,
   // i blocchi hanno i loro bordi arrotondati.
   return (
-    <Card className="overflow-visible border-black/6 bg-white shadow-sm shadow-black/[0.025]">
-      <CardHeader className="pb-3"><CardTitle className="text-[17px]">{t('categoryDetail')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('categoryDetailSubtitle')}</p></CardHeader>
+    <Card className="overflow-visible border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
+      <CardHeader className="pb-3"><CardTitle className="text-[17px]">{t('categoryDetail')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('categoryDetailSubtitle')}</p></CardHeader>
       <CardContent className="space-y-4">
         {sections.map(({ key, label }) => {
           const section = breakdown.sections[key];
@@ -7443,8 +7480,8 @@ function PeriodBreakdownTable({ breakdown }: { breakdown: SummaryBreakdown | nul
               <div className="overflow-x-auto px-4 pb-1">
                 <table className="w-full min-w-[640px] table-fixed text-sm">
                   <colgroup><col className="w-[26%]" /><col className="w-[15%]" /><col className="w-[15%]" /><col className="w-[22%]" /><col className="w-[11%]" /><col className="w-[11%]" /></colgroup>
-                  <thead className="text-xs text-[#5e6c68]"><tr><th className="py-1.5 text-left font-medium">{t('category')}</th><th className="py-1.5 text-right font-medium">{t('tracked')}</th><th className="py-1.5 text-right font-medium">{t('budget')}</th><th className="py-1.5 text-left font-medium pl-4">{t('completion')}</th><th className="py-1.5 text-right font-medium">{t('remaining')}</th><th className="py-1.5 text-right font-medium">{t('excess')}</th></tr></thead>
-                  <tbody className="divide-y divide-black/5">
+                  <thead className="text-xs text-[var(--money-testo-tenue)]"><tr><th className="py-1.5 text-left font-medium">{t('category')}</th><th className="py-1.5 text-right font-medium">{t('tracked')}</th><th className="py-1.5 text-right font-medium">{t('budget')}</th><th className="py-1.5 text-left font-medium pl-4">{t('completion')}</th><th className="py-1.5 text-right font-medium">{t('remaining')}</th><th className="py-1.5 text-right font-medium">{t('excess')}</th></tr></thead>
+                  <tbody className="divide-y divide-[var(--money-velo)]/5">
                     {(() => {
                       const idPresenti = new Set(section.categories.map((riga) => riga.categoryId));
                       const figliDi = (id: number | null) => section.categories.filter((riga) => riga.parentId === id);
@@ -7480,27 +7517,27 @@ function PeriodBreakdownTable({ breakdown }: { breakdown: SummaryBreakdown | nul
                         const avanzo = key === 'expenses' ? category.previousLeftover : 0;
                         return <tr key={category.categoryId ?? category.name}>
                           <td className="py-2.5 font-medium"><span className="block truncate">{profondita > 0
-                            ? <span className="pl-5 text-[#52615d]">{category.name}</span>
+                            ? <span className="pl-5 text-[var(--money-testo-muto)]">{category.name}</span>
                             : figli.length
                               ? <button type="button" onClick={() => setChiuse((precedenti) => ({ ...precedenti, [`${key}:${category.categoryId ?? category.name}`]: !precedenti[`${key}:${category.categoryId ?? category.name}`] }))} className="flex items-center gap-1.5 text-left">
-                                  <ChevronRight className={`size-3.5 shrink-0 text-[#5e6c68] transition-transform ${chiusa ? '' : 'rotate-90'}`} />
+                                  <ChevronRight className={`size-3.5 shrink-0 text-[var(--money-testo-tenue)] transition-transform ${chiusa ? '' : 'rotate-90'}`} />
                                   {category.name}
                                 </button>
                               : category.name}</span>
-                            {avanzo !== 0 && <span className={`block truncate text-[11px] font-normal text-[#5e6c68] ${profondita > 0 ? 'pl-5' : ''}`}>
+                            {avanzo !== 0 && <span className={`block truncate text-[11px] font-normal text-[var(--money-testo-tenue)] ${profondita > 0 ? 'pl-5' : ''}`}>
                               {avanzo > 0 ? t('budgetPreviousLeft', { amount: formatCompactEuro(avanzo) })
                                 : t('budgetPreviousOver', { amount: formatCompactEuro(Math.abs(avanzo)) })}
                             </span>}
                           </td>
                           <td className="py-2.5 text-right tabular-nums">{formatCompactEuro(tracked)}</td>
-                          <td className="py-2.5 text-right tabular-nums text-[#5e6c68]">{formatCompactEuro(budget)}</td>
+                          <td className="py-2.5 text-right tabular-nums text-[var(--money-testo-tenue)]">{formatCompactEuro(budget)}</td>
                           <td className="py-2.5 pl-4">
                             {completion !== null ? (
                               <div className="flex items-center gap-2">
-                                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#eef0ec]"><div className="h-full rounded-full" style={{ width: `${percentage}%`, background: coloreBarra }} /></div>
-                                <span className="w-9 shrink-0 text-right text-xs tabular-nums text-[#5e6c68]">{formatPercentNumber(completion * 100)}%</span>
+                                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--money-superficie-hover)]"><div className="h-full rounded-full" style={{ width: `${percentage}%`, background: coloreBarra }} /></div>
+                                <span className="w-9 shrink-0 text-right text-xs tabular-nums text-[var(--money-testo-tenue)]">{formatPercentNumber(completion * 100)}%</span>
                               </div>
-                            ) : <span className="text-xs text-[#5e6c68]">—</span>}
+                            ) : <span className="text-xs text-[var(--money-testo-tenue)]">—</span>}
                           </td>
                           {/* Verde e rosso hanno un senso solo sulle uscite: li'
                               "rimanente" e' margine e "eccedenza" e' uno sforamento.
@@ -7578,7 +7615,7 @@ function MonthlyStackedBarChart({ data, budgetType }: { data: MonthlyBudgetPoint
    inventato si legge come un dato. */
 function Differenza({ voce, verso }: { voce: ComparisonAmounts; verso: 'income' | 'expense' | null }) {
   const { formatCompactEuro, formatNumber } = useI18n();
-  if (voce.difference === null) return <span className="block text-xs text-[#5e6c68]">—</span>;
+  if (voce.difference === null) return <span className="block text-xs text-[var(--money-testo-tenue)]">—</span>;
   const bene = verso !== null && budgetVarianceIsGood(verso === 'income' ? 'Income' : 'Expenses', -voce.difference);
   return <span className="block text-xs tabular-nums" style={{ color: verso === null ? '#5e6c68' : bene ? '#237056' : '#a94f3a' }}>
     {voce.difference > 0 ? '+' : ''}{formatCompactEuro(voce.difference)}
@@ -7622,17 +7659,17 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
       {/* Il selettore e la riga che dichiara il periodo stanno insieme: un
           report che non dice su cosa e' calcolato costringe a fidarsi. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-[#5e6c68]">{data ? t('analysisPeriodSince', { from: formatDate(`${data.period.from}T12:00:00`), to: formatDate(`${data.period.to}T12:00:00`) }) : t('loading')}</p>
+        <p className="text-xs text-[var(--money-testo-tenue)]">{data ? t('analysisPeriodSince', { from: formatDate(`${data.period.from}T12:00:00`), to: formatDate(`${data.period.to}T12:00:00`) }) : t('loading')}</p>
         <PeriodSelector value={{ ...period, scope }} years={years} onChange={onPeriodChange} allowMonth={false} allowLast12 />
       </div>
 
-      {data && <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
-        <CardHeader className="pb-3"><CardTitle className="text-[17px]">{t('analysisFlowTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('analysisFlowSubtitle')}</p></CardHeader>
+      {data && <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
+        <CardHeader className="pb-3"><CardTitle className="text-[17px]">{t('analysisFlowTitle')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('analysisFlowSubtitle')}</p></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
             {([['analysisFlowIn', data.flow.income, 'income'], ['analysisFlowOut', data.flow.expenses, 'expense'], ['analysisFlowLeft', data.flow.net, null]] as const).map(([chiave, voce, verso]) => (
-              <div key={chiave} className="rounded-xl border border-black/6 bg-[#fbfcfa] px-4 py-3">
-                <p className="text-xs font-medium text-[#5e6c68]">{t(chiave)}</p>
+              <div key={chiave} className="rounded-xl border border-[var(--money-velo)]/6 bg-[var(--money-superficie-tenue)] px-4 py-3">
+                <p className="text-xs font-medium text-[var(--money-testo-tenue)]">{t(chiave)}</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">{formatEuro(voce.amount)}</p>
                 <Differenza voce={voce} verso={verso} />
               </div>
@@ -7640,13 +7677,13 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
           </div>
           {data.flow.movers.length > 0 && (
             <div>
-              <p className="text-xs font-medium text-[#5e6c68]">{t('analysisFlowMovers')}</p>
-              <ul className="mt-1 divide-y divide-black/5">
+              <p className="text-xs font-medium text-[var(--money-testo-tenue)]">{t('analysisFlowMovers')}</p>
+              <ul className="mt-1 divide-y divide-[var(--money-velo)]/5">
                 {data.flow.movers.map((voce) => (
                   <li key={voce.categoryId} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2">
                     <span className="min-w-0 truncate text-sm font-medium">{voce.name}</span>
                     <span className="flex items-baseline gap-3">
-                      <span className="text-sm tabular-nums text-[#5e6c68]">{formatCompactEuro(voce.amount)}</span>
+                      <span className="text-sm tabular-nums text-[var(--money-testo-tenue)]">{formatCompactEuro(voce.amount)}</span>
                       <Differenza voce={voce} verso={voce.scope === 'income' ? 'income' : 'expense'} />
                     </span>
                   </li>
@@ -7657,27 +7694,27 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
         </CardContent>
       </Card>}
 
-      {data && <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+      {data && <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
         <CardHeader className="pb-3">
           <CardTitle className="text-[17px]">{t('analysisComparisonTitle')}</CardTitle>
-          <p className="mt-1 text-xs text-[#5e6c68]">{t('analysisComparisonSubtitle')}</p>
+          <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('analysisComparisonSubtitle')}</p>
           {/* Quando il periodo prima non c'e', si dice: confrontare un mese di
               storia con il vuoto direbbe che ogni spesa e' cresciuta di tutto. */}
-          {!data.comparison.available && <p className="mt-1 text-xs text-[#7d6119]">{t('analysisComparisonNoHistory', { date: data.comparison.since ? formatDate(`${data.comparison.since}T12:00:00`) : '—' })}</p>}
+          {!data.comparison.available && <p className="mt-1 text-xs text-[var(--money-attenzione)]">{t('analysisComparisonNoHistory', { date: data.comparison.since ? formatDate(`${data.comparison.since}T12:00:00`) : '—' })}</p>}
         </CardHeader>
         <CardContent>
-          {!data.categoryComparison.length ? <p className="py-6 text-center text-sm text-[#5e6c68]">{t('noData')}</p> : (
+          {!data.categoryComparison.length ? <p className="py-6 text-center text-sm text-[var(--money-testo-tenue)]">{t('noData')}</p> : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[620px] table-fixed text-sm">
                 <colgroup><col className="w-[28%]" /><col className="w-[17%]" /><col className="w-[17%]" /><col className="w-[19%]" /><col className="w-[19%]" /></colgroup>
-                <thead className="text-xs text-[#5e6c68]"><tr>
+                <thead className="text-xs text-[var(--money-testo-tenue)]"><tr>
                   <th className="py-1.5 text-left font-medium">{t('category')}</th>
                   <th className="py-1.5 text-right font-medium">{t('analysisComparisonThisPeriod')}</th>
                   <th className="py-1.5 text-right font-medium">{t('previousPeriod')}</th>
                   <th className="py-1.5 text-right font-medium">{t('analysisComparisonDifference')}</th>
                   <th className="py-1.5 text-right font-medium">{t('analysisComparisonMedian')}</th>
                 </tr></thead>
-                <tbody className="divide-y divide-black/5">
+                <tbody className="divide-y divide-[var(--money-velo)]/5">
                   {(() => {
                     const idPresenti = new Set(data.categoryComparison.map((voce) => voce.categoryId));
                     const figliDi = (id: number) => data.categoryComparison.filter((voce) => voce.parentId === id);
@@ -7690,22 +7727,22 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
                       const chiusa = chiuseConfronto[voce.categoryId];
                       return <tr key={voce.categoryId}>
                         <td className="truncate py-2.5 font-medium">{profondita > 0
-                          ? <span className="pl-5 text-[#52615d]">{voce.name}</span>
+                          ? <span className="pl-5 text-[var(--money-testo-muto)]">{voce.name}</span>
                           : figli.length
                             ? <button type="button" onClick={() => setChiuseConfronto((precedenti) => ({ ...precedenti, [voce.categoryId]: !precedenti[voce.categoryId] }))} className="flex items-center gap-1.5 text-left">
-                                <ChevronRight className={`size-3.5 shrink-0 text-[#5e6c68] transition-transform ${chiusa ? '' : 'rotate-90'}`} />{voce.name}
+                                <ChevronRight className={`size-3.5 shrink-0 text-[var(--money-testo-tenue)] transition-transform ${chiusa ? '' : 'rotate-90'}`} />{voce.name}
                               </button>
                             : voce.name}</td>
                         <td className="py-2.5 text-right tabular-nums">{formatCompactEuro(voce.amount)}</td>
-                        <td className="py-2.5 text-right tabular-nums text-[#5e6c68]">{voce.previous === null ? '—' : formatCompactEuro(voce.previous)}</td>
+                        <td className="py-2.5 text-right tabular-nums text-[var(--money-testo-tenue)]">{voce.previous === null ? '—' : formatCompactEuro(voce.previous)}</td>
                         <td className="py-2.5 text-right"><Differenza voce={voce} verso={voce.scope === 'income' ? 'income' : 'expense'} /></td>
                         {/* La mediana dice come sono i mesi normali, ma su
                             quanti mesi e' calcolata decide quanto vale: scritto
                             accanto e non nel passaggio del mouse, perche' uno
                             zero con un mese solo dietro sembra un errore. */}
                         <td className="py-2.5 text-right">
-                          <span className="block tabular-nums text-[#52615d]">{voce.median === null ? '—' : formatCompactEuro(voce.median)}</span>
-                          {voce.median !== null && <span className="block text-[11px] text-[#5e6c68]">{t('analysisComparisonMonths', { months: voce.monthsWithMovements, total: voce.monthsConsidered })}</span>}
+                          <span className="block tabular-nums text-[var(--money-testo-muto)]">{voce.median === null ? '—' : formatCompactEuro(voce.median)}</span>
+                          {voce.median !== null && <span className="block text-[11px] text-[var(--money-testo-tenue)]">{t('analysisComparisonMonths', { months: voce.monthsWithMovements, total: voce.monthsConsidered })}</span>}
                         </td>
                       </tr>;
                     };
@@ -7720,19 +7757,19 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
         </CardContent>
       </Card>}
 
-      <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
         <CardHeader className="flex-row items-start justify-between pb-2">
-          <div><CardTitle className="text-[17px]">{t('monthlyBudgetVsTracked')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('monthlyBudgetVsTrackedSubtitle')}</p></div>
-          <div className="flex gap-1.5">{ANALYSIS_TYPE_TABS.map(([value, labelKey]) => <button key={value} type="button" onClick={() => setBudgetTab(value)} className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${budgetTab === value ? 'bg-[var(--money-primary)] text-white' : 'bg-[#f4f5f1] text-[#5e6c68] hover:bg-[#eceee8]'}`}>{t(labelKey)}</button>)}</div>
+          <div><CardTitle className="text-[17px]">{t('monthlyBudgetVsTracked')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('monthlyBudgetVsTrackedSubtitle')}</p></div>
+          <div className="flex gap-1.5">{ANALYSIS_TYPE_TABS.map(([value, labelKey]) => <button key={value} type="button" onClick={() => setBudgetTab(value)} className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${budgetTab === value ? 'bg-[var(--money-primary)] text-white' : 'bg-[var(--money-superficie-hover)] text-[var(--money-testo-tenue)] hover:bg-[var(--money-superficie-hover)]'}`}>{t(labelKey)}</button>)}</div>
         </CardHeader>
         <CardContent>
-          {data ? <MonthlyStackedBarChart data={data.monthlyBudget[budgetTab]} budgetType={budgetTab === 'expenses' ? 'Expenses' : budgetTab === 'income' ? 'Income' : 'Savings'} /> : <div className="flex h-[220px] items-center justify-center text-sm text-[#5e6c68]">{t('loading')}</div>}
+          {data ? <MonthlyStackedBarChart data={data.monthlyBudget[budgetTab]} budgetType={budgetTab === 'expenses' ? 'Expenses' : budgetTab === 'income' ? 'Income' : 'Savings'} /> : <div className="flex h-[220px] items-center justify-center text-sm text-[var(--money-testo-tenue)]">{t('loading')}</div>}
         </CardContent>
       </Card>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
-          <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('topExpenseCategoriesTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('topExpenseCategoriesSubtitle')}</p></CardHeader>
+        <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
+          <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('topExpenseCategoriesTitle')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('topExpenseCategoriesSubtitle')}</p></CardHeader>
           <CardContent>
             {data && treemapData.length ? (
               <ChartContainer config={{}} className="h-[280px] w-full">
@@ -7748,12 +7785,12 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
                   )} />} />
                 </Treemap>
               </ChartContainer>
-            ) : <div className="flex h-[280px] items-center justify-center text-sm text-[#5e6c68]">{t('noExpensesInYear')}</div>}
+            ) : <div className="flex h-[280px] items-center justify-center text-sm text-[var(--money-testo-tenue)]">{t('noExpensesInYear')}</div>}
           </CardContent>
         </Card>
 
-        <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
-          <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('savingsByMonthTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('savingsByMonthSubtitle')}</p></CardHeader>
+        <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
+          <CardHeader className="pb-2"><CardTitle className="text-[17px]">{t('savingsByMonthTitle')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('savingsByMonthSubtitle')}</p></CardHeader>
           <CardContent>
             {data ? (
               <ChartContainer config={savingsConfig} className="h-[280px] w-full">
@@ -7772,47 +7809,47 @@ function AnnualAnalysisView({ data, period, scope, years, categoryType, category
                   <ChartLegend content={<ChartLegendContent />} />
                 </ComposedChart>
               </ChartContainer>
-            ) : <div className="flex h-[280px] items-center justify-center text-sm text-[#5e6c68]">{t('loading')}</div>}
+            ) : <div className="flex h-[280px] items-center justify-center text-sm text-[var(--money-testo-tenue)]">{t('loading')}</div>}
           </CardContent>
         </Card>
       </div>
 
-      <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
         <CardHeader className="pb-3">
           <CardTitle className="text-[17px]">{t('categoryAnalysisTitle')}</CardTitle>
-          <p className="mt-1 text-xs text-[#5e6c68]">{t('categoryAnalysisSubtitle')}</p>
+          <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('categoryAnalysisSubtitle')}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <label className="relative">
               <span className="sr-only">{t('type')}</span>
-              <select aria-label={t('type')} value={categoryType} onChange={(event) => onCategoryTypeChange(event.target.value as 'Income' | 'Expenses' | 'Savings')} className="h-9 appearance-none rounded-lg border border-black/7 bg-white py-0 pl-3 pr-8 text-sm outline-none focus:border-[#5c8f82]">
+              <select aria-label={t('type')} value={categoryType} onChange={(event) => onCategoryTypeChange(event.target.value as 'Income' | 'Expenses' | 'Savings')} className="h-9 appearance-none rounded-lg border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] py-0 pl-3 pr-8 text-sm outline-none focus:border-[var(--money-anello)]">
                 <option value="Expenses">{t('expensesType')}</option>
                 <option value="Income">{t('incomeType')}</option>
               </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-black/45" />
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--money-velo)]/45" />
             </label>
             <label className="relative">
               <span className="sr-only">{t('category')}</span>
-              <select aria-label={t('category')} value={category ?? ''} onChange={(event) => onCategoryChange(event.target.value || null)} className="h-9 appearance-none rounded-lg border border-black/7 bg-white py-0 pl-3 pr-8 text-sm outline-none focus:border-[#5c8f82]">
+              <select aria-label={t('category')} value={category ?? ''} onChange={(event) => onCategoryChange(event.target.value || null)} className="h-9 appearance-none rounded-lg border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] py-0 pl-3 pr-8 text-sm outline-none focus:border-[var(--money-anello)]">
                 <option value="">{t('selectCategory')}</option>
                 {(data?.categoryOptions ?? []).map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-black/45" />
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--money-velo)]/45" />
             </label>
           </div>
         </CardHeader>
         <CardContent>
           {!category ? (
-            <p className="py-8 text-center text-sm text-[#5e6c68]">{t('selectCategoryPrompt')}</p>
+            <p className="py-8 text-center text-sm text-[var(--money-testo-tenue)]">{t('selectCategoryPrompt')}</p>
           ) : !data || data.categoryTransactions.length === 0 ? (
-            <p className="py-8 text-center text-sm text-[#5e6c68]">{t('noTransactionsForCategory')}</p>
+            <p className="py-8 text-center text-sm text-[var(--money-testo-tenue)]">{t('noTransactionsForCategory')}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[420px] table-fixed text-sm">
                 <colgroup><col className="w-[20%]" /><col className="w-[55%]" /><col className="w-[25%]" /></colgroup>
-                <thead className="text-xs text-[#5e6c68]"><tr><th className="py-1.5 text-left font-medium">{t('date')}</th><th className="py-1.5 text-left font-medium">{t('description')}</th><th className="py-1.5 text-right font-medium">{t('amount')}</th></tr></thead>
-                <tbody className="divide-y divide-black/5">
+                <thead className="text-xs text-[var(--money-testo-tenue)]"><tr><th className="py-1.5 text-left font-medium">{t('date')}</th><th className="py-1.5 text-left font-medium">{t('description')}</th><th className="py-1.5 text-right font-medium">{t('amount')}</th></tr></thead>
+                <tbody className="divide-y divide-[var(--money-velo)]/5">
                   {data.categoryTransactions.map((tx, index) => <tr key={`${tx.date}-${index}`}>
-                    <td className="py-2 text-[#5e6c68]">{formatDate(`${tx.date}T12:00:00`)}</td>
+                    <td className="py-2 text-[var(--money-testo-tenue)]">{formatDate(`${tx.date}T12:00:00`)}</td>
                     <td className="py-2 truncate font-medium">{tx.description}</td>
                     <td className="py-2 text-right tabular-nums">{formatEuro(tx.amount)}</td>
                   </tr>)}
@@ -7846,11 +7883,11 @@ function CategoryTreemapCell(props: { x?: number; y?: number; width?: number; he
 }
 
 const TRANSACTION_ICON_STYLES = {
-  Income: { icon: BadgeEuro, className: 'bg-[#eaf5ef] text-[#237056]' },
-  Expenses: { icon: CreditCard, className: 'bg-[#fce9e3] text-[#a94f3a]' },
-  Transfers: { icon: Landmark, className: 'bg-[#edf0ed] text-[#5e6c68]' },
-  Investment: { icon: LineChartIcon, className: 'bg-[#efeaf9] text-[#6b57a8]' },
-  Debt: { icon: CreditCard, className: 'bg-[#fff0e8] text-[#a94f3a]' },
+  Income: { icon: BadgeEuro, className: 'bg-[var(--money-ok-tenue)] text-[var(--money-ok)]' },
+  Expenses: { icon: CreditCard, className: 'bg-[var(--money-allarme-tenue)] text-[var(--money-allarme)]' },
+  Transfers: { icon: Landmark, className: 'bg-[var(--money-superficie-hover)] text-[var(--money-testo-tenue)]' },
+  Investment: { icon: LineChartIcon, className: 'bg-[var(--money-investimento-tenue)] text-[var(--money-investimento)]' },
+  Debt: { icon: CreditCard, className: 'bg-[var(--money-allarme-velo)] text-[var(--money-allarme)]' },
 };
 
 // Le callback ricevono il movimento invece di chiuderci sopra: cosi' il
@@ -7898,7 +7935,7 @@ function SplitTransactionDialog({ transaction, accounts, apiUrl, categoriesByTyp
     }
   }
 
-  const campo = 'h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]';
+  const campo = 'h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm outline-none focus:border-ring disabled:bg-[var(--money-superficie-hover)] disabled:text-[var(--money-testo-spento)]';
   return <Dialog open onOpenChange={(open) => { if (!open && !salvando) onClose(); }}>
     <DialogContent className="sm:max-w-md">
       <DialogHeader>
@@ -7906,31 +7943,31 @@ function SplitTransactionDialog({ transaction, accounts, apiUrl, categoriesByTyp
         <DialogDescription>{transaction.description} · {t('splitMovementDesc', { total: formatEuro(totale) })}</DialogDescription>
       </DialogHeader>
       <form className="space-y-3" onSubmit={conferma}>
-        <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('splitNewPart')}
+        <label className="block space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('splitNewPart')}
           <Input type="number" inputMode="decimal" min="0.01" step="0.01" required value={parte.amount}
             onChange={(e) => setParte((p) => ({ ...p, amount: e.target.value }))} />
-          <span className={`block text-[11px] font-normal ${resta > 0 ? 'text-[#5e6c68]' : 'text-[#a94f3a]'}`}>{resta > 0 ? t('splitRemaining', { amount: formatEuro(resta) }) : t('splitInvalidAmount')}</span>
+          <span className={`block text-[11px] font-normal ${resta > 0 ? 'text-[var(--money-testo-tenue)]' : 'text-[var(--money-allarme)]'}`}>{resta > 0 ? t('splitRemaining', { amount: formatEuro(resta) }) : t('splitInvalidAmount')}</span>
         </label>
-        <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('fieldType')}
+        <label className="block space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldType')}
           <select className={campo} value={parte.type} onChange={(e) => setParte((p) => ({ ...p, type: e.target.value, category: '' }))}>
             <option value="Expenses">{t('typeExpense')}</option><option value="Income">{t('typeIncome')}</option><option value="Transfers">{t('typeTransfer')}</option>
           </select>
         </label>
         {spostamento
-          ? <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('fieldDestinationAccount')}
+          ? <label className="block space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldDestinationAccount')}
             <select className={campo} required value={parte.destination} onChange={(e) => setParte((p) => ({ ...p, destination: e.target.value }))}>
               <option value="">{t('selectAccount')}</option>
               {accounts.filter((a) => a.isActive !== false && a.name !== transaction.accountName).map((a) => <option key={a.id} value={a.name}>{a.name}</option>)}
             </select></label>
-          : <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('fieldCategory')}
+          : <label className="block space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldCategory')}
             <select className={campo} required value={parte.category} onChange={(e) => setParte((p) => ({ ...p, category: e.target.value }))}>
               <option value="">{t('selectPlaceholder')}</option>
               <CategoryOptions names={categoriesByType[parte.type] ?? []} tree={categoryTree} />
             </select></label>}
-        <label className="block space-y-1 text-xs font-medium text-[#52615d]">{t('fieldDescription')}
+        <label className="block space-y-1 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldDescription')}
           <Input value={parte.details} onChange={(e) => setParte((p) => ({ ...p, details: e.target.value }))} />
         </label>
-        {errore && <p role="alert" className="rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{errore}</p>}
+        {errore && <p role="alert" className="rounded-lg bg-[var(--money-allarme-tenue)] px-3 py-2 text-xs text-[var(--money-allarme)]">{errore}</p>}
         <DialogFooter className="mx-0 mb-0 mt-5 border-0 bg-transparent p-0">
           <Button type="button" variant="outline" disabled={salvando} onClick={onClose}>{t('cancel')}</Button>
           <Button type="submit" disabled={salvando || !valido} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{salvando ? t('savingEllipsis') : t('splitRow')}</Button>
@@ -7955,7 +7992,7 @@ const TransactionRow = memo(function TransactionRow({ transaction, onEdit, onDup
     : linkedCount === 1
       ? `${transaction.linkedLedger?.[0]?.name ?? ''} (${transaction.linkedLedger?.[0]?.transactionType ?? ''})`
       : transaction.linkedLedger?.map((item) => `${item.name} (${item.transactionType})`).join(', ');
-  return <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3.5 sm:flex-nowrap"><span className={`grid size-9 shrink-0 place-items-center rounded-xl ${style.className}`}><Icon className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{transaction.description}</p><div className="flex gap-2 text-[11px]">{transaction.incomplete && <span className="text-[#a94f3a]">{t('incompleteMovements')}</span>}{transaction.countsInBudget === false && !['Transfers', 'Investment', 'Debt'].includes(transaction.transactionType) && <span className="text-[#5e6c68]">{t('excludeBudget')}</span>}{transaction.refundedById && <button type="button" className="text-[#237056] underline" onClick={() => onRefund?.(transaction)}>{t('refunded')}</button>}{transaction.event && <span className="rounded-full bg-[#eef1ec] px-1.5 text-[#52615d]">{transaction.event.name}</span>}{transaction.liabilitySplit && <span className={transaction.liabilitySplit.classified ? 'text-[#8a5a46]' : 'text-[#a94f3a]'}>{transaction.liabilitySplit.classified ? t('debtSplitSummary', { principal: formatEuro(transaction.liabilitySplit.principal), interest: formatEuro(transaction.liabilitySplit.interest) }) : t('debtUnclassified')}</span>}</div><p className="mt-0.5 truncate text-xs text-[#5e6c68]">{transaction.category}{transaction.accountName ? ` · ${transaction.accountName}` : ''}{transaction.destinationName ? ` → ${transaction.destinationName}` : ''}</p></div><div className="hidden text-right text-xs text-[#5e6c68] sm:block"><p>{formatDate(`${transaction.effectiveOn}T12:00:00`, { day: 'numeric', month: 'short' })}</p>{transaction.effectiveOn !== transaction.occurredOn && <p className="mt-0.5 text-[11px] text-[#5e6c68]">{t('occurredOnNote', { date: formatDate(`${transaction.occurredOn}T12:00:00`, { day: 'numeric', month: 'short' }) })}</p>}</div><p className={`w-24 text-right text-sm font-semibold tabular-nums ${!spostamento && transaction.amount > 0 ? 'text-[#237056]' : 'text-[#28312f]'}`}>{spostamento ? '' : transaction.amount > 0 ? '+' : '−'}{formatMoney(Math.abs(transaction.amount), transaction.currency ?? 'EUR')}</p>{linkedCount > 0 && <span title={linkedTooltip} aria-label={linkedCount === 1 ? t('ledgerLinkedCount_one') : t('ledgerLinkedCount_other', { count: linkedCount })} className="grid size-7 shrink-0 place-items-center rounded-full bg-[#eaf5ef] text-[#237056]"><LineChartIcon className="size-3.5" /></span>}{onEdit && onDuplicate && onDelete && <div className="flex shrink-0 basis-full justify-end sm:basis-auto"><Button type="button" size="icon" variant="ghost" title={t('edit')} aria-label={`${t('edit')} ${transaction.description}`} onClick={() => onEdit(transaction)}><Pencil className="size-4" /></Button><Button type="button" size="icon" variant="ghost" title={t('duplicate')} aria-label={`${t('duplicate')} ${transaction.description}`} onClick={() => onDuplicate(transaction)}><Copy className="size-4" /></Button>{onSplit && divisibile(transaction) && <Button type="button" size="icon" variant="ghost" title={t('splitRow')} aria-label={`${t('splitRow')} ${transaction.description}`} onClick={() => onSplit(transaction)}><Split className="size-4" /></Button>}<Button type="button" size="icon" variant="ghost" title={t('delete')} aria-label={`${t('delete')} ${transaction.description}`} onClick={() => onDelete(transaction)} className="text-[#a94f3a]"><Trash2 className="size-4" /></Button></div>}</div>;
+  return <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3.5 sm:flex-nowrap"><span className={`grid size-9 shrink-0 place-items-center rounded-xl ${style.className}`}><Icon className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{transaction.description}</p><div className="flex gap-2 text-[11px]">{transaction.incomplete && <span className="text-[var(--money-allarme)]">{t('incompleteMovements')}</span>}{transaction.countsInBudget === false && !['Transfers', 'Investment', 'Debt'].includes(transaction.transactionType) && <span className="text-[var(--money-testo-tenue)]">{t('excludeBudget')}</span>}{transaction.refundedById && <button type="button" className="text-[var(--money-ok)] underline" onClick={() => onRefund?.(transaction)}>{t('refunded')}</button>}{transaction.event && <span className="rounded-full bg-[var(--money-superficie-hover)] px-1.5 text-[var(--money-testo-muto)]">{transaction.event.name}</span>}{transaction.liabilitySplit && <span className={transaction.liabilitySplit.classified ? 'text-[var(--money-allarme)]' : 'text-[var(--money-allarme)]'}>{transaction.liabilitySplit.classified ? t('debtSplitSummary', { principal: formatEuro(transaction.liabilitySplit.principal), interest: formatEuro(transaction.liabilitySplit.interest) }) : t('debtUnclassified')}</span>}</div><p className="mt-0.5 truncate text-xs text-[var(--money-testo-tenue)]">{transaction.category}{transaction.accountName ? ` · ${transaction.accountName}` : ''}{transaction.destinationName ? ` → ${transaction.destinationName}` : ''}</p></div><div className="hidden text-right text-xs text-[var(--money-testo-tenue)] sm:block"><p>{formatDate(`${transaction.effectiveOn}T12:00:00`, { day: 'numeric', month: 'short' })}</p>{transaction.effectiveOn !== transaction.occurredOn && <p className="mt-0.5 text-[11px] text-[var(--money-testo-tenue)]">{t('occurredOnNote', { date: formatDate(`${transaction.occurredOn}T12:00:00`, { day: 'numeric', month: 'short' }) })}</p>}</div><p className={`w-24 text-right text-sm font-semibold tabular-nums ${!spostamento && transaction.amount > 0 ? 'text-[var(--money-ok)]' : 'text-[var(--money-testo)]'}`}>{spostamento ? '' : transaction.amount > 0 ? '+' : '−'}{formatMoney(Math.abs(transaction.amount), transaction.currency ?? 'EUR')}</p>{linkedCount > 0 && <span title={linkedTooltip} aria-label={linkedCount === 1 ? t('ledgerLinkedCount_one') : t('ledgerLinkedCount_other', { count: linkedCount })} className="grid size-7 shrink-0 place-items-center rounded-full bg-[var(--money-ok-tenue)] text-[var(--money-ok)]"><LineChartIcon className="size-3.5" /></span>}{onEdit && onDuplicate && onDelete && <div className="flex shrink-0 basis-full justify-end sm:basis-auto"><Button type="button" size="icon" variant="ghost" title={t('edit')} aria-label={`${t('edit')} ${transaction.description}`} onClick={() => onEdit(transaction)}><Pencil className="size-4" /></Button><Button type="button" size="icon" variant="ghost" title={t('duplicate')} aria-label={`${t('duplicate')} ${transaction.description}`} onClick={() => onDuplicate(transaction)}><Copy className="size-4" /></Button>{onSplit && divisibile(transaction) && <Button type="button" size="icon" variant="ghost" title={t('splitRow')} aria-label={`${t('splitRow')} ${transaction.description}`} onClick={() => onSplit(transaction)}><Split className="size-4" /></Button>}<Button type="button" size="icon" variant="ghost" title={t('delete')} aria-label={`${t('delete')} ${transaction.description}`} onClick={() => onDelete(transaction)} className="text-[var(--money-allarme)]"><Trash2 className="size-4" /></Button></div>}</div>;
 })
 /* Gli eventi, in fondo alla pagina Movimenti: una riga per evento con i suoi
    numeri, e aprendola i movimenti e la ripartizione per categoria. Una card e
@@ -7985,29 +8022,29 @@ function EventsCard({ events, apiUrl }: { events: EventData[]; apiUrl: string })
       : t('eventNoDates');
   };
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
-      <CardHeader><CardTitle className="text-[17px]">{t('eventTitle')}</CardTitle><p className="mt-1 text-xs text-[#5e6c68]">{t('eventHint')}</p></CardHeader>
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
+      <CardHeader><CardTitle className="text-[17px]">{t('eventTitle')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('eventHint')}</p></CardHeader>
       <CardContent className="px-3 sm:px-6">
-        {!events.length ? <p className="py-8 text-center text-sm text-[#5e6c68]">{t('eventEmpty')}</p>
-          : <div className="divide-y divide-black/5">{events.map((evento) => <div key={evento.id}>
+        {!events.length ? <p className="py-8 text-center text-sm text-[var(--money-testo-tenue)]">{t('eventEmpty')}</p>
+          : <div className="divide-y divide-[var(--money-velo)]/5">{events.map((evento) => <div key={evento.id}>
             <button type="button" aria-expanded={aperto === evento.id} onClick={() => setAperto((corrente) => corrente === evento.id ? null : evento.id)} className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 py-3.5 text-left">
-              <ChevronDown className={`size-4 shrink-0 text-black/35 transition ${aperto === evento.id ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`size-4 shrink-0 text-[var(--money-velo)]/35 transition ${aperto === evento.id ? 'rotate-180' : ''}`} />
               <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2 text-sm font-medium">{evento.name}{evento.closed && <span className="rounded-full bg-[#f4f5f1] px-1.5 text-[10px] font-normal text-[#5e6c68]">{t('eventClosedBadge')}</span>}</span>
-                <span className="block truncate text-xs text-[#5e6c68]">{periodo(evento)} · {evento.movimenti === 1 ? t('eventMovementCount_one') : t('eventMovementCount_other', { count: evento.movimenti })}</span>
+                <span className="flex items-center gap-2 text-sm font-medium">{evento.name}{evento.closed && <span className="rounded-full bg-[var(--money-superficie-hover)] px-1.5 text-[10px] font-normal text-[var(--money-testo-tenue)]">{t('eventClosedBadge')}</span>}</span>
+                <span className="block truncate text-xs text-[var(--money-testo-tenue)]">{periodo(evento)} · {evento.movimenti === 1 ? t('eventMovementCount_one') : t('eventMovementCount_other', { count: evento.movimenti })}</span>
               </span>
               {/* Speso e incassato restano due numeri separati: un rimborso non
                   e' un introito, e un totale solo nasconderebbe meta' della
                   storia. Il netto e' la differenza, come lo calcola il server. */}
-              <span className="text-right text-[11px] text-[#5e6c68]">{t('eventSpent')}<span className="block text-sm font-semibold tabular-nums text-[#28312f]">{formatEuro(evento.spese)}</span></span>
-              <span className="text-right text-[11px] text-[#5e6c68]">{t('eventReceived')}<span className="block text-sm font-semibold tabular-nums text-[#237056]">{formatEuro(evento.entrate)}</span></span>
-              <span className="w-24 text-right text-[11px] text-[#5e6c68]">{t('eventNet')}<span className="block text-sm font-semibold tabular-nums text-[#28312f]">{formatEuro(evento.netto)}</span></span>
+              <span className="text-right text-[11px] text-[var(--money-testo-tenue)]">{t('eventSpent')}<span className="block text-sm font-semibold tabular-nums text-[var(--money-testo)]">{formatEuro(evento.spese)}</span></span>
+              <span className="text-right text-[11px] text-[var(--money-testo-tenue)]">{t('eventReceived')}<span className="block text-sm font-semibold tabular-nums text-[var(--money-ok)]">{formatEuro(evento.entrate)}</span></span>
+              <span className="w-24 text-right text-[11px] text-[var(--money-testo-tenue)]">{t('eventNet')}<span className="block text-sm font-semibold tabular-nums text-[var(--money-testo)]">{formatEuro(evento.netto)}</span></span>
             </button>
             {aperto === evento.id && <div className="pb-4 pl-8">
-              {!dettagli[evento.id] ? <p className="py-3 text-center text-xs text-[#5e6c68]">{t('updating')}</p> : <>
-                <p className="mb-1.5 text-xs font-medium text-[#52615d]">{t('eventByCategory')}</p>
-                <div className="mb-3 divide-y divide-black/5 rounded-xl bg-[#fafaf8] px-3">{dettagli[evento.id].categories.map((voce) => <div key={voce.name} className="flex items-center gap-3 py-1.5 text-xs"><span className="min-w-0 flex-1 truncate">{voce.name || t('eventNoCategory')}</span><span className="tabular-nums text-[#5e6c68]">{formatEuro(voce.spese)}</span><span className="tabular-nums text-[#237056]">{formatEuro(voce.entrate)}</span></div>)}</div>
-                <div className="divide-y divide-black/5">{dettagli[evento.id].movements.map((movimento) => <TransactionRow key={movimento.id} transaction={movimento} />)}</div>
+              {!dettagli[evento.id] ? <p className="py-3 text-center text-xs text-[var(--money-testo-tenue)]">{t('updating')}</p> : <>
+                <p className="mb-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('eventByCategory')}</p>
+                <div className="mb-3 divide-y divide-[var(--money-velo)]/5 rounded-xl bg-[var(--money-superficie-tenue)] px-3">{dettagli[evento.id].categories.map((voce) => <div key={voce.name} className="flex items-center gap-3 py-1.5 text-xs"><span className="min-w-0 flex-1 truncate">{voce.name || t('eventNoCategory')}</span><span className="tabular-nums text-[var(--money-testo-tenue)]">{formatEuro(voce.spese)}</span><span className="tabular-nums text-[var(--money-ok)]">{formatEuro(voce.entrate)}</span></div>)}</div>
+                <div className="divide-y divide-[var(--money-velo)]/5">{dettagli[evento.id].movements.map((movimento) => <TransactionRow key={movimento.id} transaction={movimento} />)}</div>
               </>}
             </div>}
           </div>)}</div>}
@@ -8105,17 +8142,17 @@ function CategoryRulesCard({ rules, categories, categoryTree, apiUrl, onChanged 
     ...proposta.altre.map((altra) => `${t('ruleOccurrences', { count: altra.count })} ${altra.category}`),
   ].join(', ');
 
-  return <Card className="border-black/6 bg-white shadow-sm">
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
     <CardHeader className="gap-3">
       <div><CardTitle className="text-[17px]">{t('categoryRules')}</CardTitle>
-        <p className="mt-1 text-xs text-[#5e6c68]">{t('categoryRulesHint')}</p></div>
-      <div><Button type="button" variant="outline" className="h-10 bg-white" disabled={busy} onClick={impara}>{t('learnFromHistory')}</Button></div>
+        <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('categoryRulesHint')}</p></div>
+      <div><Button type="button" variant="outline" className="h-10 bg-[var(--money-superficie)]" disabled={busy} onClick={impara}>{t('learnFromHistory')}</Button></div>
     </CardHeader>
     <CardContent className="space-y-4">
       {rules.length === 0
-        ? <p className="text-sm text-[#5e6c68]">{t('ruleEmpty')}</p>
+        ? <p className="text-sm text-[var(--money-testo-tenue)]">{t('ruleEmpty')}</p>
         : <div className="overflow-x-auto"><table className="w-full text-left text-sm">
-          <thead className="text-xs text-[#5e6c68]"><tr>
+          <thead className="text-xs text-[var(--money-testo-tenue)]"><tr>
             <th className="py-2 pr-2 font-medium">{t('rulePattern')}</th>
             <th className="py-2 pr-2 font-medium">{t('category')}</th>
             <th className="py-2 pr-2 font-medium">{t('type')}</th>
@@ -8123,8 +8160,8 @@ function CategoryRulesCard({ rules, categories, categoryTree, apiUrl, onChanged 
             <th className="py-2 pr-2 font-medium">{t('active')}</th>
             <th className="py-2 font-medium"><span className="sr-only">{t('edit')}</span></th>
           </tr></thead>
-          <tbody className="divide-y divide-black/5">{rules.map((riga, indice) => <tr key={riga.id}>
-            <td className="py-2 pr-2">{riga.isRegex ? <code className="rounded bg-[#f0f2ee] px-1.5 py-0.5 text-[13px]">{riga.pattern}</code> : riga.pattern}</td>
+          <tbody className="divide-y divide-[var(--money-velo)]/5">{rules.map((riga, indice) => <tr key={riga.id}>
+            <td className="py-2 pr-2">{riga.isRegex ? <code className="rounded bg-[var(--money-superficie-hover)] px-1.5 py-0.5 text-[13px]">{riga.pattern}</code> : riga.pattern}</td>
             <td className="py-2 pr-2">{riga.category}</td>
             <td className="py-2 pr-2">{riga.transactionType ? t(riga.transactionType === 'Expenses' ? 'typeExpense' : 'typeIncome') : t('none')}</td>
             <td className="py-2 pr-2 tabular-nums">{intervallo(riga)}</td>
@@ -8133,38 +8170,38 @@ function CategoryRulesCard({ rules, categories, categoryTree, apiUrl, onChanged 
               <Button type="button" size="icon" variant="ghost" disabled={busy || indice === 0} title={t('ruleMoveUp')} aria-label={t('ruleMoveUp')} onClick={() => sposta(indice, -1)}><ChevronUp className="size-4" /></Button>
               <Button type="button" size="icon" variant="ghost" disabled={busy || indice === rules.length - 1} title={t('ruleMoveDown')} aria-label={t('ruleMoveDown')} onClick={() => sposta(indice, 1)}><ChevronDown className="size-4" /></Button>
               <Button type="button" size="icon" variant="ghost" title={t('edit')} aria-label={`${t('edit')} ${riga.pattern}`} onClick={() => modifica(riga)}><Pencil className="size-4" /></Button>
-              <Button type="button" size="icon" variant="ghost" title={t('delete')} aria-label={`${t('delete')} ${riga.pattern}`} className="text-[#a94f3a]" disabled={busy} onClick={() => void esegui(() => chiama(`/${riga.id}`, 'DELETE'))}><Trash2 className="size-4" /></Button>
+              <Button type="button" size="icon" variant="ghost" title={t('delete')} aria-label={`${t('delete')} ${riga.pattern}`} className="text-[var(--money-allarme)]" disabled={busy} onClick={() => void esegui(() => chiama(`/${riga.id}`, 'DELETE'))}><Trash2 className="size-4" /></Button>
             </div></td>
           </tr>)}</tbody>
         </table></div>}
 
-      <form className="grid gap-3 border-t border-black/5 pt-4 sm:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto]" onSubmit={salva}>
-        <label className="text-xs text-[#52615d]">{t('rulePattern')}
-          <Input required value={form.pattern} onChange={(e) => setForm((c) => ({ ...c, pattern: e.target.value }))} className="mt-1 h-10 bg-white" /></label>
-        <label className="text-xs text-[#52615d]">{t('category')}
-          <select required value={form.category} onChange={(e) => setForm((c) => ({ ...c, category: e.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-input bg-white px-2 text-sm">
+      <form className="grid gap-3 border-t border-[var(--money-velo)]/5 pt-4 sm:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto]" onSubmit={salva}>
+        <label className="text-xs text-[var(--money-testo-muto)]">{t('rulePattern')}
+          <Input required value={form.pattern} onChange={(e) => setForm((c) => ({ ...c, pattern: e.target.value }))} className="mt-1 h-10 bg-[var(--money-superficie)]" /></label>
+        <label className="text-xs text-[var(--money-testo-muto)]">{t('category')}
+          <select required value={form.category} onChange={(e) => setForm((c) => ({ ...c, category: e.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2 text-sm">
             <option value="">{t('categoryPlaceholder')}</option>
             <CategoryOptions names={categories} tree={categoryTree} />
           </select></label>
-        <label className="text-xs text-[#52615d]">{t('type')}
-          <select value={form.type} onChange={(e) => setForm((c) => ({ ...c, type: e.target.value as typeof c.type }))} className="mt-1 h-10 w-full rounded-lg border border-input bg-white px-2 text-sm">
+        <label className="text-xs text-[var(--money-testo-muto)]">{t('type')}
+          <select value={form.type} onChange={(e) => setForm((c) => ({ ...c, type: e.target.value as typeof c.type }))} className="mt-1 h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2 text-sm">
             <option value="">{t('none')}</option>
             <option value="Expenses">{t('typeExpense')}</option>
             <option value="Income">{t('typeIncome')}</option>
           </select></label>
-        <label className="text-xs text-[#52615d]">{t('ruleAmountFrom')}
-          <Input type="number" min="0" step="0.01" value={form.minAmount} onChange={(e) => setForm((c) => ({ ...c, minAmount: e.target.value }))} className="mt-1 h-10 bg-white" /></label>
-        <label className="text-xs text-[#52615d]">{t('ruleAmountTo')}
-          <Input type="number" min="0" step="0.01" value={form.maxAmount} onChange={(e) => setForm((c) => ({ ...c, maxAmount: e.target.value }))} className="mt-1 h-10 bg-white" /></label>
+        <label className="text-xs text-[var(--money-testo-muto)]">{t('ruleAmountFrom')}
+          <Input type="number" min="0" step="0.01" value={form.minAmount} onChange={(e) => setForm((c) => ({ ...c, minAmount: e.target.value }))} className="mt-1 h-10 bg-[var(--money-superficie)]" /></label>
+        <label className="text-xs text-[var(--money-testo-muto)]">{t('ruleAmountTo')}
+          <Input type="number" min="0" step="0.01" value={form.maxAmount} onChange={(e) => setForm((c) => ({ ...c, maxAmount: e.target.value }))} className="mt-1 h-10 bg-[var(--money-superficie)]" /></label>
         <div className="flex items-end gap-2">
-          <label className="inline-flex items-center gap-2 pb-2.5 text-xs text-[#52615d]">
+          <label className="inline-flex items-center gap-2 pb-2.5 text-xs text-[var(--money-testo-muto)]">
             <input type="checkbox" checked={form.isRegex} onChange={(e) => setForm((c) => ({ ...c, isRegex: e.target.checked }))} className="size-4 shrink-0 cursor-pointer accent-[var(--money-primary)]" />
             {t('ruleIsRegex')}</label>
           <Button type="submit" disabled={busy} className="h-10 bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : editId ? t('save') : t('add')}</Button>
           {editId !== null && <Button type="button" variant="outline" className="h-10" disabled={busy} onClick={() => { setEditId(null); setForm(vuoto); setErrore(''); }}>{t('cancel')}</Button>}
         </div>
       </form>
-      {errore && <p role="alert" className="text-xs text-[#a94f3a]">{errore}</p>}
+      {errore && <p role="alert" className="text-xs text-[var(--money-allarme)]">{errore}</p>}
     </CardContent>
     {/* Le proposte non si applicano da sole: la spunta e' il passaggio in cui
         si decide, e chi non spunta niente non scrive niente. */}
@@ -8175,10 +8212,10 @@ function CategoryRulesCard({ rules, categories, categoryTree, apiUrl, onChanged 
           <DialogDescription>{t('categoryRulesHint')}</DialogDescription>
         </DialogHeader>
         {proposte.proposte.length === 0
-          ? <p className="text-sm text-[#5e6c68]">{t('ruleNoneFound')}</p>
+          ? <p className="text-sm text-[var(--money-testo-tenue)]">{t('ruleNoneFound')}</p>
           : <div className="max-h-80 space-y-1 overflow-y-auto">
             {proposte.proposte.map((proposta) => <label key={proposta.pattern}
-              className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-2 hover:bg-[#f7f8f5]">
+              className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-2 hover:bg-[var(--money-superficie-tenue)]">
               <input type="checkbox" className="mt-0.5 size-4 shrink-0 cursor-pointer accent-[var(--money-primary)]"
                 checked={spuntate.has(proposta.pattern)}
                 onChange={(e) => setSpuntate((vecchie) => {
@@ -8188,19 +8225,19 @@ function CategoryRulesCard({ rules, categories, categoryTree, apiUrl, onChanged 
                 })} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{proposta.pattern}</span>
-                <span className="block text-xs text-[#5e6c68]">{dettaglio(proposta)}</span>
+                <span className="block text-xs text-[var(--money-testo-tenue)]">{dettaglio(proposta)}</span>
               </span>
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${proposta.fiducia === 'sicura' ? 'bg-[#eaf5ef] text-[#237056]' : 'bg-[#f4f5f1] text-[#5e6c68]'}`}>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${proposta.fiducia === 'sicura' ? 'bg-[var(--money-ok-tenue)] text-[var(--money-ok)]' : 'bg-[var(--money-superficie-hover)] text-[var(--money-testo-tenue)]'}`}>
                 {t(proposta.fiducia === 'sicura' ? 'ruleConfidenceSure' : 'ruleConfidenceUnsure')}</span>
             </label>)}
           </div>}
         {/* Di sola lettura: sono le descrizioni che nessuna categoria tiene
             insieme, e riscriverle cambierebbe budget e report gia' chiusi. */}
-        {proposte.incoerenti.length > 0 && <details className="border-t border-black/5 pt-3">
-          <summary className="cursor-pointer text-xs font-medium text-[#52615d]">{t('ruleInconsistent')}</summary>
+        {proposte.incoerenti.length > 0 && <details className="border-t border-[var(--money-velo)]/5 pt-3">
+          <summary className="cursor-pointer text-xs font-medium text-[var(--money-testo-muto)]">{t('ruleInconsistent')}</summary>
           <ul className="mt-2 space-y-1">
-            {proposte.incoerenti.map((riga) => <li key={riga.pattern} className="text-xs text-[#5e6c68]">
-              <span className="text-[#28312f]">{riga.pattern}</span>
+            {proposte.incoerenti.map((riga) => <li key={riga.pattern} className="text-xs text-[var(--money-testo-tenue)]">
+              <span className="text-[var(--money-testo)]">{riga.pattern}</span>
               {` · ${t('ruleOccurrences', { count: riga.occorrenze })} · `}
               {riga.categorie.map((c) => `${c.category} ${c.count}`).join(', ')}</li>)}
           </ul>
@@ -8268,68 +8305,68 @@ function RecurringTransactionsView({ accounts, data, categoriesByType, categoryT
 
   return (
     <div className="space-y-5">
-      <Card className="border-black/6 bg-white shadow-sm">
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-[17px]"><Calendar className="size-5 text-[#237056]" />{t('newRecurrence')}</CardTitle>
-          <p className="mt-1 text-xs text-[#5e6c68]">{t('newRecurrenceDesc')}</p>
+          <CardTitle className="flex items-center gap-2 text-[17px]"><Calendar className="size-5 text-[var(--money-ok)]" />{t('newRecurrence')}</CardTitle>
+          <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('newRecurrenceDesc')}</p>
         </CardHeader>
         <CardContent>
           <form className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_1fr_auto]" onSubmit={submit}>
             <label>{t('fieldAccount')}<select required name="accountName" className="h-10 w-full rounded border"><option value="">{t('selectAccount')}</option>{accounts.filter(a => a.isActive !== false).map(a => <option key={a.id}>{a.name}</option>)}</select></label>
             {form.type === 'Transfers' && <label>{t('fieldDestinationAccount')}<select required name="destinationName" className="h-10 w-full rounded border"><option value="">{t('selectAccount')}</option>{accounts.filter(a => a.isActive !== false).map(a => <option key={a.id}>{a.name}</option>)}</select></label>}
-            <Input placeholder={t('descriptionPlaceholder')} value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} className="h-10 bg-white" />
-            <select aria-label={t('categoryPlaceholder')} required={form.type !== 'Transfers'} disabled={form.type === 'Transfers'} value={form.type === 'Transfers' ? '' : form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} className="h-10 rounded-lg border border-input bg-white px-2 text-sm disabled:bg-[#f4f5f1] disabled:text-[#a3adaa]">
+            <Input placeholder={t('descriptionPlaceholder')} value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} className="h-10 bg-[var(--money-superficie)]" />
+            <select aria-label={t('categoryPlaceholder')} required={form.type !== 'Transfers'} disabled={form.type === 'Transfers'} value={form.type === 'Transfers' ? '' : form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} className="h-10 rounded-lg border border-input bg-[var(--money-superficie)] px-2 text-sm disabled:bg-[var(--money-superficie-hover)] disabled:text-[var(--money-testo-spento)]">
               <option value="">{form.type === 'Transfers' ? t('categoryNotApplicable') : t('categoryPlaceholder')}</option>
               {form.type !== 'Transfers' && <CategoryOptions names={categoriesByType[form.type] ?? []} tree={categoryTree} />}
             </select>
-            <Input type="number" min="0.01" step="0.01" placeholder={t('amountPlaceholder')} value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} className="h-10 bg-white" />
+            <Input type="number" min="0.01" step="0.01" placeholder={t('amountPlaceholder')} value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} className="h-10 bg-[var(--money-superficie)]" />
             {/* Una categoria di spesa non vale per un'entrata: cambiando tipo si riparte. */}
-            <select aria-label={t('type')} value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value, category: (categoriesByType[event.target.value] ?? []).includes(current.category) ? current.category : '' }))} className="h-10 rounded-lg border border-input bg-white px-2 text-sm">
+            <select aria-label={t('type')} value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value, category: (categoriesByType[event.target.value] ?? []).includes(current.category) ? current.category : '' }))} className="h-10 rounded-lg border border-input bg-[var(--money-superficie)] px-2 text-sm">
               <option value="Expenses">{t('typeExpense')}</option>
               <option value="Income">{t('typeIncome')}</option>
               <option value="Transfers">{t('typeTransfer')}</option>
             </select>
             <Button type="submit" disabled={busy} className="h-10 bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">{busy ? t('savingEllipsis') : t('add')}</Button>
             <div className="sm:col-span-3 grid grid-cols-3 gap-3">
-              <label htmlFor="recurring-frequency" className="text-xs text-[#52615d]">{t('frequency')}<select id="recurring-frequency" value={form.recurrence} onChange={(event) => setForm((current) => ({ ...current, recurrence: event.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-input bg-white px-2 text-sm">
+              <label htmlFor="recurring-frequency" className="text-xs text-[var(--money-testo-muto)]">{t('frequency')}<select id="recurring-frequency" value={form.recurrence} onChange={(event) => setForm((current) => ({ ...current, recurrence: event.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2 text-sm">
                 <option value="FREQ=DAILY">{t('everyDay')}</option>
                 <option value="FREQ=WEEKLY">{t('everyWeek')}</option>
                 <option value="FREQ=MONTHLY;BYMONTHDAY=1">{t('everyMonthDay1')}</option>
                 <option value="FREQ=MONTHLY;BYMONTHDAY=15">{t('everyMonthDay15')}</option>
                 <option value="FREQ=YEARLY">{t('everyYear')}</option>
               </select></label>
-              <label htmlFor="recurring-start-date" className="text-xs text-[#52615d]">{t('startDateField')}<Input id="recurring-start-date" type="date" value={form.startDate} onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))} className="mt-1 h-10 bg-white" /></label>
-              <label htmlFor="recurring-end-date" className="text-xs text-[#52615d]">{t('endDateOptional')}<Input id="recurring-end-date" type="date" value={form.endDate} onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))} className="mt-1 h-10 bg-white" /></label>
+              <label htmlFor="recurring-start-date" className="text-xs text-[var(--money-testo-muto)]">{t('startDateField')}<Input id="recurring-start-date" type="date" value={form.startDate} onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))} className="mt-1 h-10 bg-[var(--money-superficie)]" /></label>
+              <label htmlFor="recurring-end-date" className="text-xs text-[var(--money-testo-muto)]">{t('endDateOptional')}<Input id="recurring-end-date" type="date" value={form.endDate} onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))} className="mt-1 h-10 bg-[var(--money-superficie)]" /></label>
             </div>
-            <p className="sm:col-span-2 text-[11px] text-[#5e6c68]">{t('currentRule')} <code className="rounded bg-[#f0f2ee] px-1.5 py-0.5">{form.recurrence}</code></p>
+            <p className="sm:col-span-2 text-[11px] text-[var(--money-testo-tenue)]">{t('currentRule')} <code className="rounded bg-[var(--money-superficie-hover)] px-1.5 py-0.5">{form.recurrence}</code></p>
           </form>
         </CardContent>
       </Card>
-      <Card className="border-black/6 bg-white shadow-sm">
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
         <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
           <CardTitle className="text-[17px]">{t('activeRecurrences')}</CardTitle>
-          <p className="mt-1 text-xs text-[#5e6c68]">{data.length === 1 ? t('ruleRegisteredCount', { count: data.length }) : t('rulesRegisteredCount', { count: data.length })}</p>
+          <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{data.length === 1 ? t('ruleRegisteredCount', { count: data.length }) : t('rulesRegisteredCount', { count: data.length })}</p>
           </div>
           {data.length > 0 && <div className="flex flex-wrap items-center gap-2">
-            <label className="text-xs font-medium text-[#52615d]">{t('generateUpTo')}<Input type="date" value={generateUpTo} onChange={(event) => setGenerateUpTo(event.target.value)} className="mt-1 h-9 w-[160px] bg-white" /></label>
+            <label className="text-xs font-medium text-[var(--money-testo-muto)]">{t('generateUpTo')}<Input type="date" value={generateUpTo} onChange={(event) => setGenerateUpTo(event.target.value)} className="mt-1 h-9 w-[160px] bg-[var(--money-superficie)]" /></label>
             <Button type="button" variant="outline" disabled={generating} onClick={() => void generate()} className="mt-5"><RefreshCw className={`size-4 ${generating ? 'animate-spin' : ''}`} />{generating ? t('generatingEllipsis') : t('generateOccurrences')}</Button>
           </div>}
         </CardHeader>
-        {generatedInfo !== null && <p className="px-(--card-spacing) text-xs text-[#237056]">{t('occurrencesGenerated', { count: generatedInfo })}</p>}
-        {errore && <p role="alert" className="mx-(--card-spacing) mt-2 rounded-lg bg-[#fce9e3] px-3 py-2 text-xs text-[#a94f3a]">{errore}</p>}
-        <CardContent className="divide-y divide-black/5">
-          {data.length === 0 ? <p className="py-6 text-center text-sm text-[#5e6c68]">{t('noRecurrences')}</p> :
+        {generatedInfo !== null && <p className="px-(--card-spacing) text-xs text-[var(--money-ok)]">{t('occurrencesGenerated', { count: generatedInfo })}</p>}
+        {errore && <p role="alert" className="mx-(--card-spacing) mt-2 rounded-lg bg-[var(--money-allarme-tenue)] px-3 py-2 text-xs text-[var(--money-allarme)]">{errore}</p>}
+        <CardContent className="divide-y divide-[var(--money-velo)]/5">
+          {data.length === 0 ? <p className="py-6 text-center text-sm text-[var(--money-testo-tenue)]">{t('noRecurrences')}</p> :
             data.map((rule) => (
               <div key={rule.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{rule.description}</p>
-                  <p className="mt-0.5 text-xs text-[#5e6c68]">{rule.category} · {rule.recurrence_rule ?? t('withoutRule')}{rule.next_occurrence ? ` · ${t('nextOccurrence', { date: formatDate(`${rule.next_occurrence}T12:00:00`, { day: 'numeric', month: 'short', year: 'numeric' }) })}` : ''}</p>
+                  <p className="mt-0.5 text-xs text-[var(--money-testo-tenue)]">{rule.category} · {rule.recurrence_rule ?? t('withoutRule')}{rule.next_occurrence ? ` · ${t('nextOccurrence', { date: formatDate(`${rule.next_occurrence}T12:00:00`, { day: 'numeric', month: 'short', year: 'numeric' }) })}` : ''}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-[#edf0ed] px-2.5 py-1 text-xs font-medium">{MOVIMENTO_TYPE_LABEL[rule.transactionType] ? t(MOVIMENTO_TYPE_LABEL[rule.transactionType]) : rule.transactionType}</span>
+                  <span className="rounded-full bg-[var(--money-superficie-hover)] px-2.5 py-1 text-xs font-medium">{MOVIMENTO_TYPE_LABEL[rule.transactionType] ? t(MOVIMENTO_TYPE_LABEL[rule.transactionType]) : rule.transactionType}</span>
                   <span className="text-sm font-semibold tabular-nums">{formatEuro(rule.amount)}</span>
-                  <Button type="button" size="icon" variant="ghost" aria-label={t('deleteRecurrence')} onClick={() => void rimuovi(rule)} className="text-[#a94f3a]"><Trash2 className="size-4" /></Button>
+                  <Button type="button" size="icon" variant="ghost" aria-label={t('deleteRecurrence')} onClick={() => void rimuovi(rule)} className="text-[var(--money-allarme)]"><Trash2 className="size-4" /></Button>
                 </div>
               </div>
             ))}

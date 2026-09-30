@@ -30,12 +30,12 @@ export function ErrorFallback({ onRetry }: { onRetry: () => void }) {
 
   return (
     <div className="grid min-h-[60vh] place-items-center px-6 py-10">
-      <div className="w-full max-w-md rounded-2xl border border-black/6 bg-white p-6 text-center shadow-sm">
-        <span className="mx-auto grid size-11 place-items-center rounded-xl bg-[#fce9e3] text-[#a94f3a]">
+      <div className="w-full max-w-md rounded-2xl border border-[var(--money-velo)]/6 bg-[var(--money-superficie)] p-6 text-center shadow-sm">
+        <span className="mx-auto grid size-11 place-items-center rounded-xl bg-[var(--money-allarme-tenue)] text-[var(--money-allarme)]">
           <TriangleAlert className="size-5" />
         </span>
-        <h1 className="mt-4 text-[17px] font-semibold text-[#173b33]">{testo('errorTitle', lang)}</h1>
-        <p className="mt-2 text-sm leading-6 text-[#5e6c68]">{testo('errorBody', lang)}</p>
+        <h1 className="mt-4 text-[17px] font-semibold text-[var(--money-marca)]">{testo('errorTitle', lang)}</h1>
+        <p className="mt-2 text-sm leading-6 text-[var(--money-testo-tenue)]">{testo('errorBody', lang)}</p>
         <div className="mt-5 flex flex-wrap justify-center gap-2">
           <Button type="button" onClick={onRetry} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">
             {testo('errorRetry', lang)}

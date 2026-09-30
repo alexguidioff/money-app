@@ -178,15 +178,15 @@ export function FirePage({ apiUrl, utente }: { apiUrl: string; utente: number | 
     // c'e' gia' (il ricalcolo non e' riuscito) resta a video, con una riga che
     // dice che e' quello di prima: toglierlo sarebbe perdere l'unica cosa che
     // l'utente stava guardando.
-    if (errore && !dati) return <Card className="border-[#efc4b8] bg-[#fff6f3] shadow-sm"><CardContent className="py-14 text-center"><p role="alert" className="text-sm text-[#a94f3a]">{t('fireProfileLoadError')}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void carica()}>{t('retry')}</Button></CardContent></Card>;
-    if (!dati) return <p className="py-16 text-center text-sm text-[#5e6c68]">{t('loading')}</p>;
+    if (errore && !dati) return <Card className="border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-velo)] shadow-sm"><CardContent className="py-14 text-center"><p role="alert" className="text-sm text-[var(--money-allarme)]">{t('fireProfileLoadError')}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void carica()}>{t('retry')}</Button></CardContent></Card>;
+    if (!dati) return <p className="py-16 text-center text-sm text-[var(--money-testo-tenue)]">{t('loading')}</p>;
 
     // Senza profilo non si mostra un piano costruito su ipotesi che nessuno ha
     // dichiarato: si chiede di compilarlo, e i dati si compilano qui accanto.
     if (!dati.configured || !dati.plan) {
-      return <Card className="border-black/6 bg-white shadow-sm"><CardContent className="py-14 text-center">
-        <Flame className="mx-auto mb-3 size-8 text-[#5e6c68]" />
-        <p className="text-sm text-[#173b33]">{t('fireNotConfigured')}</p>
+      return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardContent className="py-14 text-center">
+        <Flame className="mx-auto mb-3 size-8 text-[var(--money-testo-tenue)]" />
+        <p className="text-sm text-[var(--money-marca)]">{t('fireNotConfigured')}</p>
         <Button className="mt-4 bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]" onClick={() => setScheda('profilo')}>{t('fireGoToSettings')}</Button>
       </CardContent></Card>;
     }
@@ -218,7 +218,7 @@ export function FirePage({ apiUrl, utente }: { apiUrl: string; utente: number | 
     const avvisi = piano.warnings.filter((c) => c in testiAvvisi).map((c) => [c, testiAvvisi[c]] as const);
 
     return <div className="space-y-5">
-      {errore && <p role="alert" className="rounded-xl border border-[#efc4b8] bg-[#fff6f3] px-4 py-2.5 text-xs text-[#a94f3a]">{t('fireRefreshFailed')}</p>}
+      {errore && <p role="alert" className="rounded-xl border border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-velo)] px-4 py-2.5 text-xs text-[var(--money-allarme)]">{t('fireRefreshFailed')}</p>}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="border-0 bg-[var(--money-deep)] text-white shadow-sm"><CardContent className="p-5">
           <p className="text-sm text-white/70">{t('fireCapitalNeeded')}</p>
@@ -226,21 +226,21 @@ export function FirePage({ apiUrl, utente }: { apiUrl: string; utente: number | 
           {/* Senza pensioni non c'e' ponte: "ponte €0 · rabbocco = tutto" e' rumore. */}
           {pensione && <p className="mt-2 text-xs text-white/70">{t('fireBridgeCapital')} {formatCompactEuro(piano.bridgeCapital)} · {t('fireTopUpCapital')} {formatCompactEuro(piano.topUpCapital)}</p>}
         </CardContent></Card>
-        <Card className="border-black/6 bg-white shadow-sm"><CardContent className="p-5">
-          <p className="text-sm text-[#5e6c68]">{t('fireSupportsToday')}</p>
+        <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardContent className="p-5">
+          <p className="text-sm text-[var(--money-testo-tenue)]">{t('fireSupportsToday')}</p>
           <p className="mt-2 text-3xl font-semibold tabular-nums">{t('firePerMonth', { amount: formatEuro(alMese) })}</p>
-          {dati.expensesUsed !== undefined && <p className="mt-2 text-xs text-[#5e6c68]">{t('fireExpensesUsed', { amount: formatCompactEuro(dati.expensesUsed) })}</p>}
-          {dati.retirementExpenses !== undefined && dati.retirementExpenses !== dati.expensesUsed && <p className="mt-1 text-xs text-[#5e6c68]">{t('fireRetirementExpenses', { amount: formatCompactEuro(dati.retirementExpenses) })}</p>}
-          {dati.annualSavings !== undefined && <p className="mt-1 text-xs text-[#5e6c68]">{t('fireSavingsUsed', { amount: formatCompactEuro(dati.annualSavings), rate: formatNumber(dati.savingsRate ?? 0, { maximumFractionDigits: 1 }) })}</p>}
+          {dati.expensesUsed !== undefined && <p className="mt-2 text-xs text-[var(--money-testo-tenue)]">{t('fireExpensesUsed', { amount: formatCompactEuro(dati.expensesUsed) })}</p>}
+          {dati.retirementExpenses !== undefined && dati.retirementExpenses !== dati.expensesUsed && <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('fireRetirementExpenses', { amount: formatCompactEuro(dati.retirementExpenses) })}</p>}
+          {dati.annualSavings !== undefined && <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('fireSavingsUsed', { amount: formatCompactEuro(dati.annualSavings), rate: formatNumber(dati.savingsRate ?? 0, { maximumFractionDigits: 1 }) })}</p>}
         </CardContent></Card>
-        <Card className="border-black/6 bg-white shadow-sm sm:col-span-2"><CardContent className="p-5">
+        <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm sm:col-span-2"><CardContent className="p-5">
           {piano.reachedAtAge !== null && piano.reachedInYear !== null
             ? <p className="text-2xl font-semibold">{t('fireReachedAt', { age: piano.reachedAtAge, year: piano.reachedInYear })}</p>
-            : <p className="text-sm text-[#5e6c68]">{t('fireNotReached')}</p>}
-          {piano.yearsLeft !== null && <p className="mt-1 text-xs text-[#5e6c68]">{t('fireYearsLeft', { years: piano.yearsLeft })}</p>}
+            : <p className="text-sm text-[var(--money-testo-tenue)]">{t('fireNotReached')}</p>}
+          {piano.yearsLeft !== null && <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('fireYearsLeft', { years: piano.yearsLeft })}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
             {piano.phases.map((fase) => (
-              <span key={fase.kind} className="rounded-lg bg-[#f4f5f1] px-2.5 py-1 text-xs text-[#52615d]">
+              <span key={fase.kind} className="rounded-lg bg-[var(--money-superficie-hover)] px-2.5 py-1 text-xs text-[var(--money-testo-muto)]">
                 <b className="font-semibold">{etichettaFase(fase.kind)}</b>{' '}
                 {fase.toAge === null ? t('firePhaseOpen', { from: fase.fromAge }) : t('firePhaseRange', { from: fase.fromAge, to: fase.toAge })}
               </span>
@@ -282,8 +282,8 @@ export function FirePage({ apiUrl, utente }: { apiUrl: string; utente: number | 
           una proiezione presentata senza riserve e' una promessa. */}
       {/* Lo scenario-non-previsione lo dice gia' il grafico: ripeterlo qui era
           un doppione. Un codice sconosciuto non si mostra grezzo. */}
-      {avvisi.length > 0 && <Card className="border-black/6 bg-[#fafaf8] shadow-sm"><CardContent className="space-y-1 p-4">
-        {avvisi.map(([codice, testo]) => <p key={codice} className="text-xs leading-5 text-[#5e6c68]">{testo}</p>)}
+      {avvisi.length > 0 && <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie-tenue)] shadow-sm"><CardContent className="space-y-1 p-4">
+        {avvisi.map(([codice, testo]) => <p key={codice} className="text-xs leading-5 text-[var(--money-testo-tenue)]">{testo}</p>)}
       </CardContent></Card>}
     </div>;
   }
@@ -298,9 +298,9 @@ export function FirePage({ apiUrl, utente }: { apiUrl: string; utente: number | 
       {/* Da quando e' quel numero, e il tasto per rifarlo: la prima cosa che si
           cerca quando una cifra non torna. Il tasto resta anche mentre gira,
           spento, cosi' la riga non salta. */}
-      {scheda === 'piano' && <div className="flex items-center gap-2 text-xs text-[#5e6c68]">
+      {scheda === 'piano' && <div className="flex items-center gap-2 text-xs text-[var(--money-testo-tenue)]">
         {quando !== null && !inCorso && <span>{t('fireCalculatedAt', { time: formatDate(new Date(quando), { hour: '2-digit', minute: '2-digit' }) })}</span>}
-        <Button variant="outline" size="sm" disabled={inCorso} onClick={() => void carica()} className="h-8 gap-1.5 bg-white text-xs">
+        <Button variant="outline" size="sm" disabled={inCorso} onClick={() => void carica()} className="h-8 gap-1.5 bg-[var(--money-superficie)] text-xs">
           <RefreshCw className={`size-3.5 ${inCorso ? 'animate-spin' : ''}`} />{inCorso ? t('updating') : t('fireRecalculate')}
         </Button>
       </div>}

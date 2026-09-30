@@ -60,10 +60,10 @@ export function LoginScreen({ users, onLogin, onCreate }: {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f4f5f1] px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-black/6 bg-white p-6 shadow-sm">
-        <h1 className="text-lg font-semibold text-[#173b33]">{t('appName')}</h1>
-        <p className="mt-1 text-xs text-[#5e6c68]">
+    <div className="flex min-h-screen items-center justify-center bg-[var(--money-superficie-hover)] px-4">
+      <div className="w-full max-w-sm rounded-2xl border border-[var(--money-velo)]/6 bg-[var(--money-superficie)] p-6 shadow-sm">
+        <h1 className="text-lg font-semibold text-[var(--money-marca)]">{t('appName')}</h1>
+        <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">
           {users.length === 0 ? t('loginFirstAccount') : t('loginSubtitle')}
         </p>
 
@@ -76,15 +76,15 @@ export function LoginScreen({ users, onLogin, onCreate }: {
               className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
                 selected?.id === user.id
                   ? 'border-[var(--money-primary)] bg-[var(--money-primary)]/8'
-                  : 'border-black/8 hover:bg-black/[0.02]'
+                  : 'border-[var(--money-velo)]/8 hover:bg-[var(--money-velo)]/[0.02]'
               }`}
             >
               <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--money-primary)] text-sm font-semibold text-white">
                 {user.displayName.slice(0, 1).toUpperCase()}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-[#173b33]">{user.displayName}</span>
-                <span className="block text-[11px] text-[#5e6c68]">
+                <span className="block truncate text-sm font-medium text-[var(--money-marca)]">{user.displayName}</span>
+                <span className="block text-[11px] text-[var(--money-testo-tenue)]">
                   {user.hasPassword ? t('loginNeedsPassword') : t('loginNoPassword')}
                 </span>
               </span>
@@ -104,12 +104,12 @@ export function LoginScreen({ users, onLogin, onCreate }: {
               // usa un lettore di schermo restava senza sapere cosa stava
               // digitando. L'etichetta c'e' sempre, anche quando il campo e' pieno.
               aria-label={t('loginPassword')}
-              className="h-10 bg-white"
+              className="h-10 bg-[var(--money-superficie)]"
             />
           )}
           {/* `role="alert"`: l'errore nasce dopo l'invio, quando il fuoco e' sul
               pulsante, e senza questo non veniva mai letto ad alta voce. */}
-          {error && <p role="alert" className="rounded-lg bg-[#fff6f3] px-3 py-2 text-xs text-[#a94f3a]">{error}</p>}
+          {error && <p role="alert" className="rounded-lg bg-[var(--money-allarme-velo)] px-3 py-2 text-xs text-[var(--money-allarme)]">{error}</p>}
           {users.length > 0 && (
             <Button
               type="submit"
@@ -122,11 +122,11 @@ export function LoginScreen({ users, onLogin, onCreate }: {
         </form>
 
         {creazione ? (
-          <form onSubmit={crea} className="mt-4 space-y-2.5 border-t border-black/6 pt-4">
-            <p className="text-sm font-medium text-[#173b33]">{t('addPerson')}</p>
-            <p className="text-xs leading-5 text-[#5e6c68]">{t('addPersonHint')}</p>
+          <form onSubmit={crea} className="mt-4 space-y-2.5 border-t border-[var(--money-velo)]/6 pt-4">
+            <p className="text-sm font-medium text-[var(--money-marca)]">{t('addPerson')}</p>
+            <p className="text-xs leading-5 text-[var(--money-testo-tenue)]">{t('addPersonHint')}</p>
             <Input value={nome} onChange={(event) => setNome(event.target.value)}
-                   placeholder={t('personName')} aria-label={t('personName')} className="h-10 bg-white" autoFocus={users.length === 0} />
+                   placeholder={t('personName')} aria-label={t('personName')} className="h-10 bg-[var(--money-superficie)]" autoFocus={users.length === 0} />
             <div className="flex gap-2">
               <Button type="submit" disabled={busy || !nome.trim()}
                       className="h-10 flex-1 bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]">
@@ -141,7 +141,7 @@ export function LoginScreen({ users, onLogin, onCreate }: {
           </form>
         ) : (
           <button type="button" onClick={() => { setCreazione(true); setError(''); }}
-                  className="mt-4 w-full text-center text-xs font-medium text-[#237056] hover:underline">
+                  className="mt-4 w-full text-center text-xs font-medium text-[var(--money-ok)] hover:underline">
             {t('addPerson')}
           </button>
         )}

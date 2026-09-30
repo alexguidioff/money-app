@@ -226,7 +226,7 @@ export function CategoryTreeCard({ apiUrl, onChanged }: { apiUrl: string; onChan
               onClick={() => void sposta(riga, 1)}><ArrowDown className="size-3.5" /></Button>
       {puoSpostare && <select
         aria-label={t('catMoveUnder')} value="" disabled={inCorso}
-        className="h-7 max-w-[7.5rem] rounded-md border border-transparent bg-transparent px-1 text-[11px] text-[#5e6c68] outline-none hover:border-input focus:border-ring"
+        className="h-7 max-w-[7.5rem] rounded-md border border-transparent bg-transparent px-1 text-[11px] text-[var(--money-testo-tenue)] outline-none hover:border-input focus:border-ring"
         onChange={(evento) => void spostaSotto(riga, evento.target.value)}>
         <option value="">{t('catMoveUnder')}</option>
         {riga.parentId !== null && <option value="radice">{t('catMoveToRoot')}</option>}
@@ -239,7 +239,7 @@ export function CategoryTreeCard({ apiUrl, onChanged }: { apiUrl: string; onChan
               onClick={() => void chiama(`/api/categories/${riga.id}`, 'PATCH', { active: !riga.active })}>
         {riga.active ? t('catInactiveOff') : t('catInactiveOn')}
       </Button>
-      <Button type="button" variant="ghost" size="icon" className="size-7 text-[#a94f3a] hover:text-[#a94f3a]"
+      <Button type="button" variant="ghost" size="icon" className="size-7 text-[var(--money-allarme)] hover:text-[var(--money-allarme)]"
               aria-label={t('catDelete')} disabled={inCorso} onClick={() => void cancella(riga)}><Trash2 className="size-3.5" /></Button>
     </div>;
   }
@@ -256,10 +256,10 @@ export function CategoryTreeCard({ apiUrl, onChanged }: { apiUrl: string; onChan
       aria-label={t('catEssentialOf', { name: riga.name })} disabled={inCorso}
       value={riga.essential === 'needs' ? 'Needs' : riga.essential === 'wants' ? 'Wants' : ''}
       className={`h-7 shrink-0 rounded-full border px-2 text-[11px] outline-none focus:border-ring ${
-        riga.essential === 'needs' ? 'border-[#bcd8cd] bg-[#eef6f2] text-[#237056]'
-        : riga.essential === 'wants' ? 'border-[#e8d6bd] bg-[#fdf6ec] text-[#7d6119]'
-        : ereditato ? 'border-dashed border-[#d7dcd9] bg-transparent text-[#5e6c68]'
-        : 'border-[#e4e8e6] bg-transparent text-[#5e6c68]'}`}
+        riga.essential === 'needs' ? 'border-[var(--money-ok-bordo)] bg-[var(--money-ok-tenue)] text-[var(--money-ok)]'
+        : riga.essential === 'wants' ? 'border-[var(--money-attenzione-bordo)] bg-[var(--money-attenzione-tenue)] text-[var(--money-attenzione)]'
+        : ereditato ? 'border-dashed border-[var(--money-linea)] bg-transparent text-[var(--money-testo-tenue)]'
+        : 'border-[var(--money-linea)] bg-transparent text-[var(--money-testo-tenue)]'}`}
       onChange={(evento) => void classifica(riga, evento.target.value)}>
       <option value="">{ereditato
         ? t('catEssentialInherited', { value: riga.essentialEffective === 'needs' ? t('groupNeeds') : t('groupWants') })
@@ -278,43 +278,43 @@ export function CategoryTreeCard({ apiUrl, onChanged }: { apiUrl: string; onChan
   function nome(riga: CategoryRow, grande: boolean) {
     return <Input key={`${riga.id}-${riga.name}`} defaultValue={riga.name} aria-label={t('catRenameOf', { name: riga.name })}
                   className={`h-7 min-w-0 flex-1 border-transparent bg-transparent px-1.5 shadow-none hover:border-input focus:border-ring ${
-                    grande ? 'text-[14px] font-semibold text-[#2f3a37]' : 'text-[13px] text-[#4b5754]'} ${riga.active ? '' : 'line-through opacity-55'}`}
+                    grande ? 'text-[14px] font-semibold text-[var(--money-testo)]' : 'text-[13px] text-[var(--money-testo-muto)]'} ${riga.active ? '' : 'line-through opacity-55'}`}
                   onBlur={(evento) => void rinomina(riga, evento.currentTarget.value)}
                   onKeyDown={(evento) => { if (evento.key === 'Enter') evento.currentTarget.blur(); }} />;
   }
 
-  return <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+  return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
     <CardHeader>
       <CardTitle className="text-[17px]">{t('catSection')}</CardTitle>
-      <p className="text-xs leading-5 text-[#5e6c68]">{t('catSectionDesc')}</p>
+      <p className="text-xs leading-5 text-[var(--money-testo-tenue)]">{t('catSectionDesc')}</p>
     </CardHeader>
     <CardContent className="space-y-5">
-      {errore && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#a94f3a]">{errore}</p>}
+      {errore && <p role="alert" className="rounded-xl border border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-tenue)] px-4 py-2 text-sm text-[var(--money-allarme)]">{errore}</p>}
       {VERSI.map(({ verso, titolo }) => {
         const delVerso = righe.filter((riga) => riga.scope === verso);
         const radici = delVerso.filter((riga) => riga.parentId === null);
         return <div key={verso} className="space-y-3">
-          <h3 className="text-sm font-semibold text-[#3d4a47]">{t(titolo)}</h3>
+          <h3 className="text-sm font-semibold text-[var(--money-testo)]">{t(titolo)}</h3>
           <div className="flex gap-2">
             <Input value={nuova[verso] ?? ''} aria-label={t('catNewRoot')} placeholder={t('catNewRoot')}
                    onChange={(evento) => setNuova((corrente) => ({ ...corrente, [verso]: evento.target.value }))}
                    onKeyDown={(evento) => { if (evento.key === 'Enter') void aggiungi(nuova[verso] ?? '', null, verso); }} />
             <Button type="button" disabled={inCorso} onClick={() => void aggiungi(nuova[verso] ?? '', null, verso)}>{t('catAdd')}</Button>
           </div>
-          {radici.length === 0 && <p className="text-xs text-[#5e6c68]">{t('catEmpty')}</p>}
+          {radici.length === 0 && <p className="text-xs text-[var(--money-testo-tenue)]">{t('catEmpty')}</p>}
           <ul className="space-y-2">
             {radici.map((radice) => {
               const figlie = delVerso.filter((figlio) => figlio.parentId === radice.id);
               const aperta = aperti.has(radice.id);
-              return <li key={radice.id} className="overflow-hidden rounded-xl border border-black/[0.07]">
+              return <li key={radice.id} className="overflow-hidden rounded-xl border border-[var(--money-velo)]/[0.07]">
                 {/* La radice ha lo sfondo e il nome in grassetto: si vede che e'
                     il contenitore, non una voce come le altre. */}
-                <div className="group flex items-center gap-1.5 bg-[#f6f8f6] px-2.5 py-1.5">
+                <div className="group flex items-center gap-1.5 bg-[var(--money-superficie-tenue)] px-2.5 py-1.5">
                   {/* La freccia c'e' solo dove c'e' qualcosa da aprire; dove non
                       c'e', resta lo spazio, cosi' i nomi delle radici sono tutti
                       allineati e non sembrano di due elenchi diversi. */}
                   {figlie.length > 0
-                    ? <Button type="button" variant="ghost" size="icon" className="size-6 shrink-0 text-[#5e6c68]"
+                    ? <Button type="button" variant="ghost" size="icon" className="size-6 shrink-0 text-[var(--money-testo-tenue)]"
                               aria-expanded={aperta} aria-label={t(aperta ? 'catCollapse' : 'catExpand', { name: radice.name })}
                               onClick={() => alterna(radice.id)}>
                         {aperta ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
@@ -322,23 +322,23 @@ export function CategoryTreeCard({ apiUrl, onChanged }: { apiUrl: string; onChan
                     : <span aria-hidden className="size-6 shrink-0" />}
                   {iconaCategoria(radice.name) && <span aria-hidden className="shrink-0 text-[15px] leading-none">{iconaCategoria(radice.name)}</span>}
                   {nome(radice, true)}
-                  {usi(radice) && <span className="shrink-0 text-[11px] text-[#5e6c68]">{usi(radice)}</span>}
+                  {usi(radice) && <span className="shrink-0 text-[11px] text-[var(--money-testo-tenue)]">{usi(radice)}</span>}
                   {classificazione(radice)}
                   {azioni(radice, radici)}
                 </div>
-                {figlie.length > 0 && aperta && <ul className="divide-y divide-black/[0.04]">
+                {figlie.length > 0 && aperta && <ul className="divide-y divide-[var(--money-velo)]/[0.04]">
                   {figlie.map((sotto_voce) => <li key={sotto_voce.id}
                       className="group flex items-center gap-1.5 py-1.5 pr-2.5 pl-2.5">
                     {/* La linea verticale dice a colpo d'occhio che questa riga
                         appartiene a quella sopra: il rientro da solo non bastava. */}
-                    <span aria-hidden className="ml-1 mr-1 h-5 w-px shrink-0 bg-[#dfe4e1]" />
+                    <span aria-hidden className="ml-1 mr-1 h-5 w-px shrink-0 bg-[var(--money-superficie-hover)]" />
                     {nome(sotto_voce, false)}
-                    {usi(sotto_voce) && <span className="shrink-0 text-[11px] text-[#5e6c68]">{usi(sotto_voce)}</span>}
+                    {usi(sotto_voce) && <span className="shrink-0 text-[11px] text-[var(--money-testo-tenue)]">{usi(sotto_voce)}</span>}
                     {classificazione(sotto_voce)}
                     {azioni(sotto_voce, radici)}
                   </li>)}
                 </ul>}
-                <div className="border-t border-black/[0.04] px-2.5 py-1">
+                <div className="border-t border-[var(--money-velo)]/[0.04] px-2.5 py-1">
                   {sotto === radice.id
                     ? <div className="flex gap-2 py-1">
                         <Input autoFocus value={figlia} aria-label={t('catChildPlaceholder')} placeholder={t('catChildPlaceholder')}
@@ -347,7 +347,7 @@ export function CategoryTreeCard({ apiUrl, onChanged }: { apiUrl: string; onChan
                         <Button type="button" size="sm" disabled={inCorso} onClick={() => void aggiungi(figlia, radice.id, radice.scope)}>{t('catAdd')}</Button>
                         <Button type="button" size="sm" variant="ghost" onClick={() => { setSotto(null); setFiglia(''); }}>{t('catCancel')}</Button>
                       </div>
-                    : <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[11px] text-[#5e6c68]"
+                    : <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-[11px] text-[var(--money-testo-tenue)]"
                               onClick={() => { setSotto(radice.id); setFiglia(''); }}>
                         <Plus className="size-3.5" />{t('catAddChild')}
                       </Button>}

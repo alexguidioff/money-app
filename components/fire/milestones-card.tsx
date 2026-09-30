@@ -34,10 +34,10 @@ export function MilestonesCard({ milestones, capital, leanNote }: {
     { key: 'fi', label: t('fireMilestoneFI') },
   ];
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
       <CardHeader>
         <CardTitle className="text-[17px]">{t('fireMilestonesTitle')}</CardTitle>
-        <p className="mt-1 text-xs text-[#5e6c68]">{t('fireMilestonesSubtitle')}</p>
+        <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('fireMilestonesSubtitle')}</p>
       </CardHeader>
       <CardContent>
         <ul className="grid gap-3 sm:grid-cols-2">
@@ -46,13 +46,13 @@ export function MilestonesCard({ milestones, capital, leanNote }: {
             if (!data) return null;
             const ok = data.reached === true;
             return (
-              <li key={item.key} className={`rounded-xl border p-3 ${ok ? 'border-[#cfe6dc] bg-[#e5f3ed]' : 'border-black/6 bg-white'}`}>
-                <p className="text-sm font-semibold text-[#3a4a46]">{item.label}</p>
+              <li key={item.key} className={`rounded-xl border p-3 ${ok ? 'border-[var(--money-ok-bordo)] bg-[var(--money-ok-tenue)]' : 'border-[var(--money-velo)]/6 bg-[var(--money-superficie)]'}`}>
+                <p className="text-sm font-semibold text-[var(--money-testo)]">{item.label}</p>
                 {data.capitalNeeded === null ? (
-                  <p className="mt-1 text-xs text-[#5e6c68]">{t('fireMilestoneLeanUnset')}</p>
+                  <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('fireMilestoneLeanUnset')}</p>
                 ) : <>
-                  <p className="mt-1 text-xs text-[#5e6c68]">{formatEuro(data.capitalNeeded)}</p>
-                  <p className={`mt-1 text-xs font-medium ${ok ? 'text-[#237056]' : 'text-[#a94f3a]'}`}>
+                  <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{formatEuro(data.capitalNeeded)}</p>
+                  <p className={`mt-1 text-xs font-medium ${ok ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'}`}>
                     {item.key === 'lean' && leanNote ? leanNote : ok ? t('fireMilestoneReached')
                       : t('fireMilestoneMissing', { amount: formatEuro(Math.max(data.capitalNeeded - capital, 0)) })}
                   </p>

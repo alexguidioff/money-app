@@ -7,18 +7,57 @@ import { describe, expect, it } from 'vitest';
  *
  * La soglia e' 4,5:1, quella che WCAG chiede al testo normale: sotto, il testo
  * c'e' ma non si legge, e nessun test funzionale se ne accorge. I colori qui
- * sotto sono quelli che l'app usa davvero come fondo, e le sei terne dei temi
- * sono copiate da `THEMES` (money-dashboard.tsx): se cambiano li', vanno
- * cambiate anche qui, ed e' voluto - e' il punto in cui ci si accorge di aver
- * scurito un tema sotto la soglia.
+ * sotto li legge da `app/globals.css`: la tavolozza di giorno sta in `:root`,
+ * quella notturna in `html.dark`, e leggerle invece di ricopiarle vuol dire
+ * che il giorno in cui qualcuno abbassa un fondo e scurisce troppo un testo,
+ * e' questo file a dirlo - non una segnalazione di Mary.
+ *
+ * I colori dei sei temi sono l'eccezione: vivono in JS (THEMES,
+ * money-dashboard.tsx) e sono copiati qui. Se cambiano li', vanno cambiati
+ * anche qui, ed e' voluto.
  */
+const CSS = readFileSync('app/globals.css', 'utf-8');
+
+/** Le variabili `--money-...` dichiarate con un colore pieno (non `var(...)`). */
+function tavolozza(testo: string): Record<string, string> {
+  const lette: Record<string, string> = {};
+  for (const [, nome, colore] of testo.matchAll(/(--money-[a-z-]+):\s*(#[0-9a-fA-F]{3,6});/g)) {
+    lette[nome] = colore.toLowerCase();
+  }
+  return lette;
+}
+
+const TAGLIO = CSS.indexOf('html.dark {');
+const GIORNO = tavolozza(CSS.slice(0, TAGLIO));
+const NOTTE = tavolozza(CSS.slice(TAGLIO));
+// Le sei pagine tinteggiate di notte: una regola per tema.
+const PAGINE_NOTTE = [...CSS.slice(TAGLIO).matchAll(/html\.dark\[data-tema='[^']+'\]\s*\{\s*--money-page:\s*(#[0-9a-fA-F]{6})/g)]
+  .map(([, colore]) => colore.toLowerCase());
+
+/** I fondi su cui puo' capitare del testo: la card, i riquadri dentro, le
+ *  tinte delle famiglie. Fuori restano i veli (traslucidi) e le linee di un
+ *  pixel, che non sono fondo di niente. */
+const FONDI = ['--money-superficie', '--money-superficie-tenue', '--money-superficie-hover',
+  '--money-ok-tenue', '--money-allarme-tenue', '--money-allarme-velo',
+  '--money-attenzione-tenue', '--money-risparmio-tenue', '--money-investimento-tenue'];
+
+/** I colori che l'app usa per scrivere. Fuori restano quelli che non sono
+ *  testo: il velo, la linea, l'anello dei campi, il riempimento di una barra
+ *  e il dato che manca in un grafico. */
+const INCHIOSTRI = ['--money-testo', '--money-testo-tenue', '--money-testo-muto', '--money-marca',
+  '--money-ok', '--money-allarme', '--money-allarme-hover', '--money-attenzione',
+  '--money-risparmio', '--money-investimento'];
+
+// Le pagine dei sei temi, chiare e scure: un testo puo' capitare anche li'.
+const TEMI_CHIARI = ['#f9f8f3', '#f9f5f3', '#f3f9f6', '#f3f8f9', '#f3f5f9', '#f6f3f9'];
+const TEMI_SCURI = ['#5c501f', '#5c311f', '#1f5c38', '#1f545c', '#1f355c', '#3f1f5c', // --money-deep
+  '#332c0f', '#331a0f', '#0f331e', '#0f2f33', '#0f1c33', '#220f33'];                   // --money-sidebar
+
 const SFONDI_CHIARI = ['#ffffff', '#f4f5f1', '#f9f8f3', '#f6f8f6', '#fafaf8', '#edf0ed',
   '#f4f9f7', '#f9fbf9', '#f6f3f9', '#f0f2ee', '#fce9e3', '#fff6f3', '#fdf6ec', '#eaf5ef',
   '#e5f3ed', '#fff9f6', '#f2efdb', '#f6f9f7', '#f0f8f4', '#f3faf7', '#f2f7f4', '#f7f8f5'];
 // Fuori resta `#dfe4e1`: e' la linea di un pixel che stacca un ramo dall'altro, non
 // un fondo su cui sta del testo, e includerlo accuserebbe un colore che nessuno legge.
-const TEMI_SCURI = ['#5c501f', '#5c311f', '#1f5c38', '#1f545c', '#1f355c', '#3f1f5c', // --money-deep
-  '#332c0f', '#331a0f', '#0f331e', '#0f2f33', '#0f1c33', '#220f33'];                   // --money-sidebar
 
 /** I colori che possono stare sotto la soglia perche' non sono testo da leggere:
  *  stati spenti (una voce disattivata, un gettone inattivo, che WCAG esenta) e
@@ -64,7 +103,43 @@ function sorgenti(cartella: string): string[] {
 
 const testo = ['components', 'app'].flatMap(sorgenti).map((f) => ({ file: f, codice: readFileSync(f, 'utf-8') }));
 
+/** Il peggior contrasto di ogni inchiostro sui fondi di una modalita'. */
+function peggiori(tavolozza: Record<string, string>, fondi: string[]): string[] {
+  const esiti: string[] = [];
+  for (const inchiostro of INCHIOSTRI) {
+    const colore = tavolozza[inchiostro];
+    if (!colore) { esiti.push(`${inchiostro}: non dichiarato`); continue; }
+    const minimo = Math.min(...fondi.map((fondo) => contrasto(colore, fondo)));
+    if (minimo < SOGLIA) esiti.push(`${inchiostro} ${colore} = ${minimo.toFixed(2)}:1`);
+  }
+  return esiti;
+}
+
 describe('contrasto del testo', () => {
+  it('di giorno ogni inchiostro arriva a 4,5:1 sui fondi chiari', () => {
+    expect(peggiori(GIORNO, [...SFONDI_CHIARI, ...TEMI_CHIARI])).toEqual([]);
+  });
+
+  it('di notte ogni inchiostro arriva a 4,5:1 sui fondi scuri', () => {
+    // Fuori i temi scuri: le card profonde sono scure in tutte e due le
+    // modalita' e ci sta sopra solo del testo bianco, mai l'inchiostro
+    // dell'app. Metterli qui vorrebbe dire accusare un incontro che non
+    // succede.
+    const fondi = [...FONDI.map((nome) => NOTTE[nome]), ...PAGINE_NOTTE];
+    expect(PAGINE_NOTTE).toHaveLength(6);
+    expect(fondi.every((fondo) => fondo && fondo.startsWith('#'))).toBe(true);
+    expect(peggiori(NOTTE, fondi)).toEqual([]);
+  });
+
+  it('la notte ha davvero abbassato i fondi, non solo rinominato i colori', () => {
+    // Senza questo, una tavolozza notturna copiata da quella di giorno
+    // passerebbe il test di sopra senza essere una notte.
+    for (const fondo of FONDI) {
+      expect(luminanza(NOTTE[fondo])).toBeLessThan(luminanza(GIORNO[fondo]));
+    }
+    expect(luminanza(NOTTE['--money-page'])).toBeLessThan(0.05);
+  });
+
   it('ogni colore scritto a mano in una classe text-[...] arriva a 4,5:1 sui fondi chiari', () => {
     const peggiori: string[] = [];
     for (const { file, codice } of testo) {

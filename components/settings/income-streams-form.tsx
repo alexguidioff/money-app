@@ -109,27 +109,27 @@ export function IncomeStreamsForm({ apiUrl }: { apiUrl: string }) {
   }
 
   return (
-    <Card className="border-black/6 bg-white shadow-sm shadow-black/[0.025]">
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
       <CardHeader>
         <CardTitle className="text-[17px]">{t('fireStreamsTitle')}</CardTitle>
-        <p className="mt-1 text-xs text-[#5e6c68]">{t('fireStreamsSubtitle')}</p>
+        <p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('fireStreamsSubtitle')}</p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {error && <p role="alert" className="rounded-xl border border-[#f4d8ce] bg-[#fce9e3] px-4 py-2 text-sm text-[#a94f3a]">{error}</p>}
+        {error && <p role="alert" className="rounded-xl border border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-tenue)] px-4 py-2 text-sm text-[var(--money-allarme)]">{error}</p>}
         {outcome && (
-          <p role="status" className={`rounded-xl border px-4 py-2 text-sm ${outcome.ok ? 'border-[#cfe6dc] bg-[#e5f3ed] text-[#237056]' : 'border-[#f4d8ce] bg-[#fce9e3] text-[#a94f3a]'}`}>
+          <p role="status" className={`rounded-xl border px-4 py-2 text-sm ${outcome.ok ? 'border-[var(--money-ok-bordo)] bg-[var(--money-ok-tenue)] text-[var(--money-ok)]' : 'border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-tenue)] text-[var(--money-allarme)]'}`}>
             {outcome.message}
           </p>
         )}
         {streams.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-black/10 bg-[#fafaf8] px-4 py-6 text-center text-sm text-[#5e6c68]">{t('fireStreamsEmpty')}</p>
+          <p className="rounded-xl border border-dashed border-[var(--money-velo)]/10 bg-[var(--money-superficie-tenue)] px-4 py-6 text-center text-sm text-[var(--money-testo-tenue)]">{t('fireStreamsEmpty')}</p>
         ) : (
-          <ul className="divide-y divide-black/5 rounded-xl border border-black/6 bg-white">
+          <ul className="divide-y divide-[var(--money-velo)]/5 rounded-xl border border-[var(--money-velo)]/6 bg-[var(--money-superficie)]">
             {streams.map((s) => (
               <li key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{s.name}</p>
-                  <p className="mt-0.5 text-xs text-[#5e6c68]">
+                  <p className="mt-0.5 text-xs text-[var(--money-testo-tenue)]">
                     {s.kind === 'annuity' ? t('fireStreamsKindAnnuity') : t('fireStreamsKindCapital')} ·
                     {/* L'unita' accanto al numero: senza, una rendita letta
                         "a vita · 2.000,00 €" sembra duemila al mese. */}
@@ -145,7 +145,7 @@ export function IncomeStreamsForm({ apiUrl }: { apiUrl: string }) {
                 <Button size="sm" variant="outline" disabled={busy} onClick={() => { setEditing(s); setCreating(false); }}>
                   {t('fireStreamsEdit')}
                 </Button>
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => void cancella(s)} className="text-[#a94f3a]">
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => void cancella(s)} className="text-[var(--money-allarme)]">
                   {t('fireStreamsDelete')}
                 </Button>
               </li>
@@ -178,17 +178,17 @@ function StreamEditor({ t, lang, initial, busy, onCancel, onSave }: {
 }) {
   const [values, setValues] = useState<Omit<IncomeStream, 'id'>>({ ...EMPTY, ...initial });
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onSave(values); }} className="space-y-4 rounded-xl border border-black/6 bg-[#fafaf8] p-4">
+    <form onSubmit={(e) => { e.preventDefault(); onSave(values); }} className="space-y-4 rounded-xl border border-[var(--money-velo)]/6 bg-[var(--money-superficie-tenue)] p-4">
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
+        <label className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">
           {t('fireStreamsName')}
           <Input required value={values.name} placeholder={t('fireStreamsNamePlaceholder')}
-            onChange={(e) => setValues({ ...values, name: e.target.value })} className="h-10 bg-white" />
+            onChange={(e) => setValues({ ...values, name: e.target.value })} className="h-10 bg-[var(--money-superficie)]" />
         </label>
-        <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
+        <label className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">
           {t('fireStreamsKind')}
           <select value={values.kind} onChange={(e) => setValues({ ...values, kind: e.target.value as IncomeStream['kind'] })}
-            className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring">
+            className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm outline-none focus:border-ring">
             <option value="annuity">{t('fireStreamsKindAnnuity')}</option>
             <option value="capital">{t('fireStreamsKindCapital')}</option>
           </select>
@@ -199,42 +199,42 @@ function StreamEditor({ t, lang, initial, busy, onCancel, onSave }: {
             facile da sbagliare di tutta la pagina, e sbagliarlo per dodici non
             si vede. */}
         <div className="space-y-1.5">
-          <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
+          <label className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">
             {t('fireStreamsAmount')} (€)
             <NumeroField min={0} step="0.01" value={values.amount}
-              onChange={(numero) => setValues({ ...values, amount: numero })} className="h-10 bg-white" />
+              onChange={(numero) => setValues({ ...values, amount: numero })} className="h-10 bg-[var(--money-superficie)]" />
           </label>
-          <span className="block leading-4 text-[11px] text-[#5e6c68]">{t('fireStreamsAmountHint')}</span>
+          <span className="block leading-4 text-[11px] text-[var(--money-testo-tenue)]">{t('fireStreamsAmountHint')}</span>
         </div>
-        <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
+        <label className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">
           {t('fireStreamsStartAge')} ({t('fireProfileYears')})
           <NumeroField min={18} max={100} value={values.startAge}
-            onChange={(numero) => setValues({ ...values, startAge: numero })} className="h-10 bg-white" />
+            onChange={(numero) => setValues({ ...values, startAge: numero })} className="h-10 bg-[var(--money-superficie)]" />
         </label>
-        <label className="block space-y-1.5 text-xs font-medium text-[#52615d]">
+        <label className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">
           {t('fireStreamsCountry')}
           <select value={values.country ?? ''} onChange={(e) => setValues({ ...values, country: e.target.value || null })}
-            className="h-10 w-full rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus:border-ring">
+            className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm outline-none focus:border-ring">
             <option value="">—</option>
             {COUNTRIES.map((c) => (
               <option key={c.code} value={c.code}>{countryLabel(c.code, lang)}</option>
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-2 text-sm text-[#52615d]">
+        <label className="flex items-center gap-2 text-sm text-[var(--money-testo-muto)]">
           <input type="checkbox" checked={values.indexed} onChange={(e) => setValues({ ...values, indexed: e.target.checked })}
             className="size-4 accent-[var(--money-primary)]" />
           {t('fireStreamsIndexed')}
         </label>
-        <label className="block space-y-1.5 text-xs font-medium text-[#52615d] sm:col-span-2">
+        <label className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)] sm:col-span-2">
           {t('fireStreamsEarlyPayoutAmount')}
           <Input type="number" min={0} step="0.01" value={values.amountIfStoppingNow ?? ''}
-            onChange={(e) => setValues({ ...values, amountIfStoppingNow: e.target.value === '' ? null : Number(e.target.value) })} className="h-10 bg-white" />
+            onChange={(e) => setValues({ ...values, amountIfStoppingNow: e.target.value === '' ? null : Number(e.target.value) })} className="h-10 bg-[var(--money-superficie)]" />
         </label>
-        <label className="block space-y-1.5 text-xs font-medium text-[#52615d] sm:col-span-2">
+        <label className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)] sm:col-span-2">
           {t('fireStreamsNotes')}
           <textarea value={values.notes} onChange={(e) => setValues({ ...values, notes: e.target.value })}
-            className="min-h-[48px] w-full rounded-lg border border-input bg-white px-3 py-2 text-sm outline-none focus:border-ring" />
+            className="min-h-[48px] w-full rounded-lg border border-input bg-[var(--money-superficie)] px-3 py-2 text-sm outline-none focus:border-ring" />
         </label>
       </div>
       <div className="flex justify-end gap-2">
