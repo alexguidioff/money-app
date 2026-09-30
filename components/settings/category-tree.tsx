@@ -226,8 +226,13 @@ export function CategoryTreeCard({ apiUrl, onChanged }: { apiUrl: string; onChan
   function classificazione(riga: CategoryRow) {
     if (riga.scope !== 'expense') return null;
     const ereditato = riga.essential === null && riga.essentialEffective;
+    // La categoria dice "needs"/"wants" (minuscolo), la tendina parla coi nomi
+    // dei gruppi ("Needs"/"Wants"): senza convertirli il valore non trova la sua
+    // opzione, e la tendina resta sulla prima - "non detto" - mentre il colore
+    // cambia, perche' quello legge il campo vero.
     return <select
-      aria-label={t('catEssentialOf', { name: riga.name })} value={riga.essential ?? ''} disabled={inCorso}
+      aria-label={t('catEssentialOf', { name: riga.name })} disabled={inCorso}
+      value={riga.essential === 'needs' ? 'Needs' : riga.essential === 'wants' ? 'Wants' : ''}
       className={`h-7 shrink-0 rounded-full border px-2 text-[11px] outline-none focus:border-ring ${
         riga.essential === 'needs' ? 'border-[#bcd8cd] bg-[#eef6f2] text-[#237056]'
         : riga.essential === 'wants' ? 'border-[#e8d6bd] bg-[#fdf6ec] text-[#7d6119]'
