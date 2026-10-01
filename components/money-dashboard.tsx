@@ -94,7 +94,7 @@ import { BENCHMARKS } from '@/lib/data/benchmarks';
 import { LoginScreen, type AccountSummary } from '@/components/login-screen';
 import { SharedTotalsView } from '@/components/shared-totals';
 import { FirePage } from '@/components/fire-page';
-import { CategoryOptions, type CategoryNode } from '@/components/category-options';
+import { CategoryOptions, CategoryPicker, type CategoryNode } from '@/components/category-options';
 import { CategoryTreeCard } from '@/components/settings/category-tree';
 import { AccountSettings, type AccountState } from '@/components/account-settings';
 import { NotificationsPanel, type Notification } from '@/components/notifications-panel';
@@ -4108,7 +4108,7 @@ function SectionView({
         {budgetView === 'plan' && <div className="space-y-5">
           {period.scope === 'month' ? <>
             <BudgetPlanMonthTotals data={budgetData} budgetType={budgetType} calculations={calculationData} year={selectedYear} month={selectedMonth} />
-            {budgetType === 'Savings' ? <BudgetBalanceCard balance={budgetData.balance} scope="month" /> : <BudgetEditor data={budgetData} canEdit={canEditBudgetYear} editableYears={editableBudgetYears} budgetType={budgetType} suggestions={budgetSuggestions} onUpdate={onBudgetUpdate} onCreate={onBudgetCreate} onDelete={onBudgetDelete} onCopy={onBudgetCopy} categorieDelVerso={settingsData.categoriesByType[budgetType] ?? []} padreDi={padreDiCategoria} />}
+            {budgetType === 'Savings' ? <BudgetBalanceCard balance={budgetData.balance} scope="month" /> : <BudgetEditor data={budgetData} canEdit={canEditBudgetYear} editableYears={editableBudgetYears} budgetType={budgetType} suggestions={budgetSuggestions} onUpdate={onBudgetUpdate} onCreate={onBudgetCreate} onDelete={onBudgetDelete} onCopy={onBudgetCopy} categorieDelVerso={settingsData.categoriesByType[budgetType] ?? []} albero={settingsData.categoryTree} padreDi={padreDiCategoria} />}
           </> : budgetType === 'Savings' ? <BudgetBalanceCard balance={annualBudgetData.balance} scope="year" /> : <AnnualBudgetEditor data={annualBudgetData} padreDi={padreDiCategoria} onApply={onAnnualBudgetApply} />}
         </div>}
         </>}
@@ -6288,13 +6288,14 @@ function NetWorthView({ apiUrl, data, primoAnno, accounts, alPresente, onNewAcco
   </div>;
 }
 
-function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, categorieDelVerso, padreDi, onUpdate, onCreate, onDelete, onCopy }: {
+function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, categorieDelVerso, albero, padreDi, onUpdate, onCreate, onDelete, onCopy }: {
   data: BudgetData;
   canEdit: boolean;
   editableYears: number[];
   budgetType: 'Expenses' | 'Income';
   suggestions: BudgetSuggestion[];
   categorieDelVerso: string[];
+  albero: CategoryNode[];
   padreDi: Record<string, string>;
   onUpdate: (id: number, payload: { category?: string; amount?: number }) => Promise<void>;
   onCreate: (category: string, amount: number) => Promise<void>;
@@ -6488,7 +6489,7 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
         <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--money-testo-tenue)]">{t('budgetSuggestedNew')}</p>
         <div className="mt-2 flex flex-wrap gap-2">{senzaRiga.map((voce) => <button key={voce.category} type="button" disabled={Boolean(busy)} title={t('budgetSuggestionTitle', { average: soldi(voce.average), max: soldi(voce.max) })} onClick={() => { setNewCategory(voce.category); setNewAmount(voce.median.toFixed(2)); }} className="rounded-full border border-[var(--money-velo)]/10 bg-[var(--money-superficie)] px-3 py-1 text-xs text-[var(--money-ok)] transition hover:border-[var(--money-ok)] disabled:cursor-default disabled:text-[var(--money-testo-spento)]">{voce.category} · {t('budgetSuggestion', { amount: soldi(voce.median), months: voce.monthsWithSpending, total: voce.monthsConsidered })}</button>)}</div>
       </div>}
-      {canEdit && <form onSubmit={create} className="mt-4 grid gap-2 rounded-xl bg-[var(--money-superficie-hover)] p-3 sm:grid-cols-[1fr_150px_auto]"><select required value={newCategory} onChange={(event) => setNewCategory(event.target.value)} className="h-10 rounded-md border border-input bg-[var(--money-superficie)] px-2 text-sm"><option value="">{t('budgetPickCategory')}</option>{categorieDisponibili.map((nome) => <option key={nome} value={nome}>{nome}</option>)}</select><Input required min="0" step="0.01" type="number" value={newAmount} onChange={(event) => setNewAmount(event.target.value)} placeholder={t('budgetPlaceholder')} className="h-10 bg-[var(--money-superficie)]" /><Button type="submit" disabled={Boolean(busy)} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('add')}</Button></form>}
+      {canEdit && <form onSubmit={create} className="mt-4 grid gap-2 rounded-xl bg-[var(--money-superficie-hover)] p-3 sm:grid-cols-[1fr_1fr_150px_auto]"><CategoryPicker names={categorieDisponibili} tree={albero} value={newCategory} onChange={setNewCategory} /><Input required min="0" step="0.01" type="number" value={newAmount} onChange={(event) => setNewAmount(event.target.value)} placeholder={t('budgetPlaceholder')} className="h-10 bg-[var(--money-superficie)]" /><Button type="submit" disabled={Boolean(busy)} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('add')}</Button></form>}
     </CardContent>
   </Card>;
 }

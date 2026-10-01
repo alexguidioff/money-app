@@ -753,6 +753,7 @@ const it = {
   occurredOnNote: 'incassato il {{date}}',
   effectiveDateHint: 'Competenza: {{date}} (entrata dal giorno di cambio mese)',
   budgetPickCategory: 'Scegli una categoria',
+  budgetOnlyParent: 'Solo {{name}}',
   budgetPlaceholder: 'Budget',
   add: 'Aggiungi',
   budgetAndActualByType: {
@@ -2301,6 +2302,7 @@ const en: TranslationTable = {
   occurredOnNote: 'received {{date}}',
   effectiveDateHint: 'Counts in: {{date}} (income after the month-shift day)',
   budgetPickCategory: 'Pick a category',
+  budgetOnlyParent: 'Only {{name}}',
   budgetPlaceholder: 'Budget',
   add: 'Add',
   budgetAndActualByType: {
@@ -3821,6 +3823,7 @@ const de: TranslationTable = {
   occurredOnNote: 'erhalten am {{date}}',
   effectiveDateHint: 'Zaehlt fuer: {{date}} (Einnahme ab dem Stichtag)',
   budgetPickCategory: 'Kategorie w\u00e4hlen',
+  budgetOnlyParent: 'Nur {{name}}',
   budgetPlaceholder: 'Budget',
   add: 'Hinzufügen',
   budgetAndActualByType: {
@@ -5341,6 +5344,7 @@ const es: TranslationTable = {
   occurredOnNote: 'recibido el {{date}}',
   effectiveDateHint: 'Se imputa a: {{date}} (ingreso a partir del día de cambio)',
   budgetPickCategory: 'Elige una categor\u00eda',
+  budgetOnlyParent: 'Solo {{name}}',
   budgetPlaceholder: 'Presupuesto',
   add: 'Añadir',
   budgetAndActualByType: {
@@ -6870,6 +6874,7 @@ const fr: TranslationTable = {
   occurredOnNote: 'reçu le {{date}}',
   effectiveDateHint: "Rattaché à : {{date}} (revenu à partir du jour de bascule)",
   budgetPickCategory: 'Choisis une cat\u00e9gorie',
+  budgetOnlyParent: 'Seulement {{name}}',
   budgetPlaceholder: 'Budget',
   add: 'Ajouter',
   budgetAndActualByType: {

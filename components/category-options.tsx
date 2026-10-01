@@ -2,10 +2,11 @@
 
 import type { ReactNode } from 'react';
 import { iconaCategoria } from '@/lib/category-icons';
+import { posizioneNelRamo, ramiDelleCategorie, valoreDellaMadre, type CategoryNode } from '@/lib/category-picker';
 import { useI18n } from '@/lib/i18n-context';
 
 /** Un ramo dell'albero come lo manda il server: la radice e i nomi dei figli. */
-export type CategoryNode = { name: string; children: string[] };
+export type { CategoryNode } from '@/lib/category-picker';
 
 /**
  * Le voci di un elenco a tendina di categorie, con i figli indentati sotto il
@@ -57,4 +58,52 @@ export function CategoryOptions({ names, tree }: { names: string[]; tree: Catego
     if (!mostrati.has(nome)) voci.push(<option key={`resto-${nome}`} value={nome}>{nome}</option>);
   }
   return <>{voci}</>;
+}
+
+/**
+ * La stessa scelta in due passi: prima la categoria madre, poi la figlia.
+ *
+ * E' per dove l'elenco e' lungo e chi sceglie sa gia' dove vuole andare: una
+ * tendina sola con sessanta voci in ordine alfabetico chiede di leggerle tutte
+ * per trovarne una che si sa di avere sotto una madre. La prima tendina ha le
+ * madri - quindici, non sessanta - e la seconda mostra solo le figlie di quella.
+ *
+ * La madre resta sceglibile da sola: e' dove stanno i movimenti che nessuno ha
+ * ancora spostato nei figli, e lo dice l'opzione in cima alla seconda tendina.
+ * Una categoria che l'albero non conosce resta sceglibile da sola, come in
+ * `CategoryOptions`.
+ *
+ * `value` e' il nome che il server accetta e la madre si ricava da quello:
+ * nessuno stato interno da tenere allineato, cosi' un suggerimento premuto o una
+ * riga spostata lasciano le due tendine d'accordo senza doverlo ricordare.
+ */
+export function CategoryPicker({ names, tree, value, onChange, disabled = false }: {
+  names: string[];
+  tree: CategoryNode[];
+  value: string;
+  onChange: (category: string) => void;
+  disabled?: boolean;
+}) {
+  const { t } = useI18n();
+  const rami = ramiDelleCategorie(names, tree);
+  const { madre, figlia } = posizioneNelRamo(rami, value);
+  const ramo = rami.find((r) => r.madre === madre);
+
+  return <>
+    <select aria-label={t('category')} required value={madre} disabled={disabled}
+            onChange={(event) => onChange(valoreDellaMadre(rami, event.target.value))}
+            className="h-10 min-w-0 rounded-md border border-input bg-[var(--money-superficie)] px-2 text-sm">
+      <option value="">{t('budgetPickCategory')}</option>
+      {rami.map((voce) => <option key={voce.madre} value={voce.madre}>
+        {iconaCategoria(voce.madre) ? `${iconaCategoria(voce.madre)} ${voce.madre}` : voce.madre}
+      </option>)}
+    </select>
+    <select aria-label={madre ? t('catChooseChild', { name: madre }) : t('category')}
+            value={figlia} disabled={disabled || !madre}
+            onChange={(event) => onChange(event.target.value || madre)}
+            className="h-10 min-w-0 rounded-md border border-input bg-[var(--money-superficie)] px-2 text-sm disabled:bg-[var(--money-superficie-hover)] disabled:text-[var(--money-testo-spento)]">
+      {ramo?.sceglibile && <option value="">{t('budgetOnlyParent', { name: madre })}</option>}
+      {ramo?.figlie.map((nome) => <option key={nome} value={nome}>{nome}</option>)}
+    </select>
+  </>;
 }
