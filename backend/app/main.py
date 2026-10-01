@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Query, UploadFile, Fi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import distinct, extract, func, or_, select, update
+from sqlalchemy import extract, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -29,7 +29,7 @@ from .categorization import PENDING_CATEGORY, applica, carica_regole, categoria_
 from .categorie import _prossima_posizione, gruppo_di_categoria, nome_di, nomi as nomi_categorie
 from .core_routes import (BASE_CURRENCY, GOAL_KINDS, MAX_SELEZIONE_MASSA, _cambi_per_valute,
                           _cambio_al_giorno, _in_euro, _rate_on, _somma_budget, account_currencies,
-                          benchmark_symbol, budget_currencies, display_currencies, fx_rates_by_month,
+                          benchmark_symbol, display_currencies, fx_rates_by_month,
                           fx_symbols, movimenti_per_saldi, num, sync_savings_plan)
 from .database import Base, admin_engine, engine, get_session, set_default_user, current_user_id
 from .migrations import accendi_isolamento, aggiungi_colonna_utente, tracked_changes
@@ -249,7 +249,8 @@ async def import_data_route(file: UploadFile = File(...), session: Session = Dep
         # Uno per valuta: un file ripristinato puo' portare le due righe della
         # stessa categoria e dello stesso mese, e allinearne una sola lascerebbe
         # l'altra al valore che aveva nel file.
-        for periodo, valuta in session.execute(select(distinct(BudgetPlan.period, BudgetPlan.currency))).all():
+        for periodo, valuta in session.execute(
+                select(BudgetPlan.period, BudgetPlan.currency).distinct()).all():
             sync_savings_plan(session, periodo, valuta)
         session.commit()
     except InterchangeError as error:
