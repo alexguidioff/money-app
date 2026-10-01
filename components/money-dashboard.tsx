@@ -7296,13 +7296,17 @@ const CONTI_IN_EVIDENZA = 6;
  *
  * I conti si leggono nella loro valuta (`formatMoney`): un saldo in franchi
  * accanto a uno in euro senza la sigla e' la cifra sbagliata, non un dettaglio.
- * I debiti restano fuori - sono un'altra pagina e un altro segno - e chi ne ha
- * piu' di `CONTI_IN_EVIDENZA` li trova tutti in Patrimonio.
+ * I debiti restano fuori - sono un'altra pagina e un altro segno - e **anche i
+ * conti a zero**: questa card dice dove sono i soldi, e un conto vuoto non
+ * sposta niente. Chi ne ha piu' di `CONTI_IN_EVIDENZA`, o vuole vederli tutti,
+ * li trova in Patrimonio.
  */
 function HomeAccountsCard({ accounts, lastUsed, onPick, onAllAccounts }: { accounts: Account[]; lastUsed: Record<string, string>; onPick: (account: string) => void; onAllAccounts: () => void }) {
   const { t, formatMoney, formatDate } = useI18n();
   const righe = accounts
-    .filter((conto) => conto.isActive !== false && conto.group !== 'liability')
+    // Un conto a zero non ha niente da dire in una pagina che si guarda per
+    // sapere dove sono i soldi: resta in Patrimonio, dove si vedono tutti.
+    .filter((conto) => conto.isActive !== false && conto.group !== 'liability' && conto.value !== 0)
     // Prima quelli usati di recente: sono quelli su cui si sta lavorando. Chi
     // non si e' mai mosso viene dopo, dal conto piu' ricco.
     .map((conto) => ({ conto, usato: lastUsed[conto.name] ?? null }))
@@ -7316,7 +7320,7 @@ function HomeAccountsCard({ accounts, lastUsed, onPick, onAllAccounts }: { accou
     </CardHeader>
     <CardContent className="flex min-h-0 flex-1 flex-col p-0">
       {mostrati.length === 0
-        ? <p className="px-4 pb-2 text-xs text-[var(--money-testo-tenue)]">{t('noAccount')}</p>
+        ? <p className="px-4 pb-2 text-xs text-[var(--money-testo-tenue)]">{t('homeAccountsEmpty')}</p>
         : <ul className="divide-y divide-[var(--money-velo)]/[0.04]">
             {mostrati.map(({ conto, usato }) => <li key={conto.id}>
               <button type="button" onClick={() => onPick(conto.name)}
