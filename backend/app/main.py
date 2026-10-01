@@ -202,7 +202,12 @@ def health_summary(session: Session = Depends(get_session)) -> dict:
     }
 
 
-@app.get("/api/export/data")
+# `HEAD` accanto a `GET`, e non e' un dettaglio: prima di scaricare il browser
+# chiede se il file c'e', per poter dire "operazione non riuscita" invece di
+# lasciare la pagina su una schermata di JSON. FastAPI non aggiunge `HEAD` alle
+# rotte `GET` - Starlette si' - quindi senza questa riga la richiesta prende un
+# 405 e il download non parte, anche con il file pronto.
+@app.api_route("/api/export/data", methods=["GET", "HEAD"])
 def export_data(session: Session = Depends(get_session)):
     """Esporta tutti i dati dell'app nel formato di scambio.
 
@@ -5399,7 +5404,8 @@ def _report_period_total(session: Session, year: int, month: int, tx_type: str) 
     )))
 
 
-@app.get("/api/reports/{kind}")
+# Come l'export, e per lo stesso motivo: il `HEAD` dell'anteprima scaricabile.
+@app.api_route("/api/reports/{kind}", methods=["GET", "HEAD"])
 def download_report(kind: str, year: int = Query(ge=2000, le=2100), month: int = Query(ge=1, le=12), session: Session = Depends(get_session)):
     """Esporta un report Excel o PDF con i dati del periodo selezionato,
     generato dal database dell'app (riepilogo, andamento, ultimi movimenti).
