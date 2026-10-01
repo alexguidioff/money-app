@@ -99,18 +99,43 @@ class LiabilityTransferTests(unittest.TestCase):
         self.assertTrue(all(r["actualDebt"] is None for r in voce["trend"]
                             if r["period"] > oggi.isoformat()))
 
-    def test_data_effettiva_esclude_movimenti_futuri(self) -> None:
+    def _rata_di_oggi(self) -> Transaction:
+        """Una rata da 100 pagata oggi, pronta da spostare."""
         result = create_transaction(TransactionPayload(
             occurred_on=date.today().isoformat(), transaction_type="Debt", amount=100,
             account_name="Banca", destination_name="Mutuo", debt_principal=100,
             debt_interest=0), self.session)
-        tx = self.session.get(Transaction, result["id"])
-        tx.effective_on = date.today() + timedelta(days=1)
+        return self.session.get(Transaction, result["id"])
+
+    def test_data_effettiva_esclude_movimenti_futuri(self) -> None:
+        """Una rata che non e' ancora stata pagata non tocca il debito.
+
+        Si guarda la data vera: la competenza sposta il mese del budget, non la
+        storia del conto.
+        """
+        tx = self._rata_di_oggi()
+        tx.occurred_on = tx.effective_on = date.today() + timedelta(days=1)
         self.session.commit()
         voce = liabilities(self.session)["items"][0]
         self.assertEqual(1000, voce["actualTotalDebt"])
         self.assertEqual(0, voce["principalRepaid"])
         self.assertEqual([], voce["movements"])
+
+    def test_la_competenza_non_rimanda_la_rata(self) -> None:
+        """La stessa rata, pagata oggi con la competenza al mese dopo.
+
+        E' il caso di Mary letto al contrario: il debito deve scendere oggi. Con
+        la competenza filtravano due cose diverse - il saldo del conto, che la
+        contava, e l'elenco dei movimenti, che la nascondeva - e le due non
+        potevano piu' tornare.
+        """
+        tx = self._rata_di_oggi()
+        tx.effective_on = date.today() + timedelta(days=1)
+        self.session.commit()
+        voce = liabilities(self.session)["items"][0]
+        self.assertEqual(900, voce["actualTotalDebt"])
+        self.assertEqual(100, voce["principalRepaid"])
+        self.assertEqual(1, len(voce["movements"]))
 
     def test_stato_reale_senza_profilo_usa_solo_gli_oneri_registrati(self) -> None:
         create_transaction(TransactionPayload(

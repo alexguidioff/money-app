@@ -2686,7 +2686,12 @@ def _movimenti_goal(session: Session, goal: Goal) -> list[tuple[date, Decimal]]:
             conto = riga.destination_name
         else:
             importo = Decimal(str(riga.amount))
-        firmati.append((riga.effective_on,
+        # La data vera, la stessa con cui si prende il cambio qui sotto: il
+        # cumulativo di un obiettivo racconta quanto ci hai messo, e con la
+        # competenza un versamento del 29 settembre faceva scendere la curva
+        # fino a ottobre - un mese di budget spostato di un mese non e' denaro
+        # che non e' ancora arrivato.
+        firmati.append((riga.occurred_on,
                         importo / _cambio_al_giorno(valute.get(normalized_name(conto)),
                                                    riga.occurred_on, cambi)))
     return firmati

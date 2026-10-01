@@ -33,8 +33,8 @@ class SerieEquivalenteTests(unittest.TestCase):
             _mov(date(2026, 2, 3), "Expenses", "500", "Conto"),
             _mov(date(2026, 2, 28), "Transfers", "300", "Conto", "Mutuo"),
             _mov(date(2026, 4, 1), "Expenses", "120", "Conto"),
-            # Senza data di competenza: il calcolo per data lo ignora, e anche
-            # la serie deve ignorarlo.
+            # Senza data: il calcolo per data lo ignora, e anche la serie deve
+            # ignorarlo.
             {"effective_on": None, "occurred_on": None, "transaction_type": "Expenses",
              "amount": Decimal("999"), "account_name": "Conto", "destination_name": None},
         ]
@@ -55,6 +55,22 @@ class SerieEquivalenteTests(unittest.TestCase):
 
     def test_nessuna_data_nessun_saldo_mosso(self) -> None:
         self.assertEqual(account_balances_series(self.conti, self.movimenti, []), [])
+
+    def test_la_competenza_non_sposta_il_saldo(self) -> None:
+        """Incassato il 29, con competenza al primo del mese dopo.
+
+        Il saldo e' denaro che c'e' o non c'e': il 30 settembre quei 2000 sono
+        sul conto, anche se il budget li conta a ottobre. Vale per il calcolo a
+        una data e per la serie, che devono restare d'accordo.
+        """
+        movimento = {"effective_on": date(2026, 10, 1), "occurred_on": date(2026, 9, 29),
+                     "transaction_type": "Income", "amount": Decimal("2000"),
+                     "account_name": "Conto", "destination_name": None}
+        conti = [Conto(1, "Conto", "bank", "1000")]
+        saldo = account_balances_at(conti, [movimento], date(2026, 9, 30))["accounts"][0]["balance"]
+        self.assertEqual(3000.0, saldo)
+        serie = account_balances_series(conti, [movimento], [date(2026, 9, 30), date(2026, 10, 31)])
+        self.assertEqual([3000.0, 3000.0], [riga["accounts"][0]["balance"] for riga in serie])
 
 
 if __name__ == '__main__':

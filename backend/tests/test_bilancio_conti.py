@@ -152,6 +152,25 @@ class BilancioTests(unittest.TestCase):
         self.assertEqual(0.0, totali["rivalutazione"])
         self.assertEqual(totali["capitale"], totali["resto"])
 
+    def test_la_competenza_non_cambia_il_valore_del_conto(self) -> None:
+        """Incassato il 29 settembre, con competenza al primo di ottobre.
+
+        E' la segnalazione di Mary, parola per parola: il conto Yuh leggeva
+        -2764,73 CHF invece di 647,32 perche' il saldo si calcolava sulla
+        competenza, e due entrate spostate a ottobre sparivano dal saldo di
+        settembre. «Dovrebbe solo sfasare il budget», dice: la competenza dice
+        in che mese un movimento si conta, non quando il denaro e' arrivato.
+        """
+        self._conto("bank", "Yuh", "0")
+        self.session.add(Transaction(
+            occurred_on=date(2026, 9, 29), effective_on=date(2026, 10, 1),
+            transaction_type="Income", amount=Decimal("1500"), account_name="Yuh"))
+        self.session.commit()
+        for quando, atteso in (("2026-09-30", 1500.0), ("2026-10-01", 1500.0)):
+            voce = next(v for v in endpoint_conti(at=quando, session=self.session)["items"]
+                        if v["name"] == "Yuh")
+            self.assertEqual(atteso, voce["value"], msg=quando)
+
     def test_il_capitale_proprio_e_il_patrimonio_netto(self) -> None:
         """Due strade diverse per lo stesso numero: se divergono, una mente."""
         self._conto("bank", "Conto", "2500")

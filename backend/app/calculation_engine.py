@@ -117,10 +117,18 @@ def account_reconciliation(accounts: Iterable[Any], transactions: Iterable[Any])
     return result
 
 
-def _transaction_effective_date(transaction: Any) -> date | None:
-    effective = _value(transaction, "effective_on")
-    if effective:
-        return effective
+def _data_del_movimento(transaction: Any) -> date | None:
+    """Quando il denaro si e' mosso davvero, non a quale mese appartiene.
+
+    Si legge `occurred_on`. `effective_on` e' la competenza, e sposta le entrate
+    e le spese di fine mese al mese dopo: e' la convenzione del **budget**, che
+    dice in quale mese un movimento si conta. Un saldo non e' una convenzione -
+    il denaro che c'e' sul conto c'e' o non c'e' - e leggendo la competenza un
+    conto che aveva incassato il 29 settembre risultava in rosso fino al primo
+    ottobre, con la cifra che cambiava da sola girando pagina. Chi misura un
+    saldo passa di qui; chi misura un mese di budget legge `effective_on` in
+    `period_metrics`.
+    """
     return _value(transaction, "occurred_on")
 
 
@@ -187,7 +195,7 @@ def account_balances_at(accounts: Iterable[Any], transactions: Iterable[Any], cu
                         valutazioni: dict[Any, list[tuple[date, Any]]] | None = None,
                         rivalutazioni: dict[Any, list[tuple[date, Any]]] | None = None) -> dict[str, Any]:
     """Saldo per ogni account + totali per gruppo al netto delle transazioni con
-    effective_on <= cutoff. Le liability sono restituite col segno invertito
+    data reale <= cutoff. Le liability sono restituite col segno invertito
     (come in _net_worth_breakdown) così lato UI si sommano algebricamente.
 
     Restituisce: {
@@ -197,8 +205,8 @@ def account_balances_at(accounts: Iterable[Any], transactions: Iterable[Any], cu
     """
     by_name: dict[str, dict[str, Decimal]] = {}
     for tx in transactions:
-        effective = _transaction_effective_date(tx)
-        if not effective or effective > cutoff:
+        quando = _data_del_movimento(tx)
+        if not quando or quando > cutoff:
             continue
         _applica_movimento(tx, by_name)
     return _saldi_da_deltas(accounts, by_name, cutoff, valutazioni, rivalutazioni)
@@ -218,7 +226,7 @@ def account_balances_series(accounts: Iterable[Any], transactions: Iterable[Any]
     """
     ordinate = sorted(enumerate(cutoffs), key=lambda coppia: coppia[1])
     datati = sorted(
-        ((data, tx) for data, tx in ((_transaction_effective_date(tx), tx) for tx in transactions) if data),
+        ((data, tx) for data, tx in ((_data_del_movimento(tx), tx) for tx in transactions) if data),
         key=lambda coppia: coppia[0],
     )
     by_name: dict[str, dict[str, Decimal]] = {}
@@ -264,6 +272,9 @@ def period_metrics(
     for transaction in rows:
         if _value(transaction, "is_recurring_template", False) or _value(transaction, "counts_in_budget", True) is False:
             continue
+        # Qui la competenza **si** legge, ed e' l'unico posto in cui va letta: il
+        # mese di budget di un movimento non e' il mese in cui il denaro si e'
+        # mosso. Per i saldi vale l'opposto - vedi `_data_del_movimento`.
         effective = _value(transaction, "effective_on") or _value(transaction, "occurred_on")
         if not effective or effective.year != year or effective.month != month:
             continue

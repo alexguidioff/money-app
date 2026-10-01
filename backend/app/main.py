@@ -2842,8 +2842,11 @@ def _esposizione_nel_tempo(session: Session, account_id: int,
     """
     movimenti = movimenti_per_saldi(session)
     oggi = date.today()
-    date_utili = sorted({oggi} | {tx.effective_on for tx in movimenti
-                         if tx.effective_on <= oggi and name in {tx.account_name, tx.destination_name}})
+    # Le date campione sono le stesse con cui la serie data i movimenti: con la
+    # competenza il movimento del 29 settembre non aveva un punto suo, e il picco
+    # di esposizione di quel giorno non veniva mai letto.
+    date_utili = sorted({oggi} | {tx.occurred_on for tx in movimenti
+                         if tx.occurred_on <= oggi and name in {tx.account_name, tx.destination_name}})
     conto = session.get(Account, account_id)
     serie = account_balances_series([conto], movimenti, date_utili)
     picco = max(-conto.starting_balance, Decimal("0"))
@@ -2909,18 +2912,23 @@ def liabilities(session: Session = Depends(get_session)):
     accounts_data = [row for row in account_rows(at=None, session=session)["items"] if row["group"] == "liability"]
     profiles = {row.account_id: row for row in session.scalars(select(LiabilityProfile)).all()}
     names = [row["name"] for row in accounts_data]
+    # La data vera, non la competenza: il debito di un conto e' denaro che si e'
+    # mosso. Con la competenza la rata del 29 settembre spariva dall'elenco fino
+    # al mese dopo, mentre i saldi sopra - che passano da `account_rows` - la
+    # contavano gia': due numeri per la stessa rata, e il piu' visibile dei due
+    # era quello sbagliato.
     transactions = session.scalars(select(Transaction).where(
         REAL_MOVEMENT,
-        Transaction.effective_on <= today,
+        Transaction.occurred_on <= today,
         or_(Transaction.account_name.in_(names), Transaction.destination_name.in_(names)))
-        .order_by(Transaction.effective_on.desc(), Transaction.id.desc())).all() if names else []
+        .order_by(Transaction.occurred_on.desc(), Transaction.id.desc())).all() if names else []
     conti = {row.id: row for row in session.scalars(select(Account)).all()}
     stime, rivalutazioni = valutazioni_per_conto(session), rivalutazioni_per_conto(session)
     by_name: dict[str, list[dict[str, Any]]] = defaultdict(list)
     names_set = set(names)
     nomi_cat = nomi_categorie(session)
     for tx in transactions:
-        item = {"id": tx.id, "occurredOn": tx.effective_on.isoformat(), "type": tx.transaction_type,
+        item = {"id": tx.id, "occurredOn": tx.occurred_on.isoformat(), "type": tx.transaction_type,
                 "amount": float(tx.amount), "description": tx.details or nomi_cat.get(tx.category_id, ""),
                 "accountName": tx.account_name, "destinationName": tx.destination_name}
         for name in {tx.account_name, tx.destination_name} & names_set:
@@ -2935,7 +2943,7 @@ def liabilities(session: Session = Depends(get_session)):
         if principal_tx is None:
             continue
         payments[row.liability_account_id].append({
-            "id": row.id, "occurredOn": principal_tx.effective_on.isoformat(), "kind": row.kind,
+            "id": row.id, "occurredOn": principal_tx.occurred_on.isoformat(), "kind": row.kind,
             "principal": float(row.principal_amount), "interest": float(row.interest_amount),
             "total": float(row.principal_amount + row.interest_amount),
             "classified": row.is_classified,
