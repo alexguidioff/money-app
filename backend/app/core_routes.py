@@ -103,6 +103,12 @@ def transaction_json(row: Transaction, session: Session | None = None, *,
             valuta_arrivo = valuta_destinazione
         elif session is not None:
             valuta_arrivo = valute_dei_conti(session).get(normalized_name(row.destination_name))
+    if arrivo == amount and valuta_arrivo == (row.currency or BASE_CURRENCY):
+        # La stessa cifra nella stessa moneta: non e' un secondo importo, e'
+        # la riga scritta due volte. Succede ai movimenti importati da un
+        # estratto conto, che la cifra d'arrivo la scrivono sempre - anche
+        # quando e' identica a quella di partenza.
+        arrivo, valuta_arrivo = None, None
     # Quattro campi in meno rispetto a prima, tutti ricavabili da quelli che
     # restano: `categoryRaw` era la copia di `category`, `rawAmount` il valore
     # assoluto di `amount`, `date` una data gia' scritta in italiano - che

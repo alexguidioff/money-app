@@ -184,6 +184,17 @@ class MovimentiInValutaTests(unittest.TestCase):
         self.assertIsNone(voce["destinationAmount"])
         self.assertIsNone(voce["destinationCurrency"])
 
+    def test_una_seconda_cifra_uguale_alla_prima_non_si_scrive_due_volte(self) -> None:
+        # Un estratto conto importato scrive sempre la cifra d'arrivo, anche
+        # quando e' identica a quella di partenza: la riga scriverebbe lo stesso
+        # numero due volte, e la prima basta.
+        voce = transaction_json(self._movimento(
+            date(2026, 7, 10), "100.00", conto="Conto", tipo="Transfers", categoria=None,
+            counts_in_budget=False, destination_name="Conto",
+            destination_amount=Decimal("100.00")), self.session)
+        self.assertIsNone(voce["destinationAmount"])
+        self.assertIsNone(voce["destinationCurrency"])
+
     def test_il_report_del_mese_conta_in_euro(self) -> None:
         _cambio(self.session, "CHF", date(2026, 7, 1), "1.10")
         self.session.commit()
