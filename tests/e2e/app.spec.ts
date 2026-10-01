@@ -399,7 +399,9 @@ test('Budget: le schede che non leggono un comando non lo mostrano', async ({ pa
   await expect(periodo).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Entrate tardive', exact: true }).click();
-  await expect(page.getByText('Sposta entrate tardive')).toBeVisible();
+  // La linguetta si chiama ancora "Entrate tardive", l'intestazione dentro no:
+  // si prova quello che c'e' scritto adesso, o la prova si rompe da sola.
+  await expect(page.getByText('Sposta i movimenti di fine mese')).toBeVisible();
   await expect(tipo).toHaveCount(0);
   await expect(periodo).toHaveCount(0);
   expect(errori).toEqual([]);
