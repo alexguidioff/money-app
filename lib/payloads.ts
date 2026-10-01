@@ -140,8 +140,10 @@ export function notePayload(form: FormData) {
   return { section: testo(form, 'section') || 'Appunti', title: testo(form, 'title'), body: testo(form, 'body'), status: testo(form, 'status') || null };
 }
 
-export function budgetCreatePayload(year: number, month: number, budgetType: string, category: string, amount: number) {
-  return { year, month, budget_type: budgetType, category, amount };
+export function budgetCreatePayload(year: number, month: number, budgetType: string, category: string, amount: number, currency = 'EUR') {
+  // La valuta della scheda aperta: e' quella in cui si sta scrivendo il piano,
+  // e una riga che cambia valuta dopo sarebbe un'altra riga.
+  return { year, month, budget_type: budgetType, category, amount, currency };
 }
 
 export function budgetUpdatePayload(category: string, amount: string | number) {

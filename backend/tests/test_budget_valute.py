@@ -24,7 +24,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.core_routes import (_budget_balance, _needs_wants, _totali_mensili, budget_actual,
-                             budget_annual, budget_currencies, budget_dashboard,
+                             budget_annual, budget_currencies, budget_dashboard, calculations,
                              previous_month_leftover, sync_savings_plan)
 from app.database import Base
 from app.main import BudgetBulkPayload, BudgetCopyPayload, bulk_budget, copy_budget
@@ -218,6 +218,16 @@ class ValuteDelBudgetTests(unittest.TestCase):
         self.session.commit()
         self.assertEqual(400.0, _totali_mensili(self.session, 2026, "Expenses", "EUR")[9])
         self.assertEqual(100.0, _totali_mensili(self.session, 2026, "Expenses", "CHF")[9])
+
+    def test_il_tasso_di_risparmio_segue_la_scheda(self) -> None:
+        self._movimento(date(2026, 9, 10), "1000.00", "CHF", categoria_nome="Stipendio", tipo="Income")
+        self._movimento(date(2026, 9, 11), "400.00", "CHF")
+        self.session.commit()
+        # Il rapporto della scheda in franchi si fa sui franchi: con dentro gli
+        # euro di un'altra scheda sarebbe il rapporto di nessuno.
+        franchi = calculations(2026, 9, self.session, "CHF")
+        self.assertEqual((1000.0, 400.0, 0.6),
+                         (franchi["income"], franchi["expenses"], franchi["savingsRate"]))
 
 
 if __name__ == "__main__":

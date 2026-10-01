@@ -2413,9 +2413,13 @@ def budgets(year: int, month: int, budget_type: str = "Expenses",
 
 
 @router.get("/api/calculations")
-def calculations(year: int, month: int, session: Session = Depends(get_session)) -> dict[str, Any]:
-    income, expenses = (period_total(session, year, month, kind) for kind in ("Income", "Expenses"))
-    savings = derived_savings(session, year, month)
+def calculations(year: int, month: int, session: Session = Depends(get_session),
+                  currency: str | None = None) -> dict[str, Any]:
+    # La valuta del periodo, per il tasso di risparmio del piano: senza, la
+    # scheda in franchi mostrava un rapporto calcolato sugli euro. Come per il
+    # budget, `None` resta la lettura di sempre - tutto convertito in euro.
+    income, expenses = (period_total_range(session, year, month, kind, currency) for kind in ("Income", "Expenses"))
+    savings = derived_savings(session, year, month, currency)
     today = date.today()
     days_in_period = calendar.monthrange(year, month)[1]
     if year == today.year:

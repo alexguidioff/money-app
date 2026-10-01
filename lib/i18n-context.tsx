@@ -40,6 +40,9 @@ type I18nContextValue = {
    * in euro, e per quelli restano `formatEuro` e `formatCompactEuro`.
    */
   formatMoney: (value: number, currency: string) => string;
+  /** Come `formatMoney`, per gli assi e le etichette dei grafici: senza
+   *  centesimi, che su un asse non si leggono. */
+  formatCompactMoney: (value: number, currency: string) => string;
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
   /**
    * Le percentuali si scrivono in un modo solo: un decimale al massimo, col
@@ -150,6 +153,17 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     }
   }, [locale]);
 
+  const formatCompactMoney = useCallback((value: number, currency: string) => {
+    const codice = (currency || 'EUR').trim().toUpperCase();
+    try {
+      return new Intl.NumberFormat(locale, { style: 'currency', currency: codice, maximumFractionDigits: 0 }).format(value);
+    } catch {
+      // Stesso motivo di `formatMoney`: una sigla che Intl non conosce non deve
+      // portarsi via l'asse di un grafico.
+      return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value)} ${codice}`;
+    }
+  }, [locale]);
+
   const formatNumber = useCallback(
     (value: number, options?: Intl.NumberFormatOptions) => new Intl.NumberFormat(locale, options).format(value),
     [locale],
@@ -201,8 +215,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     [monthNamesShort, lang]);
 
   const value = useMemo(
-    () => ({ lang, setLang, t, locale, formatEuro, formatCompactEuro, formatMoney, formatNumber, formatPercentRatio, formatPercentPoints, formatPercentNumber, formatDate, monthNames, monthNamesShort, formatPeriodLabel }),
-    [lang, setLang, t, locale, formatEuro, formatCompactEuro, formatMoney, formatNumber, formatPercentRatio, formatPercentPoints, formatPercentNumber, formatDate, monthNames, monthNamesShort, formatPeriodLabel],
+    () => ({ lang, setLang, t, locale, formatEuro, formatCompactEuro, formatMoney, formatCompactMoney, formatNumber, formatPercentRatio, formatPercentPoints, formatPercentNumber, formatDate, monthNames, monthNamesShort, formatPeriodLabel }),
+    [lang, setLang, t, locale, formatEuro, formatCompactEuro, formatMoney, formatCompactMoney, formatNumber, formatPercentRatio, formatPercentPoints, formatPercentNumber, formatDate, monthNames, monthNamesShort, formatPeriodLabel],
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

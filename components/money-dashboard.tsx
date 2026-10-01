@@ -7,7 +7,7 @@ import { LEDGER_SENZA_QUOTE, nettoOperazioni } from '@/lib/ledger-preview';
 import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, eventAttachPayload, goalMilestonePayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
 import { messaggioErrore } from '@/lib/fire-errors';
 import { messaggioErroreRegola } from '@/lib/rule-errors';
-import { Fragment, SyntheticEvent, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, SyntheticEvent, createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Flame,
   AlertCircle,
   ArrowDownRight,
@@ -602,6 +602,10 @@ export type SettingsData = {
   // indentati sotto il padre, e una radice che ne ha non si sceglie.
   categoryTree: CategoryNode[];
   budgetYearsByType: Record<'Expenses' | 'Income' | 'Savings', string[]>;
+  /** Le valute in cui si tiene qualcosa: conti, movimenti o piani. L'euro c'e'
+   *  sempre e sta primo. Opzionale perche' un backend piu' vecchio non lo manda,
+   *  e in quel caso il Budget resta a scheda unica. */
+  budgetCurrencies?: string[];
 };
 
 // I tipi che il ledger conosce: acquisto, vendita, i movimenti di solo
@@ -789,7 +793,33 @@ const fallbackSettings: SettingsData = {
   categoriesByType: { Expenses: [], Income: [], Savings: [], Transfers: [] },
   categoryTree: [],
   budgetYearsByType: { Expenses: [String(MESE_CORRENTE.anno)], Income: [String(MESE_CORRENTE.anno)], Savings: [String(MESE_CORRENTE.anno)] },
+  budgetCurrencies: ['EUR'],
 };
+
+/**
+ * In che soldi si legge il Budget.
+ *
+ * La scheda aperta decide la valuta di tutto cio' che sta sotto, e i componenti
+ * del Budget sono una decina su cinque livelli: passarla come prop vorrebbe dire
+ * attraversarli tutti, e ogni livello in mezzo e' un posto dove ci si dimentica.
+ * Il contesto e' la stessa cosa scritta una volta.
+ *
+ * Fuori dal Budget il valore di partenza e' l'euro, quindi le altre pagine
+ * leggono quello che leggevano prima senza saperne niente.
+ */
+const ValutaBudget = createContext('EUR');
+
+/** I formattatori del Budget: in euro sono quelli di sempre, parola per parola,
+ *  e chi ha un conto solo in euro continua a leggere gli stessi caratteri. */
+function useSoldiBudget() {
+  const { formatEuro, formatCompactEuro, formatMoney, formatCompactMoney } = useI18n();
+  const valuta = useContext(ValutaBudget);
+  const inEuro = valuta === 'EUR';
+  return {
+    soldi: useCallback((valore: number) => (inEuro ? formatEuro(valore) : formatMoney(valore, valuta)), [inEuro, formatEuro, formatMoney, valuta]),
+    compatto: useCallback((valore: number) => (inEuro ? formatCompactEuro(valore) : formatCompactMoney(valore, valuta)), [inEuro, formatCompactEuro, formatCompactMoney, valuta]),
+  };
+}
 
 // Colore principale (Settings E16 nel workbook): tinge logo, avatar e barra del
 // budget. Tonalita' chiare, perche' ci va sopra testo scuro.
@@ -1022,6 +1052,9 @@ function MoneyDashboardInner() {
   const selectedYear = period.year;
   const selectedMonth = period.month;
   const [budgetType, setBudgetType] = useState<'Expenses' | 'Income' | 'Savings'>('Expenses');
+  // La valuta della scheda aperta. Si parte dall'euro, che c'e' sempre: per chi
+  // non ha altre valute e' anche l'unica, e la striscia non compare.
+  const [budgetCurrency, setBudgetCurrency] = useState('EUR');
   const [effectivePreview, setEffectivePreview] = useState<{ occurred: string; type: string; amount: number; origine: string }>(MODULO_VUOTO);
   const overviewYear = period.year;
   // "Ultimi dodici mesi" e' una finestra che scorre, e la Panoramica sa
@@ -1269,11 +1302,11 @@ function MoneyDashboardInner() {
       importedSummaryBreakdown, importedAnalysisData, importedBudgetSuggestions,
     ] = await Promise.all([
       serve('settings') ? fetchOptional<SettingsData>(`${apiUrl}/api/settings`, 'settings') : null,
-      serve('budget') && period.scope === 'month' ? fetchOptional<BudgetData>(`${apiUrl}/api/budgets?year=${selectedYear}&month=${selectedMonth}&budget_type=${budgetType}`, 'budgets') : null,
-      serve('budget') && period.scope === 'month' ? fetchOptional<CalculationData>(`${apiUrl}/api/calculations?year=${selectedYear}&month=${selectedMonth}`, 'calculations') : null,
-      serve('budget') ? fetchOptional<AnnualBudgetData>(`${apiUrl}/api/budget-annual?year=${selectedYear}&budget_type=${budgetType}`, 'budget-annual') : null,
-      serve('budget') ? fetchOptional<BudgetDashboardData>(`${apiUrl}/api/budget-dashboard?year=${selectedYear}${period.scope === 'month' ? `&month=${selectedMonth}` : ''}&budget_type=${budgetType}`, 'budget-dashboard') : null,
-      serve('trends') ? fetchOptional<BudgetTrendsData>(`${apiUrl}/api/budget-trends?years=${trendYearsKey || selectedYear}&budget_type=${budgetType}`, 'budget-trends') : null,
+      serve('budget') && period.scope === 'month' ? fetchOptional<BudgetData>(`${apiUrl}/api/budgets?year=${selectedYear}&month=${selectedMonth}&budget_type=${budgetType}&currency=${budgetCurrency}`, 'budgets') : null,
+      serve('budget') && period.scope === 'month' ? fetchOptional<CalculationData>(`${apiUrl}/api/calculations?year=${selectedYear}&month=${selectedMonth}&currency=${budgetCurrency}`, 'calculations') : null,
+      serve('budget') ? fetchOptional<AnnualBudgetData>(`${apiUrl}/api/budget-annual?year=${selectedYear}&budget_type=${budgetType}&currency=${budgetCurrency}`, 'budget-annual') : null,
+      serve('budget') ? fetchOptional<BudgetDashboardData>(`${apiUrl}/api/budget-dashboard?year=${selectedYear}${period.scope === 'month' ? `&month=${selectedMonth}` : ''}&budget_type=${budgetType}&currency=${budgetCurrency}`, 'budget-dashboard') : null,
+      serve('trends') ? fetchOptional<BudgetTrendsData>(`${apiUrl}/api/budget-trends?years=${trendYearsKey || selectedYear}&budget_type=${budgetType}&currency=${budgetCurrency}`, 'budget-trends') : null,
       serve('goals') ? fetchOptional<GoalsData>(`${apiUrl}/api/goals`, 'goals') : null,
       serve('networth') ? fetchOptional<NetWorthData>(`${apiUrl}/api/net-worth?year=${selectedYear}&month=${selectedMonth}&months=12`, 'net-worth') : null,
       serve('investments') ? fetchOptional<InvestmentDashboardData>(`${apiUrl}/api/investments/dashboard`, 'investment-dashboard') : null,
@@ -1282,7 +1315,7 @@ function MoneyDashboardInner() {
       serve('notes') ? fetchOptional<{ items: NoteData[] }>(`${apiUrl}/api/notes`, 'notes') : null,
       serve('overview') ? fetchOptional<SummaryBreakdown>(`${apiUrl}/api/summary-breakdown?year=${overviewYear}${overviewMonth !== null ? `&month=${overviewMonth}` : ''}`, 'summary-breakdown') : null,
       serve('analysis') ? fetchOptional<AnalysisData>(`${apiUrl}/api/analysis?year=${analysisYear}&scope=${analysisScope}&category_type=${analysisCategoryType}${analysisCategory ? `&category=${encodeURIComponent(analysisCategory)}` : ''}`, 'analysis') : null,
-      serve('budget') && period.scope === 'month' ? fetchOptional<BudgetSuggestionsData>(`${apiUrl}/api/budget-suggestions?year=${selectedYear}&month=${selectedMonth}&budget_type=${budgetType}`, 'budget-suggestions') : null,
+      serve('budget') && period.scope === 'month' ? fetchOptional<BudgetSuggestionsData>(`${apiUrl}/api/budget-suggestions?year=${selectedYear}&month=${selectedMonth}&budget_type=${budgetType}&currency=${budgetCurrency}`, 'budget-suggestions') : null,
     ]);
     const budgetFailed = serve('budget') && [importedAnnualBudget, importedBudgetDashboard, ...(period.scope === 'month' ? [importedBudgets, importedCalculations] : [])].some((value) => value === null);
     if (serve('budget')) {
@@ -1337,7 +1370,7 @@ function MoneyDashboardInner() {
     } finally {
       setInCorso((quanti) => Math.max(0, quanti - 1));
     }
-  }, [apiUrl, selectedMonth, selectedYear, period.scope, budgetType, overviewYear, overviewMonth, overviewCompareTo, analysisYear, analysisScope, analysisCategoryType, analysisCategory, trendYearsKey]);
+  }, [apiUrl, selectedMonth, selectedYear, period.scope, budgetType, budgetCurrency, overviewYear, overviewMonth, overviewCompareTo, analysisYear, analysisScope, analysisCategoryType, analysisCategory, trendYearsKey]);
 
   // `loadData` cambia identita' a ogni cambio di periodo: il caricamento dei
   // dati fissi deve poterlo chiamare senza per questo ripartire.
@@ -1414,21 +1447,28 @@ function MoneyDashboardInner() {
   // Il periodo e' condiviso, i caricamenti no: reagisce soltanto la pagina
   // aperta, cosi' cambiare mese non risveglia tre sezioni invisibili.
   useEffect(() => activeSection === 'Budget' && budgetView !== 'trends' ? caricaAmbito(['budget']) : undefined,
-    [activeSection, budgetView, budgetType, caricaAmbito, selectedYear, selectedMonth, period.scope]);
+    [activeSection, budgetView, budgetType, budgetCurrency, caricaAmbito, selectedYear, selectedMonth, period.scope]);
   // Gli anni del confronto sono un selettore a se': cambiarli non deve
   // riscaricare budget, suggerimenti e calcoli del mese.
   useEffect(() => activeSection === 'Budget' && budgetView === 'trends' ? caricaAmbito(['trends']) : undefined,
-    [activeSection, budgetView, budgetType, caricaAmbito, trendYearsKey]);
-  // Cambio di tipo di budget: i dati in stato appartengono ancora al vecchio
-  // tipo, quindi azzerarli subito per non mostrare le categorie delle Spese
-  // mentre il fetch di quelle delle Entrate (o Risparmi) e' in volo.
+    [activeSection, budgetView, budgetType, budgetCurrency, caricaAmbito, trendYearsKey]);
+  // Cambio di tipo di budget o di valuta: i dati in stato appartengono ancora al
+  // vecchio, quindi azzerarli subito per non mostrare le categorie delle Spese
+  // mentre il fetch di quelle delle Entrate (o Risparmi) e' in volo - e,
+  // peggio, cifre in euro sotto una linguetta in franchi.
   useEffect(() => {
     setBudgetData(BUDGET_VUOTO);
     setBudgetDashboardData(null);
     setBudgetTrendsData({ years: [], comparison: [] });
     setAnnualBudgetData({ year: selectedYear, items: [], monthTotals: [], balance: { income: 0, expenses: 0, savings: 0, storedSavings: 0, hasIncomePlan: false } });
     setBudgetSuggestions([]);
-  }, [budgetType, selectedYear]);
+  }, [budgetType, budgetCurrency, selectedYear]);
+  // Se la valuta aperta esce dall'elenco - l'ultimo conto in franchi chiuso -
+  // sparirebbe anche la linguetta, cioe' il modo di tornare indietro: si
+  // rientra dall'euro invece di restare su una scheda che non esiste piu'.
+  useEffect(() => {
+    if (!(settingsData.budgetCurrencies ?? ['EUR']).includes(budgetCurrency)) setBudgetCurrency('EUR');
+  }, [settingsData.budgetCurrencies, budgetCurrency]);
   useEffect(() => activeSection === 'Patrimonio' ? caricaAmbito(['networth', 'ledger']) : undefined,
     [activeSection, caricaAmbito, selectedYear, selectedMonth]);
   useEffect(() => activeSection === 'Investimenti' ? caricaAmbito(['investments']) : undefined,
@@ -1833,7 +1873,7 @@ function MoneyDashboardInner() {
     const response = await fetch(`${apiUrl}/api/budgets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(budgetCreatePayload(selectedYear, selectedMonth, budgetType, category, amount)),
+      body: JSON.stringify(budgetCreatePayload(selectedYear, selectedMonth, budgetType, category, amount, budgetCurrency)),
     });
     if (!response.ok) throw new Error('budget-create');
     await loadData(undefined, ['budget', 'settings']);
@@ -1866,6 +1906,9 @@ function MoneyDashboardInner() {
         target_year: selectedYear,
         target_month: selectedMonth,
         budget_type: budgetType,
+        // La copia sta dentro una valuta sola: senza, copiare l'euro da
+        // settembre a ottobre cancellerebbe i piani in franchi di ottobre.
+        currency: budgetCurrency,
       }),
     });
     if (!response.ok) throw new MessaggioUtente(await responseError(response, t, 'cannotSaveBudgetRow'));
@@ -1876,7 +1919,7 @@ function MoneyDashboardInner() {
     const response = await fetch(`${apiUrl}/api/budget-bulk`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ year: selectedYear, budget_type: budgetType, category, category_group: categoryGroup ?? null, months, amount }),
+      body: JSON.stringify({ year: selectedYear, budget_type: budgetType, category, category_group: categoryGroup ?? null, months, amount, currency: budgetCurrency }),
     });
     if (!response.ok) throw new Error('budget-bulk');
     await loadData(undefined, ['budget', 'settings']).catch(() => undefined);
@@ -3015,6 +3058,8 @@ function MoneyDashboardInner() {
               years={settingsData.budgetYearsByType?.[budgetType] || settingsData.options.years}
               budgetType={budgetType}
               onBudgetTypeChange={setBudgetType}
+              budgetCurrency={budgetCurrency}
+              onBudgetCurrencyChange={setBudgetCurrency}
               budgetView={budgetView}
               onBudgetViewChange={setBudgetView}
               settingsData={settingsData}
@@ -3643,6 +3688,8 @@ function SectionView({
   onPeriodChange,
   budgetType,
   onBudgetTypeChange,
+  budgetCurrency,
+  onBudgetCurrencyChange,
   budgetView,
   onBudgetViewChange,
   settingsData,
@@ -3748,6 +3795,8 @@ function SectionView({
   onPeriodChange: (value: PeriodSelection) => void;
   budgetType: 'Expenses' | 'Income' | 'Savings';
   onBudgetTypeChange: (value: 'Expenses' | 'Income' | 'Savings') => void;
+  budgetCurrency: string;
+  onBudgetCurrencyChange: (value: string) => void;
   budgetView: BudgetView;
   onBudgetViewChange: (value: BudgetView) => void;
   settingsData: SettingsData;
@@ -3795,6 +3844,7 @@ function SectionView({
     }
     return mappa;
   }, [settingsData.categoryTree]);
+  const valuteDelBudget = settingsData.budgetCurrencies ?? ['EUR'];
   const [transactionTypeFilter, setTransactionTypeFilter] = useState('all');
   const [incompleteOnly, setIncompleteOnly] = useState(false);
   const [selection, setSelection] = useState<Set<string>>(new Set());
@@ -4031,7 +4081,8 @@ function SectionView({
 
       {section === 'Report' && <ReportsView year={selectedYear} month={selectedMonth} downloadBusy={downloadBusy} downloadError={downloadError} canManageBackups={canManageBackups} onDownload={onDownloadReport} onDownloadData={onDownloadData} onImportData={onImportData} importing={importing} apiUrl={apiUrl} onReload={onReload} />}
 
-      {section === 'Budget' && <div className="space-y-5">
+      {section === 'Budget' && <ValutaBudget.Provider value={budgetCurrency}>
+        <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-2">
           {/* Spese/Entrate/Risparmio comanda tre schede su cinque: la
               Panoramica, l'Andamento e il Piano. Nelle Entrate tardive decide
@@ -4041,6 +4092,11 @@ function SectionView({
               che non cambia quello che si sta guardando. */}
           {VISTE_CON_TIPO.includes(budgetView) && <TabStrip variant="pillole" label={t('type')} value={budgetType} onChange={onBudgetTypeChange}
             options={[['Expenses', t('expensesType')], ['Income', t('incomeType')], ['Savings', t('savingsType')]] as const} />}
+          {/* Le valute si mostrano solo a chi ne usa piu' d'una. Con una sola
+              il comando non cambierebbe niente, ed e' un comando in meno che
+              chi ha un conto solo in euro si trova davanti senza motivo. */}
+          {VISTE_CON_TIPO.includes(budgetView) && valuteDelBudget.length > 1 && <TabStrip variant="pillole" label={t('currency')} value={budgetCurrency} onChange={onBudgetCurrencyChange}
+            options={valuteDelBudget.map((codice) => [codice, codice] as const)} />}
           <TabStrip label={t('budget')} value={budgetView} onChange={onBudgetViewChange}
             options={[['dashboard', t('budgetTabDashboard')], ['trends', t('budgetTabTrends')], ['plan', t('budgetTabPlan')], ['categories', t('budgetTabCategories')], ['entrateTardive', t('budgetTabLateIncome')]] as const} />
         </div>
@@ -4076,7 +4132,8 @@ function SectionView({
               che il numero da scegliere e' 28. */}
           <SettingSelect label={t('fromDay')} value={settingsData.settings.late_income_day} options={Array.from({ length: 28 }, (_, index) => String(index + 1))} saving={settingSaving === 'late_income_day'} disabled={settingsData.settings.late_income_shift !== 'Active'} hint={settingsData.settings.late_income_shift === 'Active' ? t('fromDayHintActive') : t('fromDayHintInactive')} onChange={(value) => void onSettingChange('late_income_day', value)} />
         </CardImpostazioni>}
-      </div>}
+        </div>
+      </ValutaBudget.Provider>}
 
       {section === 'Obiettivi' && <GoalsView data={goalsData} accounts={accounts} onSave={onGoalSave} onDelete={onGoalDelete} onMilestoneAdd={onMilestoneAdd} onMilestoneDelete={onMilestoneDelete} />}
 
@@ -4120,7 +4177,8 @@ function FilterSelect({ label, value, options, onChange }: { label: string; valu
 }
 
 function BudgetBalanceCard({ balance, scope }: { balance: BudgetBalance; scope: 'month' | 'year' }) {
-  const { t, formatEuro } = useI18n();
+  const { t } = useI18n();
+  const { soldi } = useSoldiBudget();
   // Il risparmio pianificato non e' un numero a se': e' quello che avanza. Il
   // caso da segnalare non e' piu' "non quadra" - quadra sempre - ma "quello che
   // avanza e' negativo", cioe' il piano spende piu' di quanto incassa.
@@ -4129,23 +4187,23 @@ function BudgetBalanceCard({ balance, scope }: { balance: BudgetBalance; scope: 
   // quello che si pensava di incassare: e' comunque un segnale da segnalare.
   const tono = negativo ? 'text-[var(--money-allarme)]' : !balance.hasIncomePlan ? 'text-[var(--money-testo-tenue)]' : 'text-[var(--money-ok)]';
   const messaggio = negativo
-    ? t('budgetBalanceOverplanned', { amount: formatEuro(Math.abs(balance.savings)) })
+    ? t('budgetBalanceOverplanned', { amount: soldi(Math.abs(balance.savings)) })
     : !balance.hasIncomePlan
       ? t('budgetBalanceNoIncome')
-      : t('budgetBalanceSaves', { amount: formatEuro(balance.savings) });
+      : t('budgetBalanceSaves', { amount: soldi(balance.savings) });
   return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
     <CardHeader><CardTitle className="text-[17px]">{scope === 'year' ? t('budgetBalanceTitleYear') : t('budgetBalanceTitle')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{scope === 'year' ? t('budgetBalanceSubtitleYear') : t('budgetBalanceSubtitle')}</p></CardHeader>
     <CardContent className="space-y-3">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm tabular-nums">
-        <span className="font-semibold">{formatEuro(balance.income)}</span>
+        <span className="font-semibold">{soldi(balance.income)}</span>
         <span className="text-[var(--money-testo-tenue)]">{t('budgetBalanceIncome')}</span>
         <span className="text-[var(--money-testo-tenue)]">−</span>
-        <span className="font-semibold">{formatEuro(balance.expenses)}</span>
+        <span className="font-semibold">{soldi(balance.expenses)}</span>
         <span className="text-[var(--money-testo-tenue)]">{t('budgetBalanceExpenses')}</span>
         <span className="text-[var(--money-testo-tenue)]">=</span>
         <span className="text-[var(--money-testo-tenue)]">{t('budgetBalanceSavings')}</span>
       </div>
-      <p className={`text-2xl font-semibold tabular-nums ${tono}`}>{formatEuro(balance.savings)}</p>
+      <p className={`text-2xl font-semibold tabular-nums ${tono}`}>{soldi(balance.savings)}</p>
       <p className={`text-xs ${tono}`}>{messaggio}</p>
     </CardContent>
   </Card>;
@@ -4154,7 +4212,8 @@ function BudgetBalanceCard({ balance, scope }: { balance: BudgetBalance; scope: 
 const GROUP_COLORS: Record<string, string> = { Needs: '#237056', Wants: '#e0a458', Other: '#b7bfbb' };
 
 function NeedsWantsCard({ groups }: { groups: BudgetGroupSplit[] }) {
-  const { t, formatEuro } = useI18n();
+  const { t } = useI18n();
+  const { soldi } = useSoldiBudget();
   const totale = groups.reduce((sum, group) => sum + group.actual, 0);
   const etichetta = (group: string) => group === 'Needs' ? t('groupNeeds') : group === 'Wants' ? t('groupWants') : t('groupOther');
   return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm">
@@ -4167,7 +4226,7 @@ function NeedsWantsCard({ groups }: { groups: BudgetGroupSplit[] }) {
         <ul className="space-y-2">
           {groups.map((group) => <li key={group.group} className="flex items-center justify-between gap-3 text-xs">
             <span className="flex items-center gap-2"><span className="size-2.5 rounded-full" style={{ backgroundColor: GROUP_COLORS[group.group] }} />{etichetta(group.group)}</span>
-            <span className="tabular-nums text-[var(--money-testo-muto)]">{formatEuro(group.actual)} · {group.actualShare}%{group.planned > 0 && <span className="text-[var(--money-testo-tenue)]"> ({t('plannedShort', { amount: formatEuro(group.planned) })})</span>}</span>
+            <span className="tabular-nums text-[var(--money-testo-muto)]">{soldi(group.actual)} · {group.actualShare}%{group.planned > 0 && <span className="text-[var(--money-testo-tenue)]"> ({t('plannedShort', { amount: soldi(group.planned) })})</span>}</span>
           </li>)}
         </ul>
         {(groups.find((group) => group.group === 'Other')?.actual ?? 0) > 0 && <p className="rounded-lg bg-[var(--money-superficie-hover)] px-3 py-2 text-[11px] leading-4 text-[var(--money-testo-tenue)]">{t('needsWantsUnclassified')}</p>}
@@ -4183,7 +4242,8 @@ function NeedsWantsCard({ groups }: { groups: BudgetGroupSplit[] }) {
 const CATEGORIE_IN_CARD = 10;
 
 function BudgetDashboardView({ data, budgetType, onGoToView }: { data: BudgetDashboardData; budgetType: 'Expenses' | 'Income' | 'Savings'; onGoToView: (vista: BudgetView) => void }) {
-  const { t, locale, formatEuro, formatCompactEuro, monthNames, formatPeriodLabel, formatPercentNumber } = useI18n();
+  const { t, locale, monthNames, formatPeriodLabel, formatPercentNumber } = useI18n();
+  const { soldi, compatto } = useSoldiBudget();
  const isExpense = budgetType === 'Expenses';
   const isSavings = budgetType === 'Savings';
   const actualTitle = budgetType === 'Expenses' ? t('spentMetric') : budgetType === 'Income' ? t('receivedMetric') : t('savedMetric');
@@ -4218,8 +4278,8 @@ function BudgetDashboardView({ data, budgetType, onGoToView }: { data: BudgetDas
     </div>
     {isExpense && <NeedsWantsCard groups={data.groups} />}
     <div className={`grid gap-5 ${isSavings ? '' : 'xl:grid-cols-[1.3fr_1fr]'}`}>
-      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('budgetAndActualByType', { 0: budgetType })}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{t('budgetAndActualByTypeSubtitle', { 0: budgetType })}</p></CardHeader><CardContent><ChartContainer config={budgetChartConfig} className="h-[300px] w-full"><BarChart accessibilityLayer data={data.months}><CartesianGrid vertical={false} strokeDasharray="3 5" /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} /><YAxis tickLine={false} axisLine={false} tickFormatter={(value) => formatCompactEuro(Number(value))} width={70} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} />} /><ChartLegend content={<ChartLegendContent />} /><Bar dataKey="planned" fill="var(--color-planned)" radius={[4, 4, 0, 0]} maxBarSize={22} /><Bar dataKey="actual" fill="var(--color-actual)" radius={[4, 4, 0, 0]} maxBarSize={22} /></BarChart></ChartContainer></CardContent></Card>
-      {!isSavings && <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('periodCategories')}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{t('monthCategoriesSubtitle')}</p></CardHeader>{data.categories.length === 0 ? <CardContent className="p-6 text-center text-xs text-[var(--money-testo-tenue)]">{t('budgetNotPlanned')}</CardContent> : <CardContent className="divide-y divide-[var(--money-velo)]/5">{[...data.categories].sort((a, b) => (b.actual - a.actual) || (b.planned - a.planned)).slice(0, CATEGORIE_IN_CARD).map((item) => { const good = budgetVarianceIsGood(budgetType, item.variance); const message = isExpense ? (item.variance < 0 ? t('overBudgetBy', { amount: formatEuro(Math.abs(item.variance)) }) : t('availableAmount', { amount: formatEuro(item.variance) })) : (item.variance < 0 ? t('exceededTargetBy', { amount: formatEuro(Math.abs(item.variance)) }) : t('belowTargetBy', { amount: formatEuro(item.variance) })); return <div key={item.category} className="grid grid-cols-[1fr_auto] gap-3 py-3"><div><p className="text-sm font-medium">{item.categoryLabel}</p><p className={`mt-1 text-xs ${good ? 'text-[var(--money-testo-tenue)]' : 'text-[var(--money-allarme)]'}`}>{message}</p>{item.previousLeftover !== 0 && <p className="mt-0.5 text-[11px] text-[var(--money-testo-tenue)]">{item.previousLeftover > 0 ? t('budgetPreviousLeft', { amount: formatEuro(item.previousLeftover) }) : t('budgetPreviousOver', { amount: formatEuro(Math.abs(item.previousLeftover)) })}</p>}</div><div className="text-right text-xs"><p className="font-semibold">{formatEuro(item.actual)}</p><p className="mt-1 text-[var(--money-testo-tenue)]">{t('ofPlannedShort', { amount: formatEuro(item.planned) })}</p></div></div>; })}
+      <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('budgetAndActualByType', { 0: budgetType })}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{t('budgetAndActualByTypeSubtitle', { 0: budgetType })}</p></CardHeader><CardContent><ChartContainer config={budgetChartConfig} className="h-[300px] w-full"><BarChart accessibilityLayer data={data.months}><CartesianGrid vertical={false} strokeDasharray="3 5" /><XAxis dataKey="label" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} /><YAxis tickLine={false} axisLine={false} tickFormatter={(value) => compatto(Number(value))} width={70} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} />} /><ChartLegend content={<ChartLegendContent />} /><Bar dataKey="planned" fill="var(--color-planned)" radius={[4, 4, 0, 0]} maxBarSize={22} /><Bar dataKey="actual" fill="var(--color-actual)" radius={[4, 4, 0, 0]} maxBarSize={22} /></BarChart></ChartContainer></CardContent></Card>
+      {!isSavings && <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('periodCategories')}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{t('monthCategoriesSubtitle')}</p></CardHeader>{data.categories.length === 0 ? <CardContent className="p-6 text-center text-xs text-[var(--money-testo-tenue)]">{t('budgetNotPlanned')}</CardContent> : <CardContent className="divide-y divide-[var(--money-velo)]/5">{[...data.categories].sort((a, b) => (b.actual - a.actual) || (b.planned - a.planned)).slice(0, CATEGORIE_IN_CARD).map((item) => { const good = budgetVarianceIsGood(budgetType, item.variance); const message = isExpense ? (item.variance < 0 ? t('overBudgetBy', { amount: soldi(Math.abs(item.variance)) }) : t('availableAmount', { amount: soldi(item.variance) })) : (item.variance < 0 ? t('exceededTargetBy', { amount: soldi(Math.abs(item.variance)) }) : t('belowTargetBy', { amount: soldi(item.variance) })); return <div key={item.category} className="grid grid-cols-[1fr_auto] gap-3 py-3"><div><p className="text-sm font-medium">{item.categoryLabel}</p><p className={`mt-1 text-xs ${good ? 'text-[var(--money-testo-tenue)]' : 'text-[var(--money-allarme)]'}`}>{message}</p>{item.previousLeftover !== 0 && <p className="mt-0.5 text-[11px] text-[var(--money-testo-tenue)]">{item.previousLeftover > 0 ? t('budgetPreviousLeft', { amount: soldi(item.previousLeftover) }) : t('budgetPreviousOver', { amount: soldi(Math.abs(item.previousLeftover)) })}</p>}</div><div className="text-right text-xs"><p className="font-semibold">{soldi(item.actual)}</p><p className="mt-1 text-[var(--money-testo-tenue)]">{t('ofPlannedShort', { amount: soldi(item.planned) })}</p></div></div>; })}
         {/* Le righe sopra sono le prime dieci per importo: l'elenco intero, con
             le categorie che non ci sono, sta nella scheda Categorie. Senza
             questa riga il conto non tornava col totale in cima alla pagina e
@@ -4236,7 +4296,8 @@ function BudgetPlanMonthTotals({ data, budgetType, calculations, year, month }: 
   year: number;
   month: number;
 }) {
-  const { t, locale, formatEuro, monthNames, formatPercentNumber } = useI18n();
+  const { t, locale, monthNames, formatPercentNumber } = useI18n();
+  const { soldi } = useSoldiBudget();
   const planned = data.plannedTotal;
   const actual = data.actualTotal;
   const variance = planned - actual;
@@ -4257,11 +4318,11 @@ function BudgetPlanMonthTotals({ data, budgetType, calculations, year, month }: 
         : t(variance < 0 ? 'abovePlan' : 'belowPlan');
   const periodRef = formatPeriodRef(monthNames, year, month);
   return <div className="grid gap-5 md:grid-cols-3">
-    <Card className="border-0 bg-[var(--money-deep)] text-white shadow-sm"><CardContent className="p-6"><p className="text-sm text-white/70">{varianceLabel}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{formatEuro(budgetType === 'Expenses' ? variance : Math.abs(variance))}</p><p className="mt-2 text-xs text-white/70">{varianceStatus}</p><div className="mt-7 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[var(--money-accent)]" style={{ width: `${planned ? Math.min(actual / planned * 100, 100) : 0}%` }} /></div></CardContent></Card>
-    <MetricCard title={actualLabel} value={actual} change={periodRef} icon={CreditCard} tone={budgetType === 'Expenses' ? 'expense' : 'worth'} />
+    <Card className="border-0 bg-[var(--money-deep)] text-white shadow-sm"><CardContent className="p-6"><p className="text-sm text-white/70">{varianceLabel}</p><p className="mt-2 text-3xl font-semibold tabular-nums">{soldi(budgetType === 'Expenses' ? variance : Math.abs(variance))}</p><p className="mt-2 text-xs text-white/70">{varianceStatus}</p><div className="mt-7 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[var(--money-accent)]" style={{ width: `${planned ? Math.min(actual / planned * 100, 100) : 0}%` }} /></div></CardContent></Card>
+    <MetricCard title={actualLabel} value={actual} valueLabel={soldi(actual)} change={periodRef} icon={CreditCard} tone={budgetType === 'Expenses' ? 'expense' : 'worth'} />
     {budgetType === 'Savings'
       ? <MetricCard title={t('savingsRateLabel')} value={calculations?.savingsRate ?? 0} valueLabel={calculations?.savingsRate == null ? '—' : `${formatPercentNumber(calculations.savingsRate * 100)}%`} change={calculations ? t('daysOfDays', { passed: calculations.daysPassed, total: calculations.daysInPeriod }) : t('calculationInProgress')} icon={PiggyBank} tone="saving" />
-      : <MetricCard title={plannedLabel} value={planned} change={periodRef} icon={CircleDollarSign} tone="worth" />}
+      : <MetricCard title={plannedLabel} value={planned} valueLabel={soldi(planned)} change={periodRef} icon={CircleDollarSign} tone="worth" />}
   </div>;
 }
 
@@ -4275,20 +4336,22 @@ function BudgetTabEmpty({ loading }: { loading: boolean }) {
 }
 
 function BudgetTrendsView({ data, budgetType, loading }: { data: BudgetTrendsData; budgetType: 'Expenses' | 'Income' | 'Savings'; loading: boolean }) {
-  const { t, formatEuro, formatCompactEuro, formatPeriodLabel } = useI18n();
+  const { t, formatPeriodLabel } = useI18n();
+  const { soldi, compatto } = useSoldiBudget();
   // Il mapping anno→colore dipende solo da `data.years`: memoizzarlo evita di
   // rifare la stessa `Object.fromEntries` a ogni render del componente.
   const trendConfig = useMemo(() => Object.fromEntries(data.years.map((item, index) => [String(item.year), { label: String(item.year), color: TREND_COLORS[index % TREND_COLORS.length] }])) as ChartConfig, [data.years]);
   const yearTitle = (year: number) => budgetType === 'Expenses' ? t('spentYear', { year }) : budgetType === 'Income' ? t('receivedYear', { year }) : t('savedYear', { year });
   if (!data.years.length) return <BudgetTabEmpty loading={loading} />;
   return <div className="space-y-5">
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{data.years.map((item) => { const good = budgetVarianceIsGood(budgetType, item.plannedTotal - item.actualTotal); return <Card key={item.year} className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardContent className="p-5"><p className="text-sm font-medium text-[var(--money-testo-tenue)]">{yearTitle(item.year)}</p><p className="mt-3 text-2xl font-semibold">{formatEuro(item.actualTotal)}</p><p className={`mt-2 text-xs ${good ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'}`}>{t('budgetMetric')} {formatEuro(item.plannedTotal)}</p></CardContent></Card>; })}</div>
-    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('monthlyComparisonAcrossYears')}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{t('monthlyComparisonAcrossYearsSubtitle')}</p></CardHeader><CardContent><ChartContainer config={trendConfig} className="h-[360px] w-full"><LineChart accessibilityLayer data={data.comparison}><CartesianGrid vertical={false} strokeDasharray="3 5" /><XAxis dataKey="month" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} /><YAxis tickLine={false} axisLine={false} width={72} tickFormatter={(value) => formatCompactEuro(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} />} /><ChartLegend content={<ChartLegendContent />} />{data.years.map((item, index) => <Line key={item.year} type="monotone" dataKey={String(item.year)} stroke={TREND_COLORS[index % TREND_COLORS.length]} strokeWidth={2.5} dot={false} connectNulls />)}</LineChart></ChartContainer></CardContent></Card>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{data.years.map((item) => { const good = budgetVarianceIsGood(budgetType, item.plannedTotal - item.actualTotal); return <Card key={item.year} className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardContent className="p-5"><p className="text-sm font-medium text-[var(--money-testo-tenue)]">{yearTitle(item.year)}</p><p className="mt-3 text-2xl font-semibold">{soldi(item.actualTotal)}</p><p className={`mt-2 text-xs ${good ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'}`}>{t('budgetMetric')} {soldi(item.plannedTotal)}</p></CardContent></Card>; })}</div>
+    <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('monthlyComparisonAcrossYears')}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{t('monthlyComparisonAcrossYearsSubtitle')}</p></CardHeader><CardContent><ChartContainer config={trendConfig} className="h-[360px] w-full"><LineChart accessibilityLayer data={data.comparison}><CartesianGrid vertical={false} strokeDasharray="3 5" /><XAxis dataKey="month" tickFormatter={formatPeriodLabel} tickLine={false} axisLine={false} /><YAxis tickLine={false} axisLine={false} width={72} tickFormatter={(value) => compatto(Number(value))} /><ChartTooltip content={<ChartTooltipContent labelFormatter={(etichetta) => formatPeriodLabel(etichetta)} />} /><ChartLegend content={<ChartLegendContent />} />{data.years.map((item, index) => <Line key={item.year} type="monotone" dataKey={String(item.year)} stroke={TREND_COLORS[index % TREND_COLORS.length]} strokeWidth={2.5} dot={false} connectNulls />)}</LineChart></ChartContainer></CardContent></Card>
   </div>;
 }
 
 function AnnualBudgetEditor({ data, padreDi, onApply }: { data: AnnualBudgetData; padreDi: Record<string, string>; onApply: (category: string, months: number[], amount: number, categoryGroup?: string | null) => Promise<void> }) {
-  const { t, formatEuro, formatCompactEuro, monthNamesShort } = useI18n();
+  const { t, monthNamesShort } = useI18n();
+  const { soldi, compatto } = useSoldiBudget();
   const [category, setCategory] = useState('');
   const [amount, setAmount] = useState('');
   const [months, setMonths] = useState<number[]>([]);
@@ -4359,7 +4422,7 @@ function AnnualBudgetEditor({ data, padreDi, onApply }: { data: AnnualBudgetData
   return <div className="space-y-5">
     <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('applySameValueToMultipleMonths')}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{t('applySameValueToMultipleMonthsSubtitle')}</p></CardHeader><CardContent><form onSubmit={applyMany} className="space-y-4"><div className="flex flex-wrap items-start gap-3"><select aria-label={t('category')} value={effectiveCategory} onChange={(event) => setCategory(event.target.value)} className="h-10 rounded-lg border border-input bg-[var(--money-superficie)] px-3 text-sm">{data.items.map((item) => <option key={item.category} value={item.category}>{item.categoryLabel}</option>)}</select>{padreDiVoce(effectiveCategory) && <span className="self-center rounded-full bg-[var(--money-superficie-hover)] px-2.5 py-1 text-[11px] text-[var(--money-testo-tenue)]">{t('budgetInsideParent', { parent: padreDiVoce(effectiveCategory) ?? '' })}</span>}<Input required min="0" step="0.01" type="number" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={t('monthlyAmountPlaceholder')} /><Button type="submit" disabled={busy || !months.length} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Save className="size-4" />{busy ? t('savingEllipsis') : t('applyToMonths', { count: months.length || 0 })}</Button></div><div className="flex flex-wrap gap-2">{monthNamesShort.map((name, index) => { const month = index + 1; const selected = months.includes(month); return <button key={name} type="button" onClick={() => setMonths((current) => selected ? current.filter((value) => value !== month) : [...current, month].sort((a, b) => a - b))} className={`rounded-lg border px-3 py-2 text-xs font-medium ${selected ? 'border-[var(--money-deep)] bg-[var(--money-deep)] text-white' : 'border-[var(--money-velo)]/8 bg-[var(--money-superficie-tenue)] text-[var(--money-testo-tenue)]'}`}>{name}</button>; })}<button type="button" onClick={() => setMonths(months.length === 12 ? [] : Array.from({ length: 12 }, (_, index) => index + 1))} className="rounded-lg px-3 py-2 text-xs font-semibold text-[var(--money-ok)]">{months.length === 12 ? t('deselectAll') : t('wholeYearAction')}</button></div></form></CardContent></Card>
     {error && <p className="rounded-lg bg-[var(--money-allarme-tenue)] px-3 py-2 text-xs text-[var(--money-allarme)]">{error}</p>}
-    <Card className="overflow-hidden border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('annualPlan', { year: data.year })}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{t('annualPlanSubtitle')}</p></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1320px] w-full text-xs"><thead className="sticky top-0 bg-[var(--money-superficie-hover)] text-[var(--money-testo-muto)]"><tr><th className="sticky left-0 z-10 bg-[var(--money-superficie-hover)] px-4 py-3 text-left">{t('category')}</th>{monthNamesShort.map((month) => <th key={month} className="px-2 py-3 text-right">{month}</th>)}<th className="px-4 py-3 text-right">{t('total')}</th></tr></thead><tbody className="divide-y divide-[var(--money-velo)]/5">{gruppi.map(({ padre, voci }) => <Fragment key={padre ?? "(radici)"}>{padre && <tr className="bg-[var(--money-superficie-tenue)]"><td className="sticky left-0 z-10 bg-[var(--money-superficie-tenue)] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--money-testo-tenue)]" colSpan={14}>{padre}</td></tr>}{voci.map((item) => <tr key={item.category}><td className="sticky left-0 z-10 bg-[var(--money-superficie)] px-4 py-2 font-medium">{padre && <span aria-hidden className="mr-2 inline-block h-3 w-px translate-y-0.5 bg-[var(--money-superficie-hover)]" />}{item.categoryLabel}</td>{item.months.map((month) => <td key={month.month} className="px-1.5 py-1.5"><input key={`${data.year}-${item.category}-${month.month}`} aria-label={`${item.categoryLabel} ${monthNamesShort[month.month - 1]}`} type="number" min="0" step="0.01" defaultValue={month.amount.toFixed(2)} onBlur={(event) => void applyCell(event, item.category, month.month, month.amount, item.categoryGroup)} className="h-8 w-full rounded-md border border-transparent bg-[var(--money-superficie-tenue)] px-2 text-right tabular-nums outline-none hover:border-[var(--money-velo)]/10 focus:border-[var(--money-anello)]" /></td>)}<td className="px-4 py-2 text-right font-semibold">{formatEuro(item.plannedTotal)}</td></tr>)}</Fragment>)}</tbody><tfoot className="border-t border-[var(--money-velo)]/8 bg-[var(--money-superficie-hover)] font-semibold"><tr><td className="sticky left-0 bg-[var(--money-superficie-hover)] px-4 py-3">{t('total')}</td>{data.monthTotals.map((month) => <td key={month.month} className="px-2 py-3 text-right">{formatCompactEuro(month.planned)}</td>)}<td className="px-4 py-3 text-right">{formatEuro(data.monthTotals.reduce((total, month) => total + month.planned, 0))}</td></tr></tfoot></table></div></CardContent></Card>
+    <Card className="overflow-hidden border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{t('annualPlan', { year: data.year })}</CardTitle><p className="text-xs text-[var(--money-testo-tenue)]">{t('annualPlanSubtitle')}</p></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1320px] w-full text-xs"><thead className="sticky top-0 bg-[var(--money-superficie-hover)] text-[var(--money-testo-muto)]"><tr><th className="sticky left-0 z-10 bg-[var(--money-superficie-hover)] px-4 py-3 text-left">{t('category')}</th>{monthNamesShort.map((month) => <th key={month} className="px-2 py-3 text-right">{month}</th>)}<th className="px-4 py-3 text-right">{t('total')}</th></tr></thead><tbody className="divide-y divide-[var(--money-velo)]/5">{gruppi.map(({ padre, voci }) => <Fragment key={padre ?? "(radici)"}>{padre && <tr className="bg-[var(--money-superficie-tenue)]"><td className="sticky left-0 z-10 bg-[var(--money-superficie-tenue)] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--money-testo-tenue)]" colSpan={14}>{padre}</td></tr>}{voci.map((item) => <tr key={item.category}><td className="sticky left-0 z-10 bg-[var(--money-superficie)] px-4 py-2 font-medium">{padre && <span aria-hidden className="mr-2 inline-block h-3 w-px translate-y-0.5 bg-[var(--money-superficie-hover)]" />}{item.categoryLabel}</td>{item.months.map((month) => <td key={month.month} className="px-1.5 py-1.5"><input key={`${data.year}-${item.category}-${month.month}`} aria-label={`${item.categoryLabel} ${monthNamesShort[month.month - 1]}`} type="number" min="0" step="0.01" defaultValue={month.amount.toFixed(2)} onBlur={(event) => void applyCell(event, item.category, month.month, month.amount, item.categoryGroup)} className="h-8 w-full rounded-md border border-transparent bg-[var(--money-superficie-tenue)] px-2 text-right tabular-nums outline-none hover:border-[var(--money-velo)]/10 focus:border-[var(--money-anello)]" /></td>)}<td className="px-4 py-2 text-right font-semibold">{soldi(item.plannedTotal)}</td></tr>)}</Fragment>)}</tbody><tfoot className="border-t border-[var(--money-velo)]/8 bg-[var(--money-superficie-hover)] font-semibold"><tr><td className="sticky left-0 bg-[var(--money-superficie-hover)] px-4 py-3">{t('total')}</td>{data.monthTotals.map((month) => <td key={month.month} className="px-2 py-3 text-right">{compatto(month.planned)}</td>)}<td className="px-4 py-3 text-right">{soldi(data.monthTotals.reduce((total, month) => total + month.planned, 0))}</td></tr></tfoot></table></div></CardContent></Card>
   </div>;
 }
 
@@ -6238,7 +6301,8 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
   onDelete: (id: number) => Promise<void>;
   onCopy: (mode: 'month' | 'year') => Promise<void>;
 }) {
-  const { t, formatEuro } = useI18n();
+  const { t } = useI18n();
+  const { soldi } = useSoldiBudget();
   // Le categorie non si creano da qui: si scelgono fra quelle dell'albero, e si
   // creano nella vista Categorie. Un campo libero ne faceva nascere una nuova a
   // ogni errore di battitura, ed e' il motivo per cui l'elenco era arrivato a
@@ -6401,15 +6465,15 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
                   || !data.items.some((altra) => altra.id !== item.id && altra.category.trim().toLowerCase() === chiave);
               }).map((nome) => <option key={nome} value={nome}>{nome}</option>)}
             </select>
-            {usefulSuggestion && <button type="button" disabled={!canEdit || Boolean(busy)} title={t('budgetSuggestionTitle', { average: formatEuro(usefulSuggestion.average), max: formatEuro(usefulSuggestion.max) })} onClick={() => void usaSuggerimento(item, draft.category, usefulSuggestion.median)} className="mt-1 text-left text-[11px] leading-4 text-[var(--money-ok)] hover:underline disabled:cursor-default disabled:text-[var(--money-testo-spento)] disabled:no-underline">
-              {t('budgetSuggestion', { amount: formatEuro(usefulSuggestion.median), months: usefulSuggestion.monthsWithSpending, total: usefulSuggestion.monthsConsidered })}
+            {usefulSuggestion && <button type="button" disabled={!canEdit || Boolean(busy)} title={t('budgetSuggestionTitle', { average: soldi(usefulSuggestion.average), max: soldi(usefulSuggestion.max) })} onClick={() => void usaSuggerimento(item, draft.category, usefulSuggestion.median)} className="mt-1 text-left text-[11px] leading-4 text-[var(--money-ok)] hover:underline disabled:cursor-default disabled:text-[var(--money-testo-spento)] disabled:no-underline">
+              {t('budgetSuggestion', { amount: soldi(usefulSuggestion.median), months: usefulSuggestion.monthsWithSpending, total: usefulSuggestion.monthsConsidered })}
             </button>}
             </div>
           </div>
           <Input aria-label={`${t('budget')} ${item.categoryLabel}`} disabled={!canEdit} min="0" step="0.01" type="number" value={draft.amount} onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: { ...draft, amount: event.target.value } }))} className="h-9 bg-[var(--money-superficie-tenue)]" />
           <div className="text-right text-xs leading-4 text-[var(--money-testo-tenue)] sm:pt-2">
-            <span className="sm:hidden">{actualLabel}: </span>{formatEuro(item.actual)}
-            {item.previousLeftover !== 0 && <span className="block text-[var(--money-testo-tenue)]">{item.previousLeftover > 0 ? t('budgetPreviousLeft', { amount: formatEuro(item.previousLeftover) }) : t('budgetPreviousOver', { amount: formatEuro(Math.abs(item.previousLeftover)) })}</span>}
+            <span className="sm:hidden">{actualLabel}: </span>{soldi(item.actual)}
+            {item.previousLeftover !== 0 && <span className="block text-[var(--money-testo-tenue)]">{item.previousLeftover > 0 ? t('budgetPreviousLeft', { amount: soldi(item.previousLeftover) }) : t('budgetPreviousOver', { amount: soldi(Math.abs(item.previousLeftover)) })}</span>}
           </div>
           <div className="flex justify-end gap-1">
             <Button type="button" size="icon" variant="ghost" aria-label={`${t('save')} ${item.categoryLabel}`} disabled={!canEdit || !changed || Boolean(busy)} onClick={() => void save(item)}><Save className="size-4" /></Button>
@@ -6422,7 +6486,7 @@ function BudgetEditor({ data, canEdit, editableYears, budgetType, suggestions, c
           categoria e importo — e resta da premere Aggiungi. */}
       {canEdit && senzaRiga.length > 0 && <div className="mt-4 rounded-xl border border-[var(--money-velo)]/6 bg-[var(--money-superficie-tenue)] p-3">
         <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--money-testo-tenue)]">{t('budgetSuggestedNew')}</p>
-        <div className="mt-2 flex flex-wrap gap-2">{senzaRiga.map((voce) => <button key={voce.category} type="button" disabled={Boolean(busy)} title={t('budgetSuggestionTitle', { average: formatEuro(voce.average), max: formatEuro(voce.max) })} onClick={() => { setNewCategory(voce.category); setNewAmount(voce.median.toFixed(2)); }} className="rounded-full border border-[var(--money-velo)]/10 bg-[var(--money-superficie)] px-3 py-1 text-xs text-[var(--money-ok)] transition hover:border-[var(--money-ok)] disabled:cursor-default disabled:text-[var(--money-testo-spento)]">{voce.category} · {t('budgetSuggestion', { amount: formatEuro(voce.median), months: voce.monthsWithSpending, total: voce.monthsConsidered })}</button>)}</div>
+        <div className="mt-2 flex flex-wrap gap-2">{senzaRiga.map((voce) => <button key={voce.category} type="button" disabled={Boolean(busy)} title={t('budgetSuggestionTitle', { average: soldi(voce.average), max: soldi(voce.max) })} onClick={() => { setNewCategory(voce.category); setNewAmount(voce.median.toFixed(2)); }} className="rounded-full border border-[var(--money-velo)]/10 bg-[var(--money-superficie)] px-3 py-1 text-xs text-[var(--money-ok)] transition hover:border-[var(--money-ok)] disabled:cursor-default disabled:text-[var(--money-testo-spento)]">{voce.category} · {t('budgetSuggestion', { amount: soldi(voce.median), months: voce.monthsWithSpending, total: voce.monthsConsidered })}</button>)}</div>
       </div>}
       {canEdit && <form onSubmit={create} className="mt-4 grid gap-2 rounded-xl bg-[var(--money-superficie-hover)] p-3 sm:grid-cols-[1fr_150px_auto]"><select required value={newCategory} onChange={(event) => setNewCategory(event.target.value)} className="h-10 rounded-md border border-input bg-[var(--money-superficie)] px-2 text-sm"><option value="">{t('budgetPickCategory')}</option>{categorieDisponibili.map((nome) => <option key={nome} value={nome}>{nome}</option>)}</select><Input required min="0" step="0.01" type="number" value={newAmount} onChange={(event) => setNewAmount(event.target.value)} placeholder={t('budgetPlaceholder')} className="h-10 bg-[var(--money-superficie)]" /><Button type="submit" disabled={Boolean(busy)} className="bg-[var(--money-primary)] text-white hover:bg-[var(--money-primary-hover)]"><Plus className="size-4" />{t('add')}</Button></form>}
     </CardContent>
