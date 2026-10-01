@@ -53,11 +53,27 @@ def num(value: Decimal | int | float | None) -> float:
 
 
 _EVENTO_NON_CHIESTO = object()
+# Come sopra: "questo conto non c'e' piu'" e' una risposta, "non me l'hai
+# chiesto" e' un'altra - e la seconda vuol dire leggere il conto.
+_VALUTA_NON_CHIESTA = object()
+
+
+def valute_dei_conti(session: Session) -> dict[str, str]:
+    """La valuta di ogni conto, per nome normalizzato.
+
+    Il conto di destinazione di un movimento e' un nome scritto a mano, non un
+    id: si confronta percio' normalizzato, come si fa ovunque lo si cerchi. Il
+    nome dice dove arrivano i soldi, la valuta dice in che moneta sono arrivati
+    - e le due cose stanno in tabelle diverse.
+    """
+    return {normalized_name(nome): (codice or BASE_CURRENCY) for nome, codice
+            in session.execute(select(Account.name, Account.currency))}
 
 
 def transaction_json(row: Transaction, session: Session | None = None, *,
                      linked: list[dict[str, Any]] | None = None,
                      categoria: str | None = None,
+                     valuta_destinazione: str | None | object = _VALUTA_NON_CHIESTA,
                      liability: dict[str, Any] | None = None,
                      evento: dict[str, Any] | None | object = _EVENTO_NON_CHIESTO) -> dict[str, Any]:
     """Un movimento come lo vuole l'interfaccia.
@@ -71,10 +87,22 @@ def transaction_json(row: Transaction, session: Session | None = None, *,
 
     ``categoria`` e' il nome che corrisponde all'id del movimento: chi
     serializza un elenco intero se lo porta dietro dalla mappa caricata una
-    volta, gli altri lasciano che se lo faccia dire dal database.
+    volta, gli altri lasciano che se lo faccia dire dal database. ``valuta_destinazione``
+    funziona allo stesso modo, e per lo stesso motivo.
     """
     amount = num(row.amount)
     signed = amount if row.transaction_type == "Income" else -amount
+    # Quanto arriva dall'altra parte e in che moneta. L'importo sta sul
+    # movimento; la valuta no, perche' e' quella del conto d'arrivo e il conto
+    # puo' cambiarla. Si legge solo quando c'e' un secondo importo da leggere:
+    # senza quello la riga ha una cifra sola e non le serve nessun simbolo.
+    arrivo = float(row.destination_amount) if row.destination_amount is not None else None
+    valuta_arrivo = None
+    if arrivo is not None:
+        if valuta_destinazione is not _VALUTA_NON_CHIESTA:
+            valuta_arrivo = valuta_destinazione
+        elif session is not None:
+            valuta_arrivo = valute_dei_conti(session).get(normalized_name(row.destination_name))
     # Quattro campi in meno rispetto a prima, tutti ricavabili da quelli che
     # restano: `categoryRaw` era la copia di `category`, `rawAmount` il valore
     # assoluto di `amount`, `date` una data gia' scritta in italiano - che
@@ -100,7 +128,12 @@ def transaction_json(row: Transaction, session: Session | None = None, *,
         # sulla riga del conto, come il saldo.
         "currency": row.currency or BASE_CURRENCY,
         "transactionType": row.transaction_type, "accountName": row.account_name,
-        "destinationName": row.destination_name, "goal": row.goal, "details": row.details,
+        "destinationName": row.destination_name,
+        # Quanto arriva sul conto d'arrivo, e in che moneta. `None` vuol dire
+        # "lo stesso importo che e' partito": la riga scrive una cifra sola, ed
+        # e' il caso normale di un giroconto fra due conti nella stessa valuta.
+        "destinationAmount": arrivo, "destinationCurrency": valuta_arrivo,
+        "goal": row.goal, "details": row.details,
         "linkedLedger": linked if linked is not None
                         else (_linked_ledger_for_transactions(session, [row.id]).get(row.id, []) if session is not None else []),
         "event": (evento if evento is not _EVENTO_NON_CHIESTO
@@ -1510,8 +1543,13 @@ def transactions(
     elenco_eventi = [{"id": riga.id, "name": riga.name, "closed": riga.closed} for riga in session.scalars(
         select(Event).order_by(Event.closed, Event.start_date.is_(None), Event.start_date, Event.id))]
     nomi_cat = nomi_categorie(session)
+    # Una volta per pagina, come le categorie: un giroconto fra due valute ha
+    # bisogno della valuta del conto d'arrivo, e cercarla riga per riga sarebbe
+    # una interrogazione per movimento.
+    valute_conti = valute_dei_conti(session)
     return {"items": [{**transaction_json(row, linked=collegati.get(row.id, []), liability=rate.get(row.id),
                                           categoria=nomi_cat.get(row.category_id, ""),
+                                          valuta_destinazione=valute_conti.get(normalized_name(row.destination_name)),
                                           evento=eventi_dei_movimenti.get(row.id)), "refundedById": refunds.get(row.id)} for row in rows],
             "total": session.scalar(count_query) or 0,
             "offset": offset, "limit": limit, "years": anni, "goals": obiettivi,
@@ -1757,9 +1795,11 @@ def event_detail(event_id: int, session: Session = Depends(get_session)) -> dict
     rimborsati = dict(session.execute(select(Transaction.refund_of_id, Transaction.id).where(
         Transaction.refund_of_id.in_(ids))).all())
     nomi_cat = nomi_categorie(session)
+    valute_conti = valute_dei_conti(session)
     return {"event": _evento_json(riga, _numeri_eventi(session, [riga.id]).get(riga.id)),
             "movements": [{**transaction_json(row, linked=collegati.get(row.id, []), liability=rate.get(row.id),
                                               categoria=nomi_cat.get(row.category_id, ""),
+                                              valuta_destinazione=valute_conti.get(normalized_name(row.destination_name)),
                                               evento=eventi_dei_movimenti.get(row.id)),
                            "refundedById": rimborsati.get(row.id)} for row in movimenti],
             "categories": _ripartizione_evento(session, [riga.id]).get(riga.id, [])}

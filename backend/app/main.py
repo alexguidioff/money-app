@@ -30,7 +30,7 @@ from .categorie import _prossima_posizione, gruppo_di_categoria, nome_di, nomi a
 from .core_routes import (BASE_CURRENCY, GOAL_KINDS, MAX_SELEZIONE_MASSA, _cambi_per_valute,
                           _cambio_al_giorno, _in_euro, _rate_on, _somma_budget, account_currencies,
                           benchmark_symbol, display_currencies, fx_rates_by_month,
-                          fx_symbols, movimenti_per_saldi, num, sync_savings_plan)
+                          fx_symbols, movimenti_per_saldi, num, sync_savings_plan, valute_dei_conti)
 from .database import Base, admin_engine, engine, get_session, set_default_user, current_user_id
 from .migrations import accendi_isolamento, aggiungi_colonna_utente, tracked_changes
 from .transaction_rules import (REAL_MOVEMENT, BUDGET_MOVEMENT, SPOSTAMENTI, TIPI_MOVIMENTO,
@@ -1780,6 +1780,10 @@ def _transaction_to_dict(tx: Transaction, session: Session | None = None) -> dic
         # Quanto arriva dall'altra parte, quando e' diverso da quello che esce.
         # L'assenza non e' un buco: vuol dire che l'importo e' lo stesso.
         "destinationAmount": float(tx.destination_amount) if tx.destination_amount is not None else None,
+        # ... e in che moneta, che e' quella del conto d'arrivo: il movimento
+        # porta il nome del conto, non la sua valuta.
+        "destinationCurrency": (valute_dei_conti(session).get(normalized_name(tx.destination_name))
+                                if tx.destination_amount is not None and session is not None else None),
         "goal": tx.goal,
         "details": tx.details,
         "balance": float(tx.balance) if tx.balance is not None else None,

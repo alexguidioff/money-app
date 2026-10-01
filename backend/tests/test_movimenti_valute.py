@@ -33,7 +33,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.core_routes import (_movimenti_goal, _totali_per_categoria, budget_actual,
-                             budget_actual_year, period_total)
+                             budget_actual_year, period_total, transaction_json, transactions)
 from app.database import Base
 from app.main import (AccountPayload, TransactionPayload, _report_period_total,
                       create_transaction, update_account)
@@ -146,6 +146,43 @@ class MovimentiInValutaTests(unittest.TestCase):
                         destination_amount=Decimal("90.00"))
         self.assertEqual({}, budget_actual(self.session, 2026, 7, "Expenses"))
         self.assertAlmostEqual(0.0, period_total(self.session, 2026, 7, "Expenses"), places=2)
+
+    # -- il giroconto fra due valute --------------------------------------
+
+    def test_un_giroconto_fra_due_valute_dice_quanto_arriva(self) -> None:
+        """Le due cifre di un giroconto fra valute diverse, e la loro moneta.
+
+        L'importo che arriva sta sul movimento; la valuta no, perche' e' quella
+        del conto d'arrivo. Se la riga non le porta tutte e due, l'interfaccia
+        scrive l'uscita e tace l'entrata - e il modulo di modifica, che riempie
+        i campi da qui, salva un secondo importo vuoto: il saldo del conto
+        d'arrivo cambia senza che nessuno l'abbia chiesto.
+        """
+        movimento = self._movimento(date(2026, 7, 10), "100.00", conto="Conto", tipo="Transfers",
+                                    categoria=None, counts_in_budget=False, destination_name="Revolut",
+                                    destination_amount=Decimal("90.00"))
+        voce = transaction_json(movimento, self.session)
+        self.assertEqual("EUR", voce["currency"])
+        self.assertEqual(90.0, voce["destinationAmount"])
+        self.assertEqual("CHF", voce["destinationCurrency"])
+        # Chi serializza un elenco se la porta dietro gia' risolta, come la
+        # categoria: e' il motivo per cui la funzione accetta il parametro.
+        self.assertEqual("CHF", transaction_json(movimento, valuta_destinazione="CHF")["destinationCurrency"])
+        # La pagina dei movimenti e' la strada da cui ci passa l'interfaccia.
+        riga = next(item for item in transactions(100, self.session)["items"]
+                    if item["id"] == voce["id"])
+        self.assertEqual(90.0, riga["destinationAmount"])
+        self.assertEqual("CHF", riga["destinationCurrency"])
+
+    def test_senza_secondo_importo_la_riga_ha_una_cifra_sola(self) -> None:
+        # Nessun cambio di mezzo - fra conti in pari valuta il server scrive il
+        # vuoto, non la stessa cifra due volte: la seconda cifra non c'e', e non
+        # c'e' nemmeno la moneta da cui leggerla.
+        voce = transaction_json(self._movimento(
+            date(2026, 7, 10), "100.00", conto="Conto", tipo="Transfers", categoria=None,
+            counts_in_budget=False, destination_name="Revolut"), self.session)
+        self.assertIsNone(voce["destinationAmount"])
+        self.assertIsNone(voce["destinationCurrency"])
 
     def test_il_report_del_mese_conta_in_euro(self) -> None:
         _cambio(self.session, "CHF", date(2026, 7, 1), "1.10")
