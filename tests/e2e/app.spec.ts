@@ -407,6 +407,45 @@ test('Budget: le schede che non leggono un comando non lo mostrano', async ({ pa
   expect(errori).toEqual([]);
 });
 
+test('Budget: le valute si leggono una per volta', async ({ page }) => {
+  // La richiesta di Mary: la stessa categoria con un piano in euro e uno in
+  // franchi, senza cambio di mezzo. Il seme e2e e' tutto in euro, quindi la
+  // linguetta esiste solo perche' questo test la fa nascere - ed e' la prova
+  // che con una valuta sola non compare.
+  const errori = raccogliErrori(page);
+  const oggi = new Date();
+  const anno = oggi.getFullYear(), mese = oggi.getMonth() + 1;
+  const inFranchi = await page.request.post('/api/budgets', { data: {
+    year: anno, month: mese, budget_type: 'Expenses', category: 'Housing', amount: 777, currency: 'CHF' } });
+  expect(inFranchi.ok()).toBe(true);
+  const piano = await inFranchi.json() as { id: number };
+
+  try {
+    await avvia(page);
+    await apri(page, 'Budget');
+    const valuta = page.getByRole('group', { name: 'Valuta' });
+    await expect(valuta).toBeVisible();
+    await page.getByRole('button', { name: 'Piano', exact: true }).click();
+
+    // Sulla scheda dei franchi il piano c'e', ed e' scritto in franchi: la
+    // stessa cifra senza valuta accanto sarebbe la sola cosa che questo
+    // lavoro doveva togliere di mezzo.
+    await valuta.getByRole('button', { name: 'CHF', exact: true }).click();
+    await expect(page.getByText(/^777,00\s*CHF$/).first()).toBeVisible();
+
+    // Sulla scheda degli euro quei franchi non ci sono, e nemmeno al contrario:
+    // e' il numero che non deve passare da una linguetta all'altra.
+    await valuta.getByRole('button', { name: 'EUR', exact: true }).click();
+    await expect(page.getByText(/777,00/)).toHaveCount(0);
+    expect(errori).toEqual([]);
+  } finally {
+    // Il piano si toglie: gli altri test girano su questo stesso stack, e un
+    // seme che cambia sotto i piedi e' un rosso che si legge dalla parte
+    // sbagliata.
+    await page.request.delete(`/api/budgets/${piano.id}`);
+  }
+});
+
 test('Obiettivi: una tappa si aggiunge dall\'elenco, resta dopo il ricarico e si toglie', async ({ page }) => {
   // Il corpo del modulo e' l'unica cosa che nessun test di contratto vede: il
   // contratto costruisce il FormData da solo, quindi un campo `name` scritto
