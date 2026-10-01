@@ -2840,21 +2840,29 @@ function MoneyDashboardInner() {
             {activeSection === 'Panoramica' ? <>
             <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
               <div><p className="mb-1 text-sm font-medium text-[var(--money-testo-tenue)]">{t('panoramicaSubtitle')}</p><h1 className="flex items-center text-2xl font-semibold tracking-[-0.03em] sm:text-[30px]">{t('panoramicaGreeting', { name: displayName.split(/\s+/)[0] })}<PageHelp titolo="helpTitle" testo="helpPanoramica" dipendenza="helpPanoramicaDep" /></h1></div>
+              {/* Quattro controlli in una riga: cosa si guarda, in che valuta,
+                  di che periodo, e il pulsante che scrive. L'ordine e' quello in
+                  cui si legge la pagina - prima la vista, poi la moneta, poi il
+                  tempo - e il periodo si prende una riga sola (`compact`) perche'
+                  qui accanto ci sono altre tre cose da mostrare. */}
               <div className="flex flex-wrap items-center justify-end gap-2">
+                <TabStrip label={t('section')} value={overviewView} onChange={setOverviewView}
+                  options={[['panoramica', t('overviewToggle')], ['analisi', t('analysisToggle')]] as const} />
+                {/* Solo le valute di cui l'app conosce il cambio, e solo se ce
+                    n'e' piu' di una: con il solo euro la scelta non e' una
+                    scelta, e una pillola unica e' un pulsante che non fa niente. */}
+                {overviewView === 'panoramica' && valuteDellaVista.length > 1 && <TabStrip variant="pillole" label={t('currency')} value={overviewCurrency}
+                  options={valuteDellaVista.map((codice) => [codice, codice] as const)}
+                  onChange={(codice) => void handleSettingChange('overview_currency', codice)} />}
                 {overviewView === 'panoramica' && <PeriodSelector
+                  compact
                   value={period}
                   years={settingsData.options.overviewYears}
                   onChange={setPeriod}
                   compareTo={overviewCompareTo}
                   onCompareToChange={setOverviewCompareTo}
                 />}
-                <div className="flex shrink-0 items-center gap-2">
-                <div className="flex overflow-hidden rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.02]">
-                  <button type="button" onClick={() => setOverviewView('panoramica')} className={`h-10 px-3.5 text-sm font-medium transition ${overviewView === 'panoramica' ? 'bg-[var(--money-primary)] text-white' : 'text-[var(--money-testo-muto)] hover:bg-[var(--money-superficie-hover)]'}`}>{t('overviewToggle')}</button>
-                  <button type="button" onClick={() => setOverviewView('analisi')} className={`h-10 px-3.5 text-sm font-medium transition ${overviewView === 'analisi' ? 'bg-[var(--money-primary)] text-white' : 'text-[var(--money-testo-muto)] hover:bg-[var(--money-superficie-hover)]'}`}>{t('analysisToggle')}</button>
-                </div>
                 {overviewView === 'panoramica' && <Button className="h-10 rounded-xl bg-[var(--money-primary)] px-4 text-white hover:bg-[var(--money-primary-hover)]" onClick={openNewTransaction}><Plus className="size-4" /><span className="hidden sm:inline">{t('newTransaction')}</span></Button>}
-                </div>
               </div>
             </div>
 
@@ -3548,12 +3556,15 @@ function MoneyDashboardInner() {
   );
 }
 
-function PeriodSelector({ value: periodoScelto, years, onChange, allowMonth = true, allowYear = true, allowLast12 = false, compareTo, onCompareToChange }: {
+function PeriodSelector({ value: periodoScelto, years, onChange, allowMonth = true, allowYear = true, allowLast12 = false, compact = false, compareTo, onCompareToChange }: {
   value: PeriodSelection;
   years: string[];
   onChange: (period: PeriodSelection) => void;
   allowMonth?: boolean;
   allowYear?: boolean;
+  // Un menu solo al posto dei due (anno e mese), per le intestazioni che hanno
+  // altro da mostrare. Frecce, "Oggi", confronto e `move()` non se ne accorgono.
+  compact?: boolean;
   // Gli ultimi dodici mesi si offrono solo dove la pagina sa raccontarli: una
   // finestra che scorre non e' ne' un mese ne' un anno, e le pagine che
   // chiedono il secondo dei due non devono ritrovarsela addosso.
@@ -3592,11 +3603,27 @@ function PeriodSelector({ value: periodoScelto, years, onChange, allowMonth = tr
       onChange({ ...value, month: value.month + direction });
     }
   };
+  // Il menu compatto: "Ultimi 12 mesi" in cima, poi ogni anno dall'alto con
+  // dentro i suoi dodici mesi. Il valore e' `last12`, `y:2026` o `2026-10`.
+  const periodoCompatto = scope === 'last12' ? 'last12' : scope === 'year' ? `y:${value.year}` : `${value.year}-${String(value.month).padStart(2, '0')}`;
+  const scegliCompatto = (scelta: string) => {
+    if (scelta === 'last12') {
+      onChange({ ...value, scope: 'last12' });
+    } else if (scelta.startsWith('y:')) {
+      onChange({ ...value, year: Number(scelta.slice(2)), scope: 'year' });
+      // Un anno intero non ha un periodo precedente con cui confrontarsi.
+      if (compareTo === 'prior_period') onCompareToChange?.('prior_year');
+    } else {
+      const [anno, mese] = scelta.split('-').map(Number);
+      onChange({ ...value, year: anno, month: mese, scope: 'month' });
+    }
+  };
   return <div role="toolbar" aria-label={t('period')} tabIndex={0} onKeyDown={(event) => { if (event.target !== event.currentTarget) return; if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); move(event.key === 'ArrowLeft' ? -1 : 1); } }} className="flex flex-wrap items-center gap-1 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-[var(--money-primary)]/40">
     <div className="flex flex-nowrap items-center gap-1">
     <button type="button" aria-label={t('previousPeriod')} onClick={() => move(-1)} disabled={atMin} className="grid size-10 shrink-0 place-items-center rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] text-[var(--money-testo-muto)] shadow-sm shadow-black/[0.02] transition hover:bg-[var(--money-superficie-hover)] disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeft className="size-4" /></button>
+    {compact ? <label className="relative"><span className="sr-only">{t('period')}</span><select aria-label={t('period')} value={periodoCompatto} onChange={(event) => scegliCompatto(event.target.value)} className="h-10 appearance-none rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] py-0 pl-3.5 pr-9 text-sm font-medium shadow-sm outline-none focus:border-[var(--money-anello)]">{allowLast12 && <option value="last12">{t('analysisPeriodLast12')}</option>}{[...availableYears].reverse().map((anno) => <optgroup key={anno} label={String(anno)}>{allowYear && <option value={`y:${anno}`}>{String(anno)}</option>}{allowMonth && monthNames.map((nome, indice) => <option key={nome} value={`${anno}-${String(indice + 1).padStart(2, '0')}`}>{formatPeriodRef(monthNames, anno, indice + 1)}</option>)}</optgroup>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-[var(--money-velo)]/45" /></label> : <>
     <label className="relative"><span className="sr-only">{t('year')}</span><select aria-label={t('year')} value={scope === 'last12' ? 'last12' : value.year} onChange={(event) => onChange(event.target.value === 'last12' ? { ...value, scope: 'last12' } : { ...value, year: Number(event.target.value), scope: 'year' })} className="h-10 appearance-none rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] py-0 pl-3.5 pr-9 text-sm font-medium shadow-sm outline-none focus:border-[var(--money-anello)]">{allowLast12 && <option value="last12">{t('analysisPeriodLast12')}</option>}{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-[var(--money-velo)]/45" /></label>
-    {allowMonth && <label className="relative"><span className="sr-only">{t('period')}</span><select aria-label={t('period')} value={scope === 'year' ? 'year' : value.month} onChange={(event) => { const annual = event.target.value === 'year'; onChange({ ...value, scope: annual ? 'year' : 'month', month: annual ? value.month : Number(event.target.value) }); if (annual && compareTo === 'prior_period') onCompareToChange?.('prior_year'); }} className="h-10 appearance-none rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] py-0 pl-3.5 pr-9 text-sm font-medium shadow-sm outline-none focus:border-[var(--money-anello)]">{allowYear && <option value="year">{t('wholeYear')}</option>}{monthNames.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-[var(--money-velo)]/45" /></label>}
+    {allowMonth && <label className="relative"><span className="sr-only">{t('period')}</span><select aria-label={t('period')} value={scope === 'year' ? 'year' : value.month} onChange={(event) => { const annual = event.target.value === 'year'; onChange({ ...value, scope: annual ? 'year' : 'month', month: annual ? value.month : Number(event.target.value) }); if (annual && compareTo === 'prior_period') onCompareToChange?.('prior_year'); }} className="h-10 appearance-none rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] py-0 pl-3.5 pr-9 text-sm font-medium shadow-sm outline-none focus:border-[var(--money-anello)]">{allowYear && <option value="year">{t('wholeYear')}</option>}{monthNames.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-[var(--money-velo)]/45" /></label>}</>}
     <button type="button" aria-label={t('nextPeriod')} onClick={() => move(1)} disabled={atMax} className="grid size-10 shrink-0 place-items-center rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] text-[var(--money-testo-muto)] shadow-sm shadow-black/[0.02] transition hover:bg-[var(--money-superficie-hover)] disabled:cursor-not-allowed disabled:opacity-40"><ChevronRight className="size-4" /></button>
     <button type="button" onClick={() => onChange({ year: OGGI.getFullYear(), month: OGGI.getMonth() + 1, scope: allowMonth ? 'month' : value.scope })} disabled={scope === 'last12' || (allowMonth ? scope === 'month' && value.year === OGGI.getFullYear() && value.month === OGGI.getMonth() + 1 : value.year === OGGI.getFullYear())} className="h-10 rounded-xl border border-[var(--money-velo)]/7 bg-[var(--money-superficie)] px-3 text-sm font-medium text-[var(--money-testo-muto)] shadow-sm hover:bg-[var(--money-superficie-hover)] disabled:opacity-40">{t('today')}</button>
     </div>
