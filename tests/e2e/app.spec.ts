@@ -594,3 +594,52 @@ test('Appunti: la sezione si scrive, non si sceglie da una lista chiusa', async 
   await expect(card).toContainText('Casa');
   expect(errori).toEqual([]);
 });
+
+test('Le valute si scelgono in Patrimonio e valgono per tutte le pagine', async ({ page }) => {
+  // La richiesta: le valute del budget non sono piu' quelle in cui si e' gia'
+  // scritto qualcosa, sono quelle scelte in Patrimonio > Valute - l'unico posto
+  // dove si scelgono. La prova e' un giro completo su una valuta che nel seme
+  // non c'e' (SEK): nasce li', compare nelle altre pagine senza che esista un
+  // solo movimento o piano in corone, e alla fine si toglie e sparisce da tutte.
+  const errori = raccogliErrori(page);
+  await avvia(page);
+  await apri(page, 'Patrimonio');
+  await page.getByRole('button', { name: 'Valute', exact: true }).click();
+  const card = page.locator('[data-slot="card"]').filter({ has: page.getByLabel('Aggiungi') });
+  await card.getByLabel('Aggiungi').fill('SEK');
+  await card.getByRole('button', { name: 'Aggiungi', exact: true }).click();
+  await expect(card.getByRole('button', { name: 'SEK', exact: true })).toBeVisible();
+
+  // La linguetta del budget arriva con l'elenco, non con i dati: in corone non
+  // c'e' nessun piano, e la linguetta c'e' lo stesso.
+  await apri(page, 'Budget');
+  const valute = page.getByRole('group', { name: 'Valuta' });
+  await expect(valute.getByRole('button', { name: 'SEK', exact: true })).toBeVisible();
+
+  // Il menu della valuta di un conto legge lo stesso elenco.
+  await apri(page, 'Patrimonio');
+  await page.getByRole('button', { name: 'Conti', exact: true }).click();
+  await page.getByRole('button', { name: 'Nuovo conto' }).click();
+  await expect(page.locator('#account-currency option[value="SEK"]')).toHaveCount(1);
+
+  // La Panoramica invece non la offre: della corona non si conosce il cambio, e
+  // una pillola che porta a un errore e' peggio di una pillola che non c'e'.
+  // Su questo stack non c'e' un cambio per nessuna valuta - il seme e' tutto in
+  // euro - quindi la striscia non compare affatto. Il giorno in cui il seme
+  // avra' un cambio, questa riga va riscritta cliccando la pillola: e' un rosso
+  // che serve.
+  await page.getByRole('button', { name: 'Annulla' }).click();
+  await apri(page, 'Panoramica');
+  await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Valuta' })).toHaveCount(0);
+
+  // Tolta dall'elenco, sparisce da tutte e due le pagine: e' il giro di ritorno
+  // che chiude la prova, e lascia lo stack com'era.
+  await apri(page, 'Patrimonio');
+  await page.getByRole('button', { name: 'Valute', exact: true }).click();
+  await card.getByRole('button', { name: 'SEK', exact: true }).click();
+  await expect(card.getByRole('button', { name: 'SEK', exact: true })).toHaveCount(0);
+  await apri(page, 'Budget');
+  await expect(page.getByRole('group', { name: 'Valuta' }).getByRole('button', { name: 'SEK', exact: true })).toHaveCount(0);
+  expect(errori).toEqual([]);
+});
