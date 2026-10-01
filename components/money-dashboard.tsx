@@ -602,9 +602,10 @@ export type SettingsData = {
   // indentati sotto il padre, e una radice che ne ha non si sceglie.
   categoryTree: CategoryNode[];
   budgetYearsByType: Record<'Expenses' | 'Income' | 'Savings', string[]>;
-  /** Le valute in cui si tiene qualcosa: conti, movimenti o piani. L'euro c'e'
-   *  sempre e sta primo. Opzionale perche' un backend piu' vecchio non lo manda,
-   *  e in quel caso il Budget resta a scheda unica. */
+  /** Le valute scelte in Patrimonio > Valute, l'euro primo: le stesse del
+   *  budget, del menu della valuta di un conto e del selettore della Panoramica.
+   *  Opzionale perche' un backend piu' vecchio non lo manda, e in quel caso
+   *  resta tutto a scheda unica e in euro. */
   budgetCurrencies?: string[];
 };
 
@@ -1463,7 +1464,7 @@ function MoneyDashboardInner() {
     setAnnualBudgetData({ year: selectedYear, items: [], monthTotals: [], balance: { income: 0, expenses: 0, savings: 0, storedSavings: 0, hasIncomePlan: false } });
     setBudgetSuggestions([]);
   }, [budgetType, budgetCurrency, selectedYear]);
-  // Se la valuta aperta esce dall'elenco - l'ultimo conto in franchi chiuso -
+  // Se la valuta aperta esce dall'elenco - tolta in Patrimonio > Valute -
   // sparirebbe anche la linguetta, cioe' il modo di tornare indietro: si
   // rientra dall'euro invece di restare su una scheda che non esiste piu'.
   useEffect(() => {
@@ -6738,8 +6739,13 @@ function CardImpostazioni({ titolo, sottotitolo, errore, children }: { titolo: s
   return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm"><CardHeader><CardTitle className="text-[17px]">{titolo}</CardTitle>{sottotitolo && <p className="mt-1 text-xs leading-5 text-[var(--money-testo-tenue)]">{sottotitolo}</p>}</CardHeader><CardContent className="space-y-4">{children}{errore && <p role="alert" className="rounded-xl border border-[var(--money-allarme-bordo)] bg-[var(--money-allarme-tenue)] px-4 py-2 text-sm text-[var(--money-allarme)]">{errore}</p>}</CardContent></Card>;
 }
 
-// Valute in cui rileggere il patrimonio. Non e' un elenco chiuso: qualunque
-// codice quotato dalla fonte funziona, questi sono solo i piu' comuni.
+// Le valute in cui si rilegge il patrimonio, e da cui prendono la loro le
+// linguette del budget, il menu della valuta di un conto e il selettore della
+// Panoramica: questa e' l'unica lista che si sceglie, e vale per tutte. Non e'
+// un elenco chiuso - qualunque codice a tre lettere si puo' aggiungere qui - ma
+// il resto dell'app lo tratta come chiuso: quello che non sta qui non compare
+// da nessuna parte, e togliere una valuta toglie le sue linguette. Le voci
+// proposte sotto sono solo le piu' comuni.
 const COMMON_CURRENCIES = ['USD', 'CHF', 'GBP', 'JPY', 'CAD', 'AUD', 'SEK', 'NOK', 'BTC', 'ETH'];
 
 function SettingCurrencies({ label, value, saving, onChange }: {
@@ -6766,11 +6772,10 @@ function SettingCurrencies({ label, value, saving, onChange }: {
             {code}<X className="size-3" />
           </button>
         ))}
-        {/* La tendina offriva dieci codici e si poteva solo scegliere fra
-            quelli, mentre qualunque codice quotato funziona. Il campo si
-            scrive: i dieci comuni restano come suggerimento, e la forma la
-            controlla la fonte delle quotazioni, che su un codice che non
-            conosce non risponde e basta. */}
+        {/* Il campo si scrive, non si sceglie da dieci voci fisse: qualunque
+            codice a tre lettere si puo' aggiungere, e i dieci comuni restano
+            come suggerimento. La forma pero' si controlla: un "CHFF" o un "€"
+            non arrivano a nessuna delle tre pagine che leggono questa lista. */}
         <form className="flex items-center gap-2" onSubmit={(event) => {
           event.preventDefault();
           const codice = nuova.trim().toUpperCase();

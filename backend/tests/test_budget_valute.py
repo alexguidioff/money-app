@@ -28,7 +28,7 @@ from app.core_routes import (_budget_balance, _needs_wants, _totali_mensili, bud
                              previous_month_leftover, sync_savings_plan)
 from app.database import Base
 from app.main import BudgetBulkPayload, BudgetCopyPayload, bulk_budget, copy_budget
-from app.models import Account, BudgetPlan, MarketPrice, Transaction
+from app.models import Account, AppSetting, BudgetPlan, MarketPrice, Transaction
 from app.notifications import _sforamenti_budget
 from tests.categorie_fixture import categoria
 
@@ -80,6 +80,17 @@ class ValuteDelBudgetTests(unittest.TestCase):
     def _piani(self, valuta: str, tipo: str = "Expenses") -> list[BudgetPlan]:
         return list(self.session.scalars(select(BudgetPlan).where(
             BudgetPlan.currency == valuta, BudgetPlan.budget_type == tipo)).all())
+
+    def _valute_patrimonio(self, valore: str) -> None:
+        """Le valute scelte in Patrimonio > Valute, che ora comandano il budget.
+
+        La riga e' una sola per chiave (`UniqueConstraint`), quindi si
+        sostituisce invece di aggiungerne una seconda: con due righe
+        `display_currencies` ne leggerebbe una a caso.
+        """
+        self.session.query(AppSetting).filter(AppSetting.key == "net_worth_currencies").delete()
+        self.session.add(AppSetting(key="net_worth_currencies", label="Valute nel patrimonio", value=valore))
+        self.session.commit()
 
     # -- la regola ---------------------------------------------------------
 
@@ -143,14 +154,37 @@ class ValuteDelBudgetTests(unittest.TestCase):
         self.assertEqual(150.0, avvisi[0]["params"]["spent"])
 
     def test_le_valute_offerte_sono_quelle_che_usa(self) -> None:
-        # I due conti, e non un elenco di divise del mondo.
+        # L'elenco lo decide l'utente in Patrimonio > Valute. Senza una riga
+        # scritta vale il valore di partenza, e il conto in franchi da solo non
+        # aggiunge niente: non e' lui a dire in che valuta si tiene un budget.
+        self.assertEqual(["EUR", "USD", "CHF", "BTC"], budget_currencies(self.session))
+        self._valute_patrimonio("CHF")
+        self.assertEqual(["EUR", "CHF"], budget_currencies(self.session))
+        # Un conto in yen e un piano in sterline non sono una scelta: finche'
+        # non si scrivono nell'elenco, non compaiono.
+        self.session.add(Account(name="Yen", source_group="bank", currency="JPY", starting_balance=Decimal("0"),
+                                 current_balance=Decimal("0"), counts_in_net_worth=True, is_active=True))
+        self._piano(9, "100.00", "GBP")
+        self.assertEqual(["EUR", "CHF"], budget_currencies(self.session))
+        # Svuotare la riga e' una scelta - "solo euro" - e non vuol dire
+        # "rimetti quelle di partenza".
+        self._valute_patrimonio("")
+        self.assertEqual(["EUR"], budget_currencies(self.session))
+
+    def test_le_valute_malformate_non_passano(self) -> None:
+        # Il campo in Impostazioni prende testo libero, e da qui la lista comanda
+        # le linguette del budget, il menu della valuta di un conto e la
+        # Panoramica: un codice che non e' una valuta non deve arrivare a
+        # nessuna delle tre.
+        self._valute_patrimonio("chf, EUR, CHFF, €, ,US")
         self.assertEqual(["EUR", "CHF"], budget_currencies(self.session))
         # Un database appena nato non ha nemmeno un conto: l'euro c'e' lo
         # stesso, perche' e' la scheda da cui si parte e senza di lui la
-        # pagina non avrebbe nessuna linguetta selezionata.
+        # pagina non avrebbe nessuna linguetta selezionata, e le altre tre sono
+        # il valore di partenza dell'elenco maestro (`prepara_account`).
         vuoto = create_engine("sqlite://")
         Base.metadata.create_all(vuoto)
-        self.assertEqual(["EUR"], budget_currencies(Session(vuoto)))
+        self.assertEqual(["EUR", "USD", "CHF", "BTC"], budget_currencies(Session(vuoto)))
 
     def test_la_quadratura_e_di_una_valuta(self) -> None:
         self._piano(9, "3000.00", "EUR", categoria_nome="Stipendio", tipo="Income")

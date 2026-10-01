@@ -3191,9 +3191,14 @@ def display_currencies(session: Session) -> list[str]:
     # una scelta - "il patrimonio lo leggo solo in euro" - e va rispettata:
     # prima ci si ricadeva sopra con `or`, e togliere l'ultima valuta la
     # rimetteva li' senza dire niente.
+    # Il codice si controlla qui e non solo dove si scrive: la lista comanda le
+    # linguette del budget, il menu della valuta di un conto e il selettore
+    # della Panoramica, e il campo in Impostazioni prende testo libero. Un
+    # "CHFF" o un "€" che arrivano fin li' sono tre pagine che offrono una cosa
+    # che non esiste.
     raw = session.scalar(select(AppSetting.value).where(AppSetting.key == NET_WORTH_CURRENCIES_KEY))
     codes = [code.strip().upper() for code in (NET_WORTH_CURRENCIES_DEFAULT if raw is None else raw).split(",") if code.strip()]
-    return [code for code in dict.fromkeys(codes) if code != BASE_CURRENCY]
+    return [code for code in dict.fromkeys(codes) if code != BASE_CURRENCY and len(code) == 3 and code.isalpha()]
 
 
 def account_currencies(session: Session) -> list[str]:
@@ -3208,21 +3213,23 @@ def account_currencies(session: Session) -> list[str]:
 
 
 def budget_currencies(session: Session) -> list[str]:
-    """Le valute in cui questa persona tiene davvero qualcosa.
+    """Le valute che questa persona usa: l'elenco maestro, l'euro primo.
 
-    Conti, movimenti e piani insieme: la linguetta del budget deve offrire le
-    valute che si usano, non l'elenco delle divise del mondo. Un movimento in
-    franchi conta anche senza un piano in franchi - la spesa c'e', e la sua
-    linguetta e' il posto dove si vede che le manca un budget.
+    Non piu' conti, movimenti e piani messi insieme. Quelle erano le valute in
+    cui si e' *gia'* scritto qualcosa, quindi la linguetta non poteva offrire
+    una valuta nuova prima che ci si scrivesse un piano, e non poteva togliere
+    una valuta che non si usa piu'. Ora l'elenco lo decide l'utente in
+    Patrimonio > Valute, ed e' lo stesso elenco che legge la Panoramica.
+
+    Una valuta tolta dall'elenco diventa irraggiungibile nel budget: i suoi
+    piani restano nel database, ma nessuna linguetta li mostra. E' voluto -
+    l'alternativa era una linguetta che nessuno poteva togliere.
 
     L'euro sta sempre primo e c'e' sempre, anche per chi non ha un conto in
     euro: e' la valuta in cui l'app legge il patrimonio, e senza di lui la
     pagina non avrebbe la scheda da cui si parte.
     """
-    codici: set[str | None] = set()
-    for colonna in (Account.currency, Transaction.currency, BudgetPlan.currency):
-        codici |= set(session.scalars(select(colonna).distinct()).all())
-    return [BASE_CURRENCY] + sorted({(codice or BASE_CURRENCY).strip().upper() for codice in codici} - {BASE_CURRENCY})
+    return [BASE_CURRENCY] + display_currencies(session)
 
 
 def valuta_richiesta(codice: str | None) -> str:
