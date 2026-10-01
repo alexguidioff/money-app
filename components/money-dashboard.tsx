@@ -1057,6 +1057,10 @@ function MoneyDashboardInner() {
   // La valuta della scheda aperta. Si parte dall'euro, che c'e' sempre: per chi
   // non ha altre valute e' anche l'unica, e la striscia non compare.
   const [budgetCurrency, setBudgetCurrency] = useState('EUR');
+  // La valuta in cui si legge la Panoramica. Si parte dall'euro e si adotta
+  // quella salvata appena arriva (l'effetto piu' in basso): la scelta vive in
+  // Impostazioni, non in questo stato, cosi' sopravvive al ricaricamento.
+  const [overviewCurrency, setOverviewCurrency] = useState('EUR');
   const [effectivePreview, setEffectivePreview] = useState<{ occurred: string; type: string; amount: number; origine: string }>(MODULO_VUOTO);
   const overviewYear = period.year;
   // "Ultimi dodici mesi" e' una finestra che scorre, e la Panoramica sa
@@ -1283,7 +1287,7 @@ function MoneyDashboardInner() {
     // ricaricarli a ogni cambio di mese voleva dire rispedire un megabyte
     // e mezzo di JSON per niente.
     const [summaryData, accountData] = await Promise.all([
-      serve('overview') ? fetchOptional<Summary>(`${apiUrl}/api/summary?year=${overviewYear}${overviewMonth !== null ? `&month=${overviewMonth}` : ''}${overviewCompareTo !== 'none' ? `&compare_to=${overviewCompareTo}` : ''}`, 'summary') : null,
+      serve('overview') ? fetchOptional<Summary>(`${apiUrl}/api/summary?year=${overviewYear}${overviewMonth !== null ? `&month=${overviewMonth}` : ''}${overviewCompareTo !== 'none' ? `&compare_to=${overviewCompareTo}` : ''}&currency=${overviewCurrency}`, 'summary') : null,
       serve('ledger') ? fetchOptional<AccountsResponse>(`${apiUrl}/api/accounts?at=${fineMesePeriodo}`, 'accounts') : null,
     ]);
     if ((serve('overview') && !summaryData) || (serve('ledger') && !accountData)) {
@@ -1315,7 +1319,7 @@ function MoneyDashboardInner() {
       serve('investments') ? fetchOptional<{ items: InvestmentTransaction[] }>(`${apiUrl}/api/investments/ledger`, 'investment-ledger') : null,
       serve('investments') ? fetchOptional<InvestmentAllocationData>(`${apiUrl}/api/investments/allocation`, 'investment-allocation') : null,
       serve('notes') ? fetchOptional<{ items: NoteData[] }>(`${apiUrl}/api/notes`, 'notes') : null,
-      serve('overview') ? fetchOptional<SummaryBreakdown>(`${apiUrl}/api/summary-breakdown?year=${overviewYear}${overviewMonth !== null ? `&month=${overviewMonth}` : ''}`, 'summary-breakdown') : null,
+      serve('overview') ? fetchOptional<SummaryBreakdown>(`${apiUrl}/api/summary-breakdown?year=${overviewYear}${overviewMonth !== null ? `&month=${overviewMonth}` : ''}&currency=${overviewCurrency}`, 'summary-breakdown') : null,
       serve('analysis') ? fetchOptional<AnalysisData>(`${apiUrl}/api/analysis?year=${analysisYear}&scope=${analysisScope}&category_type=${analysisCategoryType}${analysisCategory ? `&category=${encodeURIComponent(analysisCategory)}` : ''}`, 'analysis') : null,
       serve('budget') && period.scope === 'month' ? fetchOptional<BudgetSuggestionsData>(`${apiUrl}/api/budget-suggestions?year=${selectedYear}&month=${selectedMonth}&budget_type=${budgetType}&currency=${budgetCurrency}`, 'budget-suggestions') : null,
     ]);
@@ -1372,7 +1376,7 @@ function MoneyDashboardInner() {
     } finally {
       setInCorso((quanti) => Math.max(0, quanti - 1));
     }
-  }, [apiUrl, selectedMonth, selectedYear, period.scope, budgetType, budgetCurrency, overviewYear, overviewMonth, overviewCompareTo, analysisYear, analysisScope, analysisCategoryType, analysisCategory, trendYearsKey]);
+  }, [apiUrl, selectedMonth, selectedYear, period.scope, budgetType, budgetCurrency, overviewYear, overviewMonth, overviewCompareTo, overviewCurrency, analysisYear, analysisScope, analysisCategoryType, analysisCategory, trendYearsKey]);
 
   // `loadData` cambia identita' a ogni cambio di periodo: il caricamento dei
   // dati fissi deve poterlo chiamare senza per questo ripartire.
@@ -1471,6 +1475,30 @@ function MoneyDashboardInner() {
   useEffect(() => {
     if (!(settingsData.budgetCurrencies ?? ['EUR']).includes(budgetCurrency)) setBudgetCurrency('EUR');
   }, [settingsData.budgetCurrencies, budgetCurrency]);
+  // Le valute in cui la Panoramica si puo' leggere adesso: quelle di Patrimonio
+  // di cui l'app conosce gia' il cambio (`available` di /api/net-worth). Quelle
+  // senza storico si omettono invece di disabilitarle: chiederne una e' un 409,
+  // e un pulsante che porta a un errore e' peggio di un pulsante che non c'e'.
+  // Finche' il patrimonio non e' arrivato non si sa quali sono pronte, e si
+  // offrono tutte: una pillola di troppo si scopre subito, una mancante no.
+  const valuteDellaVista = valuteDellaPanoramica(
+    settingsData.budgetCurrencies,
+    netWorthData.currencies.length ? netWorthData.currencies.filter((voce) => voce.available).map((voce) => voce.code) : undefined,
+  );
+  // La Panoramica non ha un pulsante "scegli e basta": la scelta e' una
+  // preferenza, e sta in Impostazioni come le altre. Adottarla qui vuol dire due
+  // cose insieme: chi legge in franchi se lo ritrova aperto, e una valuta tolta
+  // dall'elenco (o rimasta senza cambi) riporta la pagina all'euro invece di
+  // lasciarla su una pillola che non c'e' piu'.
+  useEffect(() => {
+    const salvata = settingsData.settings.overview_currency ?? '';
+    const scelta = valuteDellaVista.includes(salvata) ? salvata : 'EUR';
+    setOverviewCurrency((corrente) => (corrente === scelta ? corrente : scelta));
+    // `valuteDellaVista` e' un array nuovo a ogni render e non ha senso fra le
+    // dipendenze: quello che conta e' il suo contenuto, ed e' quello che si
+    // guarda. Le due cose da cui nasce - le valute di Patrimonio e i cambi
+    // pronti - sono entrambe qui dentro.
+  }, [settingsData.settings.overview_currency, valuteDellaVista.join(',')]);
   useEffect(() => activeSection === 'Patrimonio' ? caricaAmbito(['networth', 'ledger']) : undefined,
     [activeSection, caricaAmbito, selectedYear, selectedMonth]);
   useEffect(() => activeSection === 'Investimenti' ? caricaAmbito(['investments']) : undefined,
@@ -1485,7 +1513,7 @@ function MoneyDashboardInner() {
   // conti, che stanno in `/api/accounts`, e senza quello la card dei conti
   // restava vuota finche' non si passava da Patrimonio.
   useEffect(() => activeSection === 'Panoramica' && overviewView === 'panoramica' ? caricaAmbito(['overview', 'ledger']) : undefined,
-    [activeSection, overviewView, caricaAmbito, overviewYear, overviewMonth, overviewCompareTo, panoramicaRetryKey]);
+    [activeSection, overviewView, caricaAmbito, overviewYear, overviewMonth, overviewCompareTo, overviewCurrency, panoramicaRetryKey]);
   // L'analisi pure.
   useEffect(() => activeSection === 'Panoramica' && overviewView === 'analisi' ? caricaAmbito(['analysis']) : undefined,
     [activeSection, overviewView, caricaAmbito, analysisYear, analysisScope, analysisCategoryType, analysisCategory]);
@@ -2575,11 +2603,14 @@ function MoneyDashboardInner() {
       if (key === 'cost_basis_method') {
         await loadData(undefined, ['investments']);
       }
-      // Le valute in cui si rilegge il patrimonio arrivano con il patrimonio:
-      // quelle gia' in pagina sono le precedenti, e togliere una valuta
-      // lasciava la sua card accesa finche' non si ricaricava a mano.
+      // Le valute scelte qui non servono solo al patrimonio: sono le linguette
+      // del budget, le voci del menu della valuta di un conto, le pillole della
+      // Panoramica. Tutto quello che e' gia' in pagina e' stato disegnato con
+      // l'elenco di prima - e una Panoramica che sta leggendo la valuta appena
+      // tolta resta li' a mostrare numeri che non si possono piu' chiedere.
+      // `serve()` filtra le sezioni chiuse, quindi si ricarica quello che c'e'.
       if (key === 'net_worth_currencies') {
-        await loadData(undefined, ['networth']);
+        await loadData(undefined, ['settings', 'networth', 'budget', 'trends', 'overview', 'ledger']);
       }
     } catch {
       // L'app e' connessa: il salvataggio di questa singola preferenza non
