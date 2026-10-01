@@ -20,24 +20,13 @@ def money(value: Any) -> Decimal:
     return Decimal(str(value or 0)).quantize(Decimal("0.01"))
 
 
-# I due versi che la regola sposta. Fuori restano i giroconti, gli acquisti di
-# investimento e le rate dei debiti: quelli non sono ne' una spesa ne' un
-# incasso, e spostarli cambierebbe il mese di un'operazione fra conti propri.
-VERSI_TARDIVI = ("income", "expenses")
-
-
 def effective_date(
     occurred_on: date,
     transaction_type: str,
     late_income_shift: str = "Inactive",
     late_income_day: int = 20,
 ) -> date:
-    # Lo spostamento vale per le entrate **e per le uscite**: la regola dice
-    # quando il mese si chiude, non da che parte va il denaro. Lo stipendio del
-    # 27 appartiene al mese dopo, e la spesa del 30 anche - con le sole entrate
-    # che slittano, l'elenco mostrava il movimento del 27 sopra quello del 30
-    # pur essendo di un mese piu' avanti.
-    if transaction_type.casefold() not in VERSI_TARDIVI or late_income_shift.casefold() != "active" or occurred_on.day < late_income_day:
+    if transaction_type.casefold() != "income" or late_income_shift.casefold() != "active" or occurred_on.day < late_income_day:
         return occurred_on
     if occurred_on.month == 12:
         return date(occurred_on.year + 1, 1, 1)
