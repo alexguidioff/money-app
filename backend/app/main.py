@@ -28,9 +28,9 @@ from .calculation_engine import (account_balances_series, calculate_account_bala
 from .categorization import PENDING_CATEGORY, applica, carica_regole, categoria_da_nome, scartate
 from .categorie import _prossima_posizione, gruppo_di_categoria, nome_di, nomi as nomi_categorie
 from .core_routes import (BASE_CURRENCY, GOAL_KINDS, MAX_SELEZIONE_MASSA, _cambi_per_valute,
-                          _cambio_al_giorno, _in_euro, _rate_on, account_currencies, benchmark_symbol,
-                          display_currencies, fx_rates_by_month, fx_symbols, movimenti_per_saldi, num,
-                          sync_savings_plan)
+                          _cambio_al_giorno, _in_euro, _rate_on, _somma_budget, account_currencies,
+                          benchmark_symbol, budget_currencies, display_currencies, fx_rates_by_month,
+                          fx_symbols, movimenti_per_saldi, num, sync_savings_plan)
 from .database import Base, admin_engine, engine, get_session, set_default_user, current_user_id
 from .migrations import accendi_isolamento, aggiungi_colonna_utente, tracked_changes
 from .transaction_rules import (REAL_MOVEMENT, BUDGET_MOVEMENT, SPOSTAMENTI, TIPI_MOVIMENTO,
@@ -246,8 +246,11 @@ async def import_data_route(file: UploadFile = File(...), session: Session = Dep
         raise HTTPException(503, detail="importBackupFailed") from error
     try:
         result = write_imported_data(session, meta, data, source_name=file.filename or "")
-        for (periodo,) in session.execute(select(distinct(BudgetPlan.period))).all():
-            sync_savings_plan(session, periodo)
+        # Uno per valuta: un file ripristinato puo' portare le due righe della
+        # stessa categoria e dello stesso mese, e allinearne una sola lascerebbe
+        # l'altra al valore che aveva nel file.
+        for periodo, valuta in session.execute(select(distinct(BudgetPlan.period, BudgetPlan.currency))).all():
+            sync_savings_plan(session, periodo, valuta)
         session.commit()
     except InterchangeError as error:
         session.rollback()
@@ -4052,6 +4055,10 @@ def _budget_to_dict(plan: BudgetPlan, session: Session) -> dict:
         "categoryId": plan.category_id,
         "categoryGroup": gruppo_di_categoria(session).get(plan.category_id),
         "amount": float(plan.amount or 0),
+        # La valuta della riga: e' quello che distingue due piani della stessa
+        # categoria, e senza di lei l'interfaccia non saprebbe in che scheda
+        # rimetterli.
+        "currency": plan.currency,
     }
 
 
@@ -4064,6 +4071,9 @@ class BudgetCreatePayload(BaseModel):
     # distinguono solo cosi'.
     categoryId: int | None = None
     amount: float
+    # La valuta del piano. Non si sceglie riga per riga dentro la griglia: e' la
+    # scheda aperta, e la riga nasce nella valuta in cui si sta scrivendo.
+    currency: str = BASE_CURRENCY
 
 
 class BudgetUpdatePayload(BaseModel):
@@ -4078,6 +4088,7 @@ class BudgetCopyPayload(BaseModel):
     target_year: int
     target_month: int
     budget_type: str = "Expenses"
+    currency: str = BASE_CURRENCY
 
 
 class BudgetBulkPayload(BaseModel):
@@ -4087,6 +4098,7 @@ class BudgetBulkPayload(BaseModel):
     categoryId: int | None = None
     months: list[int]
     amount: float
+    currency: str = BASE_CURRENCY
 
 
 def _rifiuta_savings(budget_type: str) -> None:
@@ -4218,19 +4230,23 @@ def create_budget(payload: BudgetCreatePayload, session: Session = Depends(get_s
     # categoria mostrerebbe per sempre "pianificato X, effettivo zero", che e'
     # peggio di un errore: e' un numero sbagliato che non si lamenta.
     _rifiuta_savings(budget_type)
+    currency = _valuta(payload.currency)
     period = _budget_period(payload.year, payload.month)
+    # La valuta entra nel confronto: un piano in euro e uno in franchi della
+    # stessa categoria sono due righe, non un doppione.
     existing = session.scalar(select(BudgetPlan).where(
         BudgetPlan.period == period, BudgetPlan.budget_type == budget_type,
-        BudgetPlan.category_id == categoria_id))
+        BudgetPlan.category_id == categoria_id, BudgetPlan.currency == currency))
     if existing is not None:
         raise HTTPException(status_code=409, detail=f"Budget gia' presente per "
                                                     f"'{nome_di(session, categoria_id)}' in questo periodo")
     plan = BudgetPlan(period=period, budget_type=budget_type, category_id=categoria_id,
+                      currency=currency,
                       amount=_to_decimal(payload.amount, "amount", allow_negative=False))
     session.add(plan)
     try:
         session.flush()
-        sync_savings_plan(session, period)
+        sync_savings_plan(session, period, currency)
         session.commit()
         session.refresh(plan)
     except IntegrityError as exc:
@@ -4250,9 +4266,12 @@ def update_budget(budget_id: int, payload: BudgetUpdatePayload, session: Session
         plan.category_id = _categoria_di_budget(session, payload.categoryId, payload.category)
     if payload.amount is not None:
         plan.amount = _to_decimal(payload.amount, "amount", allow_negative=False)
+    # La valuta di una riga non si cambia: una riga che cambia valuta e' un'altra
+    # riga - quella di prima resta in euro con il suo importo, e riscriverla in
+    # franchi senza toccare la cifra vorrebbe dire averla convertita a 1.
     try:
         session.flush()
-        sync_savings_plan(session, plan.period)
+        sync_savings_plan(session, plan.period, plan.currency)
         session.commit()
         session.refresh(plan)
     except IntegrityError as exc:
@@ -4268,10 +4287,10 @@ def delete_budget(budget_id: int, session: Session = Depends(get_session)):
     if plan is None:
         raise HTTPException(status_code=404, detail=f"Budget {budget_id} non trovato")
     _rifiuta_savings(plan.budget_type)
-    period = plan.period
+    period, currency = plan.period, plan.currency
     session.delete(plan)
     session.flush()
-    sync_savings_plan(session, period)
+    sync_savings_plan(session, period, currency)
     session.commit()
     return {"success": True, "deleted_id": budget_id}
 
@@ -4283,26 +4302,35 @@ def copy_budget(payload: BudgetCopyPayload, session: Session = Depends(get_sessi
     L'interfaccia lo presenta come "copia dal mese/anno precedente" e avvisa
     che il periodo di destinazione viene sostituito: qui si fa esattamente
     quello, in una sola transazione.
+
+    La copia e' di una valuta sola, e il periodo di destinazione si sostituisce
+    **dentro quella valuta**: la scheda in euro copia i piani in euro e lascia
+    stare quelli in franchi. Senza il filtro, copiare settembre su ottobre in
+    euro avrebbe cancellato i piani in franchi di ottobre, che nessuno aveva
+    chiesto di toccare.
     """
     budget_type = _check_budget_type(payload.budget_type)
     _rifiuta_savings(budget_type)
+    currency = _valuta(payload.currency)
     source = _budget_period(payload.source_year, payload.source_month)
     target = _budget_period(payload.target_year, payload.target_month)
     if source == target:
         raise HTTPException(status_code=422, detail="budgetPeriodsEqual")
     rows = session.scalars(select(BudgetPlan).where(
-        BudgetPlan.period == source, BudgetPlan.budget_type == budget_type)).all()
+        BudgetPlan.period == source, BudgetPlan.budget_type == budget_type,
+        BudgetPlan.currency == currency)).all()
     if not rows:
         raise HTTPException(status_code=404, detail="budgetNothingToCopy")
     for existing in session.scalars(select(BudgetPlan).where(
-            BudgetPlan.period == target, BudgetPlan.budget_type == budget_type)).all():
+            BudgetPlan.period == target, BudgetPlan.budget_type == budget_type,
+            BudgetPlan.currency == currency)).all():
         session.delete(existing)
     session.flush()
     for row in rows:
         session.add(BudgetPlan(period=target, budget_type=budget_type, category_id=row.category_id,
-                               amount=row.amount))
+                               currency=currency, amount=row.amount))
     session.flush()
-    sync_savings_plan(session, target)
+    sync_savings_plan(session, target, currency)
     session.commit()
     return {"success": True, "copied": len(rows), "targetPeriod": target.isoformat()}
 
@@ -4312,6 +4340,7 @@ def bulk_budget(payload: BudgetBulkPayload, session: Session = Depends(get_sessi
     """Imposta lo stesso importo su piu' mesi dello stesso anno per una categoria."""
     budget_type = _check_budget_type(payload.budget_type)
     _rifiuta_savings(budget_type)
+    currency = _valuta(payload.currency)
     categoria_id = _categoria_di_budget(session, payload.categoryId, payload.category)
     months = sorted({int(month) for month in payload.months})
     if not months:
@@ -4320,19 +4349,21 @@ def bulk_budget(payload: BudgetBulkPayload, session: Session = Depends(get_sessi
     created = updated = 0
     for month in months:
         period = _budget_period(payload.year, month)
+        # La riga che si aggiorna e' quella della valuta in cui si sta
+        # scrivendo: l'importo in franchi non e' l'importo in euro.
         plan = session.scalar(select(BudgetPlan).where(
             BudgetPlan.period == period, BudgetPlan.budget_type == budget_type,
-            BudgetPlan.category_id == categoria_id))
+            BudgetPlan.category_id == categoria_id, BudgetPlan.currency == currency))
         if plan is None:
             session.add(BudgetPlan(period=period, budget_type=budget_type, category_id=categoria_id,
-                                   amount=amount))
+                                   currency=currency, amount=amount))
             created += 1
         else:
             plan.amount = amount
             updated += 1
     session.flush()
     for month in months:
-        sync_savings_plan(session, _budget_period(payload.year, month))
+        sync_savings_plan(session, _budget_period(payload.year, month), currency)
     session.commit()
     return {"success": True, "created": created, "updated": updated, "months": months}
 
@@ -5226,12 +5257,17 @@ async def get_budget_alerts(
     year: int = Query(..., ge=2000, le=2100),
     month: int = Query(..., ge=1, le=12),
     warning_threshold: float = Query(1.2, ge=0, le=5),
+    currency: str = Query(BASE_CURRENCY),
     session: Session = Depends(get_session)
 ):
     """
     Calcola gli alert di budget per il mese specificato.
     Restituisce le categorie che hanno superato la soglia di warning (default 120%).
+
+    Gli avvisi sono di una valuta: un budget in franchi si sfora in franchi, e
+    confrontarlo con l'euro sarebbe il cambio che questa pagina non fa.
     """
+    currency = _valuta(currency)
     period_start = date(year, month, 1)
     if month == 12:
         period_end = date(year + 1, 1, 1)
@@ -5244,6 +5280,7 @@ async def get_budget_alerts(
             BudgetPlan.period == period_start,
             BudgetPlan.budget_type == "Expenses",
             BudgetPlan.amount > 0,
+            BudgetPlan.currency == currency,
         )
     ).scalars().all()
 
@@ -5252,12 +5289,14 @@ async def get_budget_alerts(
     # fra spesa e budget non ha piu' bisogno di abbassare le maiuscole.
     spending = session.execute(
         select(Transaction.category_id,
-               func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)))
+               func.sum(_somma_budget(Transaction.amount, Transaction.currency,
+                                      Transaction.occurred_on, currency)))
         .where(
             Transaction.effective_on >= period_start,
             Transaction.effective_on < period_end,
             BUDGET_MOVEMENT,
             Transaction.transaction_type == "Expenses",
+            Transaction.currency == currency,
         )
         .group_by(Transaction.category_id)
     ).all()

@@ -39,6 +39,11 @@ router = APIRouter()
 # I template delle ricorrenze vivono nella stessa tabella dei movimenti ma non
 # sono denaro realmente entrato o uscito: vanno esclusi da ogni aggregato.
 from .transaction_rules import REAL_MOVEMENT, BUDGET_MOVEMENT, INCOMPLETE_MOVEMENT, blank, missing_fields
+# La valuta in cui l'app legge tutto quello che somma conti diversi. Sta qui in
+# alto e non in mezzo al file perche' la usano come valore di default le firme
+# delle funzioni, e un default si valuta quando la funzione si definisce: piu'
+# in basso sarebbe "non definita" al momento in cui serve.
+BASE_CURRENCY = "EUR"
 MONTHS = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
 MONTHS_LONG = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
 
@@ -164,18 +169,20 @@ def period_total(session: Session, year: int, month: int, tx_type: str) -> float
     )))
 
 
-def period_total_range(session: Session, year: int, month: int | None, tx_type: str) -> float:
+def period_total_range(session: Session, year: int, month: int | None, tx_type: str,
+                       currency: str | None = None) -> float:
     """Come period_total, ma month=None aggrega sull'intero anno (Total Year)."""
     if tx_type in {"Income", "Expenses"}:
         months = [month] if month is not None else range(1, 13)
-        return round(sum(sum(budget_actual(session, year, value, tx_type).values()) for value in months), 2)
+        return round(sum(sum(budget_actual(session, year, value, tx_type, currency).values()) for value in months), 2)
     conditions = [extract("year", Transaction.effective_on) == year, Transaction.transaction_type == tx_type, BUDGET_MOVEMENT]
     if month is not None:
         conditions.append(extract("month", Transaction.effective_on) == month)
-    return num(session.scalar(select(func.coalesce(func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)), 0)).where(*conditions)))
+    return num(session.scalar(select(func.coalesce(func.sum(_somma_budget(
+        Transaction.amount, Transaction.currency, Transaction.occurred_on, currency)), 0)).where(*conditions, *_della_valuta(currency))))
 
 
-def derived_savings(session: Session, year: int, month: int | None) -> float:
+def derived_savings(session: Session, year: int, month: int | None, currency: str | None = None) -> float:
     """Il risparmio di un periodo: quello che e' entrato meno quello che e' uscito.
 
     Non e' la somma dei movimenti di tipo Savings. Quelli erano la ribattitura a
@@ -183,9 +190,13 @@ def derived_savings(session: Session, year: int, month: int | None) -> float:
     di qualche euro restava un residuo non allocato che non voleva dire nulla.
     Il budget dei risparmi resta invece pianificato a mano: li' il confronto e'
     fra quello che volevi mettere da parte e quello che hai messo da parte.
+
+    Con una valuta dichiarata il risparmio e' quello di quella valuta sola: il
+    risparmio in franchi non e' il controvalore in euro di niente, sono i
+    franchi entrati meno i franchi usciti.
     """
-    income = period_total_range(session, year, month, "Income")
-    expenses = period_total_range(session, year, month, "Expenses")
+    income = period_total_range(session, year, month, "Income", currency)
+    expenses = period_total_range(session, year, month, "Expenses", currency)
     return round(income - expenses, 2)
 
 
@@ -304,11 +315,18 @@ def _period_category_breakdown(session: Session, year: int, month: int | None, b
     spesso gia' i yearly aggregates per costruire il `monthly`, e ri-fare la
     groupBy per categoria sarebbe una query in piu' per tipo.
     """
+    # Solo i piani in euro: questa ripartizione legge in euro - e' la Panoramica
+    # - e un piano in franchi sommato qui farebbe crescere una cifra che nessuno
+    # ha toccato.
     if month is not None:
-        plans = session.scalars(select(BudgetPlan).where(BudgetPlan.period == date(year, month, 1), BudgetPlan.budget_type == budget_type)).all()
+        plans = session.scalars(select(BudgetPlan).where(
+            BudgetPlan.period == date(year, month, 1), BudgetPlan.budget_type == budget_type,
+            BudgetPlan.currency == BASE_CURRENCY)).all()
         planned_by_category: dict[int | None, float] = {plan.category_id: num(plan.amount) for plan in plans}
     else:
-        plans = session.scalars(select(BudgetPlan).where(extract("year", BudgetPlan.period) == year, BudgetPlan.budget_type == budget_type)).all()
+        plans = session.scalars(select(BudgetPlan).where(
+            extract("year", BudgetPlan.period) == year, BudgetPlan.budget_type == budget_type,
+            BudgetPlan.currency == BASE_CURRENCY)).all()
         planned_by_category = defaultdict(float)
         for plan in plans:
             planned_by_category[plan.category_id] += num(plan.amount)
@@ -1219,9 +1237,13 @@ def analysis(
     # I piani della finestra, una query sola, cercati per anno e mese: a ottobre
     # 2025 non si applica il budget di ottobre 2026, e in una finestra che scorre
     # i due convivono.
+    # E solo i piani in euro: il confronto dell'analisi e' in euro - le spese
+    # sono convertite al cambio del giorno - e un piano in franchi sommato al
+    # pianificato in euro non sarebbe il pianificato di niente.
     piani = session.scalars(select(BudgetPlan).where(
         BudgetPlan.period >= date(inizio.year, inizio.month, 1),
-        BudgetPlan.period <= date(fine.year, fine.month, 1))).all()
+        BudgetPlan.period <= date(fine.year, fine.month, 1),
+        BudgetPlan.currency == BASE_CURRENCY)).all()
     pianificato: dict[tuple[str, int, int], float] = defaultdict(float)
     for piano in piani:
         pianificato[(piano.budget_type, piano.period.year, piano.period.month)] += num(piano.amount)
@@ -1868,38 +1890,53 @@ def settings(session: Session = Depends(get_session)) -> dict[str, Any]:
         rows = session.execute(select(distinct(extract("year", BudgetPlan.period))).where(BudgetPlan.budget_type == budget_kind).order_by(extract("year", BudgetPlan.period))).all()
         kind_years = sorted({int(row[0]) for row in rows if row[0] is not None})
         budget_years_by_type[budget_kind] = [str(year) for year in sorted(set(kind_years) | set(anni_piano))]
-    return {"settings": {row.key: row.value for row in setting_rows}, "labels": {row.key: row.label for row in setting_rows}, "options": options, "categoriesByType": categories_by_type, "budgetYearsByType": budget_years_by_type, "categoryTree": radici_con_figli(session)}
+    return {"settings": {row.key: row.value for row in setting_rows}, "labels": {row.key: row.label for row in setting_rows}, "options": options, "categoriesByType": categories_by_type, "budgetYearsByType": budget_years_by_type,
+            # Le valute della pagina Budget viaggiano qui e non su un endpoint
+            # loro: la pagina carica gia' questo, e lo ricarica dopo ogni
+            # modifica, quindi la linguetta si aggiorna da sola la prima volta
+            # che si scrive un piano in una valuta nuova.
+            "budgetCurrencies": budget_currencies(session),
+            "categoryTree": radici_con_figli(session)}
 
 
-def budget_actual(session: Session, year: int, month: int, budget_type: str = "Expenses") -> dict[int, float]:
+def budget_actual(session: Session, year: int, month: int, budget_type: str = "Expenses",
+                  currency: str | None = None) -> dict[int, float]:
     """Quanto si e' speso (o incassato) per categoria in un mese.
 
     Le chiavi sono id di categoria: il confronto con il pianificato e' allora
     esatto, senza dover abbassare le maiuscole per sommare insieme "Spesa" e
     "spesa" - che adesso sono la stessa riga, scritta una volta sola.
+
+    Con una valuta dichiarata contano solo i movimenti di quella valuta e non si
+    converte niente: un budget in franchi si misura in franchi. Senza, ogni
+    movimento pesa in euro al cambio del giorno, come ha sempre fatto.
     """
     if budget_type == "Savings":
         # Il risparmio effettivo e' calcolato, non sommato dai movimenti.
-        return {savings_category_id(session): derived_savings(session, year, month)}
+        return {savings_category_id(session): derived_savings(session, year, month, currency)}
     rows = session.scalars(select(Transaction).where(
         extract("year", Transaction.effective_on) == year,
         extract("month", Transaction.effective_on) == month,
-        Transaction.transaction_type == budget_type, BUDGET_MOVEMENT)).all()
+        Transaction.transaction_type == budget_type, BUDGET_MOVEMENT,
+        *_della_valuta(currency))).all()
     totals: dict[int, float] = defaultdict(float)
     # Le righe si sommano in Python, quindi il cambio si legge una volta per
     # valuta e si applica in memoria: una query per movimento sarebbe una query
     # per movimento. In euro la mappa e' vuota e non si legge niente.
-    cambi = _cambi_per_valute(session, (row.currency for row in rows))
+    cambi = _cambi_per_valute(session, (row.currency for row in rows)) if currency is None else {}
     for row in rows:
         if row.category_id is not None:
-            importo = Decimal(str(row.amount or 0)) / _cambio_al_giorno(row.currency, row.occurred_on, cambi)
+            importo = Decimal(str(row.amount or 0))
+            if currency is None:
+                importo /= _cambio_al_giorno(row.currency, row.occurred_on, cambi)
             totals[row.category_id] += float(importo)
     if budget_type in {"Income", "Expenses"} and rows:
         refunds = session.execute(select(
             Transaction.refund_of_id,
-            _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on),
+            _somma_budget(Transaction.amount, Transaction.currency, Transaction.occurred_on, currency),
         ).where(
-            Transaction.refund_of_id.in_([row.id for row in rows]), REAL_MOVEMENT)).all()
+            Transaction.refund_of_id.in_([row.id for row in rows]), REAL_MOVEMENT,
+            *_della_valuta(currency))).all()
         for original_id, amount in refunds:
             original = next(row for row in rows if row.id == original_id)
             if original.category_id is not None:
@@ -1917,7 +1954,7 @@ def budget_actual(session: Session, year: int, month: int, budget_type: str = "E
 CATEGORY_GROUPS = GRUPPI
 
 
-def _needs_wants(session: Session, year: int, month: int | None) -> list[dict[str, Any]]:
+def _needs_wants(session: Session, year: int, month: int | None, currency: str | None = None) -> list[dict[str, Any]]:
     """Ripartizione bisogni/piaceri del periodo, pianificata ed effettiva.
 
     Guarda tutta la spesa, non solo quella a budget: una categoria su cui hai
@@ -1931,12 +1968,12 @@ def _needs_wants(session: Session, year: int, month: int | None) -> list[dict[st
     mesi = [month] if month is not None else range(1, 13)
     speso: dict[int | None, float] = defaultdict(float)
     for mese in mesi:
-        for categoria, valore in budget_actual(session, year, mese, "Expenses").items():
+        for categoria, valore in budget_actual(session, year, mese, "Expenses", currency).items():
             speso[categoria] += valore
     pianificato: dict[int | None, float] = defaultdict(float)
     for piano in session.scalars(select(BudgetPlan).where(
             BudgetPlan.period == date(year, month, 1) if month is not None else extract("year", BudgetPlan.period) == year,
-            BudgetPlan.budget_type == "Expenses")).all():
+            BudgetPlan.budget_type == "Expenses", *_piani_della_valuta(currency))).all():
         pianificato[piano.category_id] += num(piano.amount)
 
     totali = {gruppo: {"planned": 0.0, "actual": 0.0} for gruppo in CATEGORY_GROUPS}
@@ -1956,18 +1993,26 @@ def _needs_wants(session: Session, year: int, month: int | None) -> list[dict[st
     } for gruppo in CATEGORY_GROUPS]
 
 
-def _budget_balance(session: Session, year: int, month: int | None = None) -> dict[str, Any]:
+def _budget_balance(session: Session, year: int, month: int | None = None,
+                    currency: str = BASE_CURRENCY) -> dict[str, Any]:
     """Il periodo quadra? Entrate pianificate meno spese e risparmi pianificati.
 
     E' la domanda che distingue un budget da una lista di importi: se resta
     denaro non assegnato nessuno sa dove andra' a finire, e se ne manca il
     piano e' gia' sbagliato prima di cominciare. Senza mese la domanda vale
     sull'anno intero, che e' come si pianifica dalla griglia annuale.
+
+    La quadratura e' di una valuta: un piano in franchi accanto a uno in euro
+    non quadra niente, sono due conti separati che non si compensano. Il default
+    e' l'euro perche' chi chiama da fuori - gli obiettivi, le analisi - legge in
+    euro, e li' un piano in franchi sommato a uno in euro sarebbe un numero
+    gonfiato senza che nessuno lo abbia toccato.
     """
     righe = session.execute(
         select(BudgetPlan.budget_type, func.sum(BudgetPlan.amount))
         .where(BudgetPlan.period == date(year, month, 1) if month is not None
-               else extract("year", BudgetPlan.period) == year)
+               else extract("year", BudgetPlan.period) == year,
+               BudgetPlan.currency == currency)
         .group_by(BudgetPlan.budget_type)
     ).all()
     per_tipo = {tipo: num(totale) for tipo, totale in righe}
@@ -1988,7 +2033,7 @@ def _budget_balance(session: Session, year: int, month: int | None = None) -> di
     }
 
 
-def sync_savings_plan(session: Session, period: date) -> Decimal:
+def sync_savings_plan(session: Session, period: date, currency: str = BASE_CURRENCY) -> Decimal:
     """Riporta il risparmio pianificato di un mese a entrate meno spese pianificate.
 
     Il risparmio effettivo l'app lo calcola gia' cosi' (``derived_savings``):
@@ -1996,22 +2041,29 @@ def sync_savings_plan(session: Session, period: date) -> Decimal:
     risparmio che non discende da nient'altro, e accorgersene solo guardando la
     quadratura. Ora e' un numero che risulta, non un numero che si digita.
 
+    La riga e' una per valuta: il risparmio di una valuta dipende solo dalle
+    righe di quella valuta, quindi allineare la sola valuta appena toccata e'
+    esatto, non un'approssimazione. Il risparmio in franchi non e' il
+    controvalore in euro di niente.
+
     Puo' venire negativo, ed e' giusto che si veda: vuol dire che il piano
     spende piu' di quanto prevede di incassare.
     """
     totali = {tipo: valore for tipo, valore in session.execute(
         select(BudgetPlan.budget_type, func.sum(BudgetPlan.amount))
-        .where(BudgetPlan.period == period, BudgetPlan.budget_type.in_(("Income", "Expenses")))
+        .where(BudgetPlan.period == period, BudgetPlan.budget_type.in_(("Income", "Expenses")),
+               BudgetPlan.currency == currency)
         .group_by(BudgetPlan.budget_type)).all()}
     atteso = Decimal(totali.get("Income") or 0) - Decimal(totali.get("Expenses") or 0)
     riga = session.scalar(select(BudgetPlan).where(
-        BudgetPlan.period == period, BudgetPlan.budget_type == "Savings"))
+        BudgetPlan.period == period, BudgetPlan.budget_type == "Savings",
+        BudgetPlan.currency == currency))
     if riga is None:
         # Un mese senza niente pianificato non ha un risparmio da dedurre: la
         # riga si crea quando c'e' un piano da cui dedurlo.
         if not totali:
             return Decimal(0)
-        session.add(BudgetPlan(period=period, budget_type="Savings",
+        session.add(BudgetPlan(period=period, budget_type="Savings", currency=currency,
                                category_id=categoria_da_nome(session, savings_category(session)),
                                amount=atteso))
     else:
@@ -2020,7 +2072,8 @@ def sync_savings_plan(session: Session, period: date) -> Decimal:
 
 
 def previous_month_leftover(session: Session, year: int, month: int,
-                            budget_type: str = "Expenses") -> dict[int | None, float]:
+                            budget_type: str = "Expenses",
+                            currency: str | None = None) -> dict[int | None, float]:
     """Quanto era avanzato (o mancato) nel mese precedente, categoria per categoria.
 
     E' un dato che si legge, non un dato che entra nei conti: il budget del mese
@@ -2038,16 +2091,17 @@ def previous_month_leftover(session: Session, year: int, month: int,
     precedente = date(year, month - 1, 1)
     pianificato: dict[int | None, float] = defaultdict(float)
     for piano in session.scalars(select(BudgetPlan).where(
-            BudgetPlan.period == precedente, BudgetPlan.budget_type == budget_type)).all():
+            BudgetPlan.period == precedente, BudgetPlan.budget_type == budget_type,
+            *_piani_della_valuta(currency))).all():
         pianificato[piano.category_id] += num(piano.amount)
     effettivo: dict[int | None, float] = defaultdict(float)
     for categoria, totale in session.execute(select(
             Transaction.category_id,
-            func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on))).where(
+            func.sum(_somma_budget(Transaction.amount, Transaction.currency, Transaction.occurred_on, currency))).where(
             extract("year", Transaction.effective_on) == year,
             extract("month", Transaction.effective_on) == month - 1,
             Transaction.transaction_type == budget_type,
-            BUDGET_MOVEMENT).group_by(Transaction.category_id)).all():
+            BUDGET_MOVEMENT, *_della_valuta(currency)).group_by(Transaction.category_id)).all():
         if categoria is not None:
             effettivo[categoria] += float(totale or 0)
     # I rimborsi nettono dall'importo della categoria dell'originale nello stesso
@@ -2062,7 +2116,7 @@ def previous_month_leftover(session: Session, year: int, month: int,
             # Il rimborso si converte con la sua valuta e il suo giorno, non con
             # quelli dell'originale: sono due movimenti diversi, su due conti che
             # possono essere in due valute.
-            _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on),
+            _somma_budget(Transaction.amount, Transaction.currency, Transaction.occurred_on, currency),
         ).join(Originale, Transaction.refund_of_id == Originale.id).where(
             REAL_MOVEMENT,
             Transaction.refund_of_id.is_not(None),
@@ -2070,6 +2124,12 @@ def previous_month_leftover(session: Session, year: int, month: int,
             Originale.transaction_type == budget_type,
             extract("year", Originale.effective_on) == year,
             extract("month", Originale.effective_on) == month - 1,
+            # Con una valuta scelta nettono solo i rimborsi della stessa valuta,
+            # su spese della stessa valuta: un rimborso in franchi che abbassa
+            # una spesa in euro sarebbe un cambio fatto di nascosto, ed e' la
+            # cosa che questa modifica toglie.
+            *([] if currency is None else [Originale.currency == currency]),
+            *_della_valuta(currency),
         )).all()
         for categoria_originale, importo in rimborsi:
             if categoria_originale is not None:
@@ -2079,8 +2139,9 @@ def previous_month_leftover(session: Session, year: int, month: int,
 
 
 def _mensili_per_categoria(session: Session, year: int, month: int, budget_type: str,
-                           months_back: int) -> tuple[list[tuple[int, int]],
-                                                     dict[int | None, dict[tuple[int, int], float]]]:
+                           months_back: int, currency: str | None = None,
+                           ) -> tuple[list[tuple[int, int]],
+                                      dict[int | None, dict[tuple[int, int], float]]]:
     """Totali mensili per categoria nei mesi che precedono quello indicato.
 
     Serve ai suggerimenti del budget e alla stima di fine mese: sono la stessa
@@ -2096,7 +2157,7 @@ def _mensili_per_categoria(session: Session, year: int, month: int, budget_type:
     if budget_type == "Savings":
         categoria = savings_category_id(session)
         for anno, mese in periodi:
-            per_categoria[categoria][(anno, mese)] = derived_savings(session, anno, mese)
+            per_categoria[categoria][(anno, mese)] = derived_savings(session, anno, mese, currency)
         return periodi, per_categoria
     # La finestra e' contigua: basta un intervallo di date, invece di leggere
     # tutta la storia e scartarla in Python.
@@ -2105,12 +2166,13 @@ def _mensili_per_categoria(session: Session, year: int, month: int, budget_type:
     fine = date(ultimo_anno + 1, 1, 1) if ultimo_mese == 12 else date(ultimo_anno, ultimo_mese + 1, 1)
     righe = session.execute(select(
         extract("year", Transaction.effective_on), extract("month", Transaction.effective_on),
-        Transaction.category_id, func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)),
+        Transaction.category_id,
+        func.sum(_somma_budget(Transaction.amount, Transaction.currency, Transaction.occurred_on, currency)),
     ).where(
         Transaction.effective_on >= inizio,
         Transaction.effective_on < fine,
         Transaction.transaction_type == budget_type,
-        BUDGET_MOVEMENT,
+        BUDGET_MOVEMENT, *_della_valuta(currency),
     ).group_by(
         extract("year", Transaction.effective_on), extract("month", Transaction.effective_on),
         Transaction.category_id,
@@ -2143,8 +2205,11 @@ def stima_fine_periodo(session: Session, year: int, month: int, oggi: date) -> d
     """
     inizio = date(year, month, 1)
     mese_corrente = date(oggi.year, oggi.month, 1)
+    # Solo i piani in euro: questa stima legge in euro, e un piano in franchi
+    # sommato qui farebbe salire il pianificato di un mese che non lo tocca.
     pianificato_mese = num(session.scalar(select(func.coalesce(func.sum(BudgetPlan.amount), 0)).where(
-        BudgetPlan.period == inizio, BudgetPlan.budget_type == "Expenses")))
+        BudgetPlan.period == inizio, BudgetPlan.budget_type == "Expenses",
+        BudgetPlan.currency == BASE_CURRENCY)))
     speso_mese = budget_actual(session, year, month, "Expenses")
     if inizio < mese_corrente:
         # Un mese chiuso non si stima, si legge: la card resta per non far
@@ -2166,7 +2231,8 @@ def stima_fine_periodo(session: Session, year: int, month: int, oggi: date) -> d
 
 @router.get("/api/budget-suggestions")
 def budget_suggestions(year: int, month: int, budget_type: str = "Expenses", months_back: int = 6,
-                       session: Session = Depends(get_session)) -> dict[str, Any]:
+                       session: Session = Depends(get_session),
+                       currency: str = BASE_CURRENCY) -> dict[str, Any]:
     """Quanto e' costata davvero ogni categoria nei mesi prima di questo.
 
     Serve a compilare il budget guardando i propri numeri invece che a memoria.
@@ -2177,7 +2243,8 @@ def budget_suggestions(year: int, month: int, budget_type: str = "Expenses", mon
     per solido.
     """
     months_back = max(1, min(int(months_back), 24))
-    periodi, per_categoria = _mensili_per_categoria(session, year, month, budget_type, months_back)
+    currency = valuta_richiesta(currency)
+    periodi, per_categoria = _mensili_per_categoria(session, year, month, budget_type, months_back, currency)
     nomi = nomi_categorie(session)
 
     items = []
@@ -2206,30 +2273,33 @@ def budget_suggestions(year: int, month: int, budget_type: str = "Expenses", mon
     return {"period": f"{year}-{month:02d}", "monthsBack": months_back, "budgetType": budget_type, "items": items}
 
 
-def _totali_mensili(session: Session, year: int, budget_type: str) -> dict[int, float]:
+def _totali_mensili(session: Session, year: int, budget_type: str,
+                    currency: str | None = None) -> dict[int, float]:
     """Totale per mese di un tipo di movimento, in una sola interrogazione."""
     if budget_type in {"Income", "Expenses"}:
-        return {month: round(sum(budget_actual(session, year, month, budget_type).values()), 2) for month in range(1, 13)}
+        return {month: round(sum(budget_actual(session, year, month, budget_type, currency).values()), 2)
+                for month in range(1, 13)}
     if budget_type == "Savings":
         # Il risparmio non si somma dai movimenti - quelli non esistono piu' -
         # ma si ricava da entrate meno spese, come ovunque altrove. Senza
         # questo ramo si cadeva nella query generica qui sotto, che per i
         # risparmi non trova nulla e restituisce dodici mesi a zero.
-        entrate = _totali_mensili(session, year, "Income")
-        spese = _totali_mensili(session, year, "Expenses")
+        entrate = _totali_mensili(session, year, "Income", currency)
+        spese = _totali_mensili(session, year, "Expenses", currency)
         return {mese: round(entrate.get(mese, 0.0) - spese.get(mese, 0.0), 2) for mese in range(1, 13)}
     righe = session.execute(select(
         extract("month", Transaction.effective_on),
-        func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)),
+        func.sum(_somma_budget(Transaction.amount, Transaction.currency, Transaction.occurred_on, currency)),
     ).where(
         extract("year", Transaction.effective_on) == year,
         Transaction.transaction_type == budget_type,
-        BUDGET_MOVEMENT,
+        BUDGET_MOVEMENT, *_della_valuta(currency),
     ).group_by(extract("month", Transaction.effective_on))).all()
     return {int(mese): float(totale or 0) for mese, totale in righe}
 
 
-def budget_actual_year(session: Session, year: int, budget_type: str = "Expenses") -> dict[int, dict[int, float]]:
+def budget_actual_year(session: Session, year: int, budget_type: str = "Expenses",
+                       currency: str | None = None) -> dict[int, dict[int, float]]:
     """Lo speso di un anno intero, mese per mese e categoria per categoria.
 
     Una interrogazione al posto di una per cella: la griglia annuale ne chiedeva
@@ -2242,14 +2312,14 @@ def budget_actual_year(session: Session, year: int, budget_type: str = "Expenses
     """
     if budget_type == "Savings":
         categoria = savings_category_id(session)
-        mensili = _totali_mensili(session, year, "Savings")
+        mensili = _totali_mensili(session, year, "Savings", currency)
         return {mese: {categoria: mensili.get(mese, 0.0)} for mese in range(1, 13)}
-    per_data = budget_actual_fra_date(session, date(year, 1, 1), date(year, 12, 31), budget_type)
+    per_data = budget_actual_fra_date(session, date(year, 1, 1), date(year, 12, 31), budget_type, currency)
     return {mese: per_data.get((year, mese), {}) for mese in range(1, 13)}
 
 
-def budget_actual_fra_date(session: Session, inizio: date, fine: date,
-                           budget_type: str = "Expenses") -> dict[tuple[int, int], dict[int, float]]:
+def budget_actual_fra_date(session: Session, inizio: date, fine: date, budget_type: str = "Expenses",
+                           currency: str | None = None) -> dict[tuple[int, int], dict[int, float]]:
     """Lo speso fra due date, mese per mese e categoria per categoria.
 
     E' `budget_actual_year` senza l'anno: le chiavi sono `(anno, mese)` perche'
@@ -2263,11 +2333,11 @@ def budget_actual_fra_date(session: Session, inizio: date, fine: date,
     righe = session.execute(select(
         extract("year", Transaction.effective_on), extract("month", Transaction.effective_on),
         Transaction.category_id,
-        _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on),
+        _somma_budget(Transaction.amount, Transaction.currency, Transaction.occurred_on, currency),
     ).where(
         Transaction.effective_on >= inizio, Transaction.effective_on <= fine,
         Transaction.transaction_type == budget_type,
-        BUDGET_MOVEMENT,
+        BUDGET_MOVEMENT, *_della_valuta(currency),
     )).all()
     for anno, mese, categoria_id, importo in righe:
         if categoria_id is not None:
@@ -2283,13 +2353,17 @@ def budget_actual_fra_date(session: Session, inizio: date, fine: date,
         rimborsi = session.execute(select(
             extract("year", Originale.effective_on), extract("month", Originale.effective_on),
             Originale.category_id,
-            _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on),
+            _somma_budget(Transaction.amount, Transaction.currency, Transaction.occurred_on, currency),
         ).join(Originale, Transaction.refund_of_id == Originale.id).where(
             REAL_MOVEMENT,
             Transaction.refund_of_id.is_not(None),
             Originale.counts_in_budget.is_(True),
             Originale.transaction_type == budget_type,
             Originale.effective_on >= inizio, Originale.effective_on <= fine,
+            # Come in `previous_month_leftover`: con una valuta scelta, i
+            # rimborsi nettono solo dentro la stessa valuta.
+            *([] if currency is None else [Originale.currency == currency]),
+            *_della_valuta(currency),
         )).all()
         for anno, mese, categoria_originale, importo in rimborsi:
             if categoria_originale is not None:
@@ -2299,17 +2373,25 @@ def budget_actual_fra_date(session: Session, inizio: date, fine: date,
 
 
 @router.get("/api/budgets")
-def budgets(year: int, month: int, budget_type: str = "Expenses", session: Session = Depends(get_session)) -> dict[str, Any]:
+def budgets(year: int, month: int, budget_type: str = "Expenses",
+            session: Session = Depends(get_session),
+            # La valuta sta dopo la sessione di proposito: cosi' chi chiama
+            # questa funzione dall'interno - e sono i test, che le passano la
+            # loro sessione in quarta posizione - continua a trovarla dov'e'.
+            # Da FastAPI resta una query string come tutte le altre.
+            currency: str = BASE_CURRENCY) -> dict[str, Any]:
     # In ordine d'albero, non d'alfabeto: la griglia del budget deve leggersi
     # come la tendina delle categorie, con i figli sotto il loro padre.
+    currency = valuta_richiesta(currency)
     plans = session.scalars(select(BudgetPlan).outerjoin(Category, Category.id == BudgetPlan.category_id)
                             .where(BudgetPlan.period == date(year, month, 1),
-                                   BudgetPlan.budget_type == budget_type)
+                                   BudgetPlan.budget_type == budget_type,
+                                   BudgetPlan.currency == currency)
                             .order_by(Category.position, Category.name, BudgetPlan.id)).all()
-    actual = budget_actual(session, year, month, budget_type)
+    actual = budget_actual(session, year, month, budget_type, currency)
     nomi = nomi_categorie(session)
     gruppi = gruppo_di_categoria(session)
-    avanzi = previous_month_leftover(session, year, month, budget_type)
+    avanzi = previous_month_leftover(session, year, month, budget_type, currency)
     items = [{"id": plan.id, "category": nomi.get(plan.category_id, ""), "categoryId": plan.category_id,
               "categoryLabel": nomi.get(plan.category_id, ""),
               "categoryGroup": gruppi.get(plan.category_id),
@@ -2322,12 +2404,12 @@ def budgets(year: int, month: int, budget_type: str = "Expenses", session: Sessi
         # Calcolato, non sommato dalle righe: senza un piano per quel mese la
         # giuntura non produce righe e il risparmio effettivo, che invece c'e',
         # veniva mostrato a zero.
-        actual_total = derived_savings(session, year, month)
+        actual_total = derived_savings(session, year, month, currency)
     return {"items": items, "plannedTotal": sum(item["amount"] for item in items),
             "actualTotal": actual_total,
             # La quadratura del solo mese: la card del piano mensile mostrava
             # quella dell'anno fino a quel mese, sotto il titolo "il mese".
-            "balance": _budget_balance(session, year, month)}
+            "balance": _budget_balance(session, year, month, currency)}
 
 
 @router.get("/api/calculations")
@@ -2357,17 +2439,20 @@ def calculations(year: int, month: int, session: Session = Depends(get_session))
 
 
 @router.get("/api/budget-annual")
-def budget_annual(year: int, budget_type: str = "Expenses", session: Session = Depends(get_session)) -> dict[str, Any]:
+def budget_annual(year: int, budget_type: str = "Expenses", session: Session = Depends(get_session),
+                  currency: str = BASE_CURRENCY) -> dict[str, Any]:
+    currency = valuta_richiesta(currency)
     plans = session.scalars(select(BudgetPlan).outerjoin(Category, Category.id == BudgetPlan.category_id)
                             .where(extract("year", BudgetPlan.period) == year,
-                                   BudgetPlan.budget_type == budget_type)
+                                   BudgetPlan.budget_type == budget_type,
+                                   BudgetPlan.currency == currency)
                             .order_by(Category.position, Category.name, BudgetPlan.id)).all()
     by_category: dict[int | None, list[BudgetPlan]] = defaultdict(list)
     for plan in plans: by_category[plan.category_id].append(plan)
     nomi = nomi_categorie(session)
     gruppi = gruppo_di_categoria(session)
     items = []
-    speso = budget_actual_year(session, year, budget_type)
+    speso = budget_actual_year(session, year, budget_type, currency)
     for category_id, rows in by_category.items():
         indexed = {row.period.month: row for row in rows}; months = []
         for month in range(1, 13):
@@ -2381,27 +2466,31 @@ def budget_annual(year: int, budget_type: str = "Expenses", session: Session = D
     # delle categorie che hanno un BudgetPlan: per un anno senza piano serve
     # comunque vedere la linea dei movimenti reali, altrimenti le tendenze
     # mostrano zero su tutti gli anni precedenti al primo budget digitato.
-    actual_per_mese = _totali_mensili(session, year, budget_type)
+    actual_per_mese = _totali_mensili(session, year, budget_type, currency)
     totals = [{"month": month, "label": MONTHS[month - 1],
                "planned": sum(item["months"][month - 1]["amount"] for item in items),
                "actual": round(actual_per_mese.get(month, 0.0), 2)}
               for month in range(1, 13)]
-    return {"year": year, "items": items, "monthTotals": totals, "balance": _budget_balance(session, year)}
+    return {"year": year, "items": items, "monthTotals": totals,
+            "balance": _budget_balance(session, year, None, currency)}
 
 
 @router.get("/api/budget-dashboard")
-def budget_dashboard(year: int, month: int | None = None, budget_type: str = "Expenses", session: Session = Depends(get_session)) -> dict[str, Any]:
+def budget_dashboard(year: int, month: int | None = None, budget_type: str = "Expenses",
+                     session: Session = Depends(get_session),
+                     currency: str = BASE_CURRENCY) -> dict[str, Any]:
+    currency = valuta_richiesta(currency)
     if month is None:
-        annual = budget_annual(year, budget_type, session)
+        annual = budget_annual(year, budget_type, session, currency)
         source = [{"category": item["category"], "categoryLabel": item["categoryLabel"],
                    "categoryGroup": item["categoryGroup"], "amount": item["plannedTotal"],
                    "previousLeftover": 0.0, "actual": item["actualTotal"]}
                   for item in annual["items"]]
         months = annual["monthTotals"]
     else:
-        data = budgets(year, month, budget_type, session)
+        data = budgets(year, month, budget_type, session, currency)
         source = data["items"]
-        months = budget_annual(year, budget_type, session)["monthTotals"]
+        months = budget_annual(year, budget_type, session, currency)["monthTotals"]
     categories = [{"category": item["category"], "categoryLabel": item["categoryLabel"],
                    "categoryGroup": item["categoryGroup"], "planned": item["amount"],
                    "previousLeftover": item["previousLeftover"], "actual": item["actual"],
@@ -2414,7 +2503,7 @@ def budget_dashboard(year: int, month: int | None = None, budget_type: str = "Ex
         # Il risparmio e' calcolato, non sommato dalle righe di piano: nei
         # periodi non ancora pianificati non ci sono righe da sommare, e
         # l'effettivo - che invece esiste - risultava zero.
-        actual = derived_savings(session, year, month)
+        actual = derived_savings(session, year, month, currency)
     return {"period": _period_label(year, month), **_period_ref(year, month),
             "plannedTotal": planned, "actualTotal": actual,
             "remaining": round(planned - actual, 2),
@@ -2426,8 +2515,8 @@ def budget_dashboard(year: int, month: int | None = None, budget_type: str = "Ex
             "usage": round(actual / planned * 100, 1) if planned else None,
             "overBudgetCategories": sum(1 for item in categories if item["variance"] < 0),
             "categories": categories,
-            "balance": _budget_balance(session, year, month),
-            "groups": _needs_wants(session, year, month) if budget_type == "Expenses" else [],
+            "balance": _budget_balance(session, year, month, currency),
+            "groups": _needs_wants(session, year, month, currency) if budget_type == "Expenses" else [],
             "months": months,
             "topTransactions": transactions(10, session, budget_only=True)["items"]}
 
@@ -2447,7 +2536,9 @@ def budget_trends_available_years(session: Session = Depends(get_session)) -> di
 
 
 @router.get("/api/budget-trends")
-def budget_trends(years: str | None = None, start_year: int = 2024, end_year: int = 2027, budget_type: str = "Expenses", session: Session = Depends(get_session)) -> dict[str, Any]:
+def budget_trends(years: str | None = None, start_year: int = 2024, end_year: int = 2027,
+                  budget_type: str = "Expenses", session: Session = Depends(get_session),
+                  currency: str = BASE_CURRENCY) -> dict[str, Any]:
     # `years` (lista CSV) ha la precedenza: l'utente sceglie esattamente quali
     # confrontare. Il vecchio start_year/end_year resta per retro-compatibilita'
     # (qualche link condiviso o un client esterno) ma viene abbandonato dal FE.
@@ -2460,9 +2551,12 @@ def budget_trends(years: str | None = None, start_year: int = 2024, end_year: in
             anno_list = list(range(start_year, end_year + 1))
     else:
         anno_list = list(range(start_year, end_year + 1))
+    currency = valuta_richiesta(currency)
     years_out = []
     for year in anno_list:
-        months = budget_annual(year, budget_type, session)["monthTotals"]; years_out.append({"year": year, "plannedTotal": sum(row["planned"] for row in months), "actualTotal": sum(row["actual"] for row in months), "months": months})
+        months = budget_annual(year, budget_type, session, currency)["monthTotals"]
+        years_out.append({"year": year, "plannedTotal": sum(row["planned"] for row in months),
+                          "actualTotal": sum(row["actual"] for row in months), "months": months})
     comparison = []
     if years_out:
         for month_index in range(12):
@@ -3104,6 +3198,39 @@ def account_currencies(session: Session) -> list[str]:
     return sorted({(codice or BASE_CURRENCY).strip().upper() for codice in codici} - {BASE_CURRENCY})
 
 
+def budget_currencies(session: Session) -> list[str]:
+    """Le valute in cui questa persona tiene davvero qualcosa.
+
+    Conti, movimenti e piani insieme: la linguetta del budget deve offrire le
+    valute che si usano, non l'elenco delle divise del mondo. Un movimento in
+    franchi conta anche senza un piano in franchi - la spesa c'e', e la sua
+    linguetta e' il posto dove si vede che le manca un budget.
+
+    L'euro sta sempre primo e c'e' sempre, anche per chi non ha un conto in
+    euro: e' la valuta in cui l'app legge il patrimonio, e senza di lui la
+    pagina non avrebbe la scheda da cui si parte.
+    """
+    codici: set[str | None] = set()
+    for colonna in (Account.currency, Transaction.currency, BudgetPlan.currency):
+        codici |= set(session.scalars(select(colonna).distinct()).all())
+    return [BASE_CURRENCY] + sorted({(codice or BASE_CURRENCY).strip().upper() for codice in codici} - {BASE_CURRENCY})
+
+
+def valuta_richiesta(codice: str | None) -> str:
+    """La valuta chiesta in una query string, in maiuscolo.
+
+    Tre lettere, o l'euro: un codice che nessuno sa leggere non da' un errore ma
+    una pagina vuota, ed e' la cosa peggiore che possa fare - un budget a zero si
+    legge come "non ho speso niente".
+    """
+    pulito = (codice or "").strip().upper()
+    if not pulito:
+        return BASE_CURRENCY
+    if len(pulito) != 3 or not pulito.isalpha():
+        raise HTTPException(status_code=422, detail="currencyInvalid")
+    return pulito
+
+
 def fx_symbols(currency: str) -> list[tuple[str, bool]]:
     """I simboli da provare per una valuta, con il verso della conversione.
 
@@ -3210,6 +3337,38 @@ def _in_euro(importo: Any, valuta: Any, giorno: Any) -> Any:
     return importo / func.coalesce(case((valuta == BASE_CURRENCY, Decimal(1)), else_=cambio), Decimal(1))
 
 
+def _della_valuta(currency: str | None) -> list[Any]:
+    """Il filtro che tiene i movimenti di una valuta sola, se ne e' stata chiesta una.
+
+    `None` non filtra niente: e' il percorso delle pagine che leggono in euro e
+    convertono tutto, e deve restare esattamente quello di prima.
+    """
+    return [] if currency is None else [Transaction.currency == currency]
+
+
+def _piani_della_valuta(currency: str | None) -> list[Any]:
+    """Il filtro sui piani di budget, che senza valuta vuol dire l'euro.
+
+    Un movimento si converte, un piano no: e' un numero che si e' scritto, e non
+    esiste il cambio di un numero scritto. Quindi dove si legge in euro i piani
+    si prendono in euro e basta - altrimenti basta un piano in franchi perche'
+    il totale di una pagina in euro cresca da solo, senza che nessuno abbia
+    toccato un euro. `_della_valuta` fa il contrario sui movimenti, e la
+    differenza e' tutta qui.
+    """
+    return [BudgetPlan.currency == (currency or BASE_CURRENCY)]
+
+
+def _somma_budget(importo: Any, valuta: Any, giorno: Any, currency: str | None) -> Any:
+    """L'importo che entra in un totale di budget.
+
+    Con la valuta dichiarata si somma com'e': i franchi si contano in franchi, e
+    il cambio non c'entra. Senza, resta la conversione di sempre - tutto in euro
+    al cambio del giorno - che e' quello che serve a chi somma conti diversi.
+    """
+    return importo if currency is not None else _in_euro(importo, valuta, giorno)
+
+
 def _saldi_in_euro(saldi: dict[str, Any], conti: list[Account],
                    cambi: dict[str, list[tuple[date, Decimal]]], cutoff: date,
                    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -3250,7 +3409,6 @@ def _saldi_in_euro(saldi: dict[str, Any], conti: list[Account],
 QUOTE_MAX_AGE_DAYS = 8
 # Etichetta neutra: la traduce l'interfaccia nella lingua scelta.
 UNAVAILABLE = "__unavailable__"
-BASE_CURRENCY = "EUR"
 # I codici che l'interfaccia sa tradurre; qualunque altra cosa e' "unexpected".
 KNOWN_SOURCE_CODES = {"rate_limited", "handshake_failed", "unreachable", "no_data",
                       "invalid_symbol", "query_too_short", "unexpected"}

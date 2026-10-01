@@ -63,31 +63,39 @@ def _periodo(anno: int, mese: int) -> str:
 
 
 def _sforamenti_budget(session: Session, oggi: date) -> list[dict[str, Any]]:
-    """Categorie che hanno superato il pianificato del mese in corso."""
+    """Categorie che hanno superato il pianificato del mese in corso.
+
+    Uno sforamento e' di una valuta: si confronta ogni piano con i movimenti
+    della sua valuta, senza cambiare niente. La chiave porta un suffisso solo
+    per le valute diverse dall'euro, che e' quella che c'era prima: cosi' gli
+    avvisi gia' scartati dall'utente non riappareno tutti insieme.
+    """
     avvisi = []
-    # Il pianificato e l'effettivo si incontrano sull'id della categoria: il
+    # Il pianificato e l'effettivo si incontrano su (categoria, valuta): il
     # nome e' solo quello che si legge nell'avviso, preso dalla categoria
     # com'e' adesso e non da com'era scritta il giorno del budget.
-    pianificato = {
-        piano.category_id: float(piano.amount)
+    pianificato: dict[tuple[int | None, str], float] = {
+        (piano.category_id, piano.currency): float(piano.amount)
         for piano in session.scalars(select(BudgetPlan).where(
             BudgetPlan.period == date(oggi.year, oggi.month, 1),
-            BudgetPlan.budget_type == "Expenses",
+            BudgetPlan.budget_type == "Expenses", BudgetPlan.amount > 0,
         )).all()
     }
-    effettivo = budget_actual(session, oggi.year, oggi.month, "Expenses")
+    effettivo = {valuta: budget_actual(session, oggi.year, oggi.month, "Expenses", valuta)
+                 for valuta in sorted({valuta for _, valuta in pianificato})}
     nomi = nomi_categorie(session)
-    for categoria_id, previsto in pianificato.items():
-        speso = effettivo.get(categoria_id, 0.0)
+    for (categoria_id, valuta), previsto in pianificato.items():
+        speso = effettivo.get(valuta, {}).get(categoria_id, 0.0)
         if previsto > 0 and speso > previsto * SOGLIA_SFORAMENTO:
+            suffisso = "" if valuta == BASE_CURRENCY else f":{valuta}"
             avvisi.append({
                 # La chiave porta l'id: e' quello che identifica la categoria
                 # anche se poi viene rinominata.
-                "key": f"budget:{oggi.year}-{oggi.month:02d}:{categoria_id}",
+                "key": f"budget:{oggi.year}-{oggi.month:02d}:{categoria_id}{suffisso}",
                 "code": "budgetOverrun",
                 "level": "warning",
                 "params": {"category": nomi.get(categoria_id, ""), "spent": round(speso, 2),
-                           "planned": round(previsto, 2),
+                           "planned": round(previsto, 2), "currency": valuta,
                            "percent": round(speso / previsto * 100)},
             })
     return avvisi
