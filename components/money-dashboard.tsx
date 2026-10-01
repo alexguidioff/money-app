@@ -3,6 +3,7 @@
 import { suggerimentiSenzaRiga } from '@/lib/budget-suggestions';
 import { downloadFile, MessaggioUtente, messaggioDaErrore, responseError } from '@/lib/download';
 import { previewEffectiveDate } from '@/lib/effective-date';
+import { valuteDellaPanoramica, valuteDelConto } from '@/lib/currency-options';
 import { LEDGER_SENZA_QUOTE, nettoOperazioni } from '@/lib/ledger-preview';
 import { splitPayload, accountPayload, budgetCreatePayload, budgetUpdatePayload, categorizationBulkPayload, categorizationRulePayload, eventAttachPayload, goalMilestonePayload, goalPayload, ledgerOperationPayload, liabilityTermsPayload, notePayload, recurringPayload, transactionPayload } from '@/lib/payloads';
 import { messaggioErrore } from '@/lib/fire-errors';
@@ -3487,7 +3488,7 @@ function MoneyDashboardInner() {
                   <option value="asset">{t('groupAsset')}</option>
                   <option value="liability">{t('groupLiability')}</option>
                 </select></label>
-                <label htmlFor="account-currency" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldCurrency')}<Input id="account-currency" name="currency" maxLength={3} defaultValue={conto?.currency ?? 'EUR'} className="h-10 w-24 bg-[var(--money-superficie)] uppercase" /><span className="block pt-1 font-normal leading-5 text-[var(--money-testo-tenue)]">{t('accountCurrencyHint')}</span></label>
+                <label htmlFor="account-currency" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldCurrency')}<select id="account-currency" name="currency" defaultValue={conto?.currency ?? 'EUR'} className="h-10 w-full rounded-lg border border-input bg-[var(--money-superficie)] px-2.5 text-sm uppercase">{valuteDelConto(settingsData.budgetCurrencies, conto?.currency).map((codice) => <option key={codice} value={codice}>{codice}</option>)}</select><span className="block pt-1 font-normal leading-5 text-[var(--money-testo-tenue)]">{t('accountCurrencyHint')}</span></label>
                 <label htmlFor="account-balance" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('fieldInitialBalance')}<Input id="account-balance" name="starting_balance" type="number" step="0.01" defaultValue={conto ? String(conto.startingBalance) : '0'} className="h-10 bg-[var(--money-superficie)]" />{accountGroup === 'liability' && <span className="block pt-1 font-normal leading-5 text-[var(--money-testo-tenue)]">{t('initialBalanceSignHint')}</span>}</label>
                 <label htmlFor="account-notes" className="block space-y-1.5 text-xs font-medium text-[var(--money-testo-muto)]">{t('note')}<textarea id="account-notes" name="notes" defaultValue={conto?.notes ?? ''} className="min-h-20 w-full rounded-lg border border-input bg-[var(--money-superficie)] p-2.5 text-sm" /></label>
                 <label className="flex items-center gap-2.5 text-xs font-medium text-[var(--money-testo-muto)]"><input type="checkbox" name="counts_in_net_worth" defaultChecked={conto ? conto.countsInNetWorth !== false : true} className="size-4 accent-[var(--money-primary)]" />{t('fieldCountsInNetWorth')}</label>
