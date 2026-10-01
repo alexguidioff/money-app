@@ -13,7 +13,6 @@ import { Flame,
   AlertCircle,
   ArrowDownRight,
   ArrowRightLeft,
-  ArrowUpRight,
   BadgeEuro,
   BarChart3,
   Bell,
@@ -2909,28 +2908,24 @@ function MoneyDashboardInner() {
             )}
 
             {summaryLoaded && <ControlRow control={summary.control} onOpenBudget={() => navigate('Budget')} />}
-            <div className="mb-4 grid gap-4 sm:grid-cols-3">
+            {/* La homepage dentro la Panoramica: il periodo in un anello - che
+                porta anche i suoi tre numeri, entrate, uscite e risparmio - i
+                soldi su ogni conto e le uscite degli ultimi giorni. Erano tre
+                card e un anello che dicevano le stesse cifre due volte; ora
+                sono una riga sola, ed e' la stessa risposta vista da vicino:
+                il mese, i conti, e questi ultimi giorni. */}
+            <div className="mb-5 grid gap-4 xl:grid-cols-3">
               {!summaryLoaded ? <>
                 <SkeletonMetricCard />
                 <SkeletonMetricCard />
                 <SkeletonMetricCard />
               </> : <>
-                <MetricCard title={t('income')} value={summary.income} change={formatComparisonChange(t, formatEuro, monthNames, summary.comparison?.incomeDelta, summary.comparison)} delta={summary.comparison?.incomeDelta} icon={ArrowDownRight} tone="income" />
-                <MetricCard title={t('expenses')} value={summary.expenses} change={formatComparisonChange(t, formatEuro, monthNames, summary.comparison?.expensesDelta, summary.comparison)} delta={summary.comparison?.expensesDelta} icon={ArrowUpRight} tone="expense" />
-                <MetricCard title={t('savings')} value={summary.savings} change={formatComparisonChange(t, formatEuro, monthNames, summary.comparison?.savingsDelta, summary.comparison)} delta={summary.comparison?.savingsDelta} icon={PiggyBank} tone="saving" />
+                <FlowDonutCard income={summary.income} expenses={summary.expenses} comparison={summary.comparison} />
+                <HomeAccountsCard accounts={accounts} lastUsed={summary.accountsLastUsed}
+                                  onPick={apriMovimentoSu} onAllAccounts={() => navigate('Patrimonio')} />
+                <HomeRecentSpendingCard days={summary.recentExpenses} />
               </>}
             </div>
-
-            {/* La homepage dentro la Panoramica: il periodo in un anello, i
-                soldi su ogni conto e le uscite degli ultimi giorni. Stanno
-                subito sotto i tre totali perche' sono la stessa risposta vista
-                da vicino - il mese, i conti, e questi ultimi giorni. */}
-            {summaryLoaded && <div className="mb-5 grid gap-4 xl:grid-cols-3">
-              <FlowDonutCard income={summary.income} expenses={summary.expenses} />
-              <HomeAccountsCard accounts={accounts} lastUsed={summary.accountsLastUsed}
-                                onPick={apriMovimentoSu} onAllAccounts={() => navigate('Patrimonio')} />
-              <HomeRecentSpendingCard days={summary.recentExpenses} />
-            </div>}
 
             <div className="mb-5 grid gap-4 xl:grid-cols-[1.4fr_1fr]">
               {!summaryLoaded ? <SkeletonNetWorthCard /> : <NetWorthCard detail={summary.netWorthDetail} comparison={summary.netWorthComparison} />}
@@ -7231,17 +7226,21 @@ function BalanceSheetChart({ apiUrl, primoAnno }: { apiUrl: string; primoAnno: n
 /**
  * Il periodo in un anello: quanto e' entrato contro quanto e' uscito.
  *
- * Non ripete solo i tre numeri delle card qui sopra: quelli si leggono, questo
- * si guarda - la proporzione fra entrate e uscite si vede prima di leggerla, ed
- * e' la ragione per cui una homepage ce l'ha. I due lati sono lo stesso giro di
- * cerchio diviso in due, quindi la somma e' sempre il totale del periodo e non
- * c'e' nessuna scala da spiegare.
+ * I tre numeri del periodo - entrate, uscite, risparmio - e la loro
+ * proporzione: quelli si leggono, l'anello si guarda, e la proporzione si vede
+ * prima di leggerla. Erano tre card separate, che dicevano le stesse tre cifre
+ * due volte a mezza pagina di distanza; ora si leggono dove si guardano. Il
+ * confronto con lo stesso periodo dell'anno scorso resta sotto ogni cifra, con
+ * la stessa regola di colore di prima.
  *
- * Verde e rosso sono quelli delle card sopra (`MetricCard`) e delle barre degli
- * ultimi giorni: la stessa cosa ha lo stesso colore in tutta la pagina.
+ * I due lati sono lo stesso giro di cerchio diviso in due, quindi la somma e'
+ * sempre il totale del periodo e non c'e' nessuna scala da spiegare.
+ *
+ * Verde e rosso sono quelli delle barre degli ultimi giorni e delle card del
+ * resto della pagina: la stessa cosa ha lo stesso colore in tutta la pagina.
  */
-function FlowDonutCard({ income, expenses }: { income: number; expenses: number }) {
-  const { t, formatEuro } = useI18n();
+function FlowDonutCard({ income, expenses, comparison }: { income: number; expenses: number; comparison: Summary['comparison'] }) {
+  const { t, formatEuro, monthNames } = useI18n();
   const somma = income + expenses;
   // Un periodo senza ne' entrate ne' uscite resta un anello vuoto invece di
   // saltare: la card dice "zero e zero", che e' un'informazione.
@@ -7249,9 +7248,9 @@ function FlowDonutCard({ income, expenses }: { income: number; expenses: number 
   const RAGGIO = 42;
   const giro = 2 * Math.PI * RAGGIO;
   const righe = [
-    { etichetta: t('income'), valore: income, colore: '#237056' },
-    { etichetta: t('expenses'), valore: expenses, colore: '#a94f3a' },
-    { etichetta: t('savings'), valore: income - expenses, colore: '#5e6c68' },
+    { etichetta: t('income'), valore: income, colore: '#237056', tone: 'income' as const, delta: comparison?.incomeDelta },
+    { etichetta: t('expenses'), valore: expenses, colore: '#a94f3a', tone: 'expense' as const, delta: comparison?.expensesDelta },
+    { etichetta: t('savings'), valore: income - expenses, colore: '#5e6c68', tone: 'saving' as const, delta: comparison?.savingsDelta },
   ];
   return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
     <CardContent className="flex items-center gap-5 p-5">
@@ -7270,12 +7269,15 @@ function FlowDonutCard({ income, expenses }: { income: number; expenses: number 
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-[var(--money-testo-tenue)]">{t('homeFlow')}</p>
         <dl className="mt-2 space-y-1.5">
-          {righe.map((riga) => <div key={riga.etichetta} className="flex items-baseline justify-between gap-3">
-            <dt className="flex min-w-0 items-center gap-2 text-xs text-[var(--money-testo-tenue)]">
+          {righe.map((riga) => <div key={riga.etichetta} className="flex items-start justify-between gap-3">
+            <dt className="flex min-w-0 items-center gap-2 pt-0.5 text-xs text-[var(--money-testo-tenue)]">
               <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: riga.colore }} />
               <span className="truncate">{riga.etichetta}</span>
             </dt>
-            <dd className="shrink-0 text-sm font-semibold tabular-nums">{formatEuro(riga.valore)}</dd>
+            <dd className="shrink-0 text-right">
+              <span className="block text-sm font-semibold tabular-nums">{formatEuro(riga.valore)}</span>
+              <span className={`block text-[11px] ${comparisonTone(riga.tone, riga.delta)}`}>{formatComparisonChange(t, formatEuro, monthNames, riga.delta, comparison)}</span>
+            </dd>
           </div>)}
         </dl>
       </div>
@@ -7384,18 +7386,27 @@ function HomeRecentSpendingCard({ days }: { days: Summary['recentExpenses'] }) {
   </Card>;
 }
 
+/**
+ * Il colore di un confronto col periodo precedente.
+ *
+ * Sulle spese un delta negativo e' una buona notizia; sulle altre voci il
+ * delta positivo. Senza `delta` (es. card di Budget/Investimenti dove `change`
+ * e' un'etichetta, non un confronto) si cade sul default storico: rosso per le
+ * spese, verde-neutro per il resto. Sta qui e non dentro `MetricCard` perche'
+ * l'anello del periodo usa la stessa regola sulle sue tre cifre: due copie
+ * della stessa regola sono due modi di colorare la stessa cosa.
+ */
+function comparisonTone(tone: 'income' | 'expense' | 'saving' | 'worth', delta: number | undefined): string {
+  if (delta === undefined) return tone === 'expense' ? 'text-[var(--money-allarme)]' : 'text-[var(--money-ok)]';
+  return tone === 'expense'
+    ? (delta <= 0 ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]')
+    : (delta >= 0 ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]');
+}
+
 function MetricCard({ title, titleHint, value, valueLabel, change, delta, icon: Icon, tone, featured = false }: { title: string; titleHint?: string; value: number; valueLabel?: string; change: string; delta?: number; icon: typeof ArrowDownRight; tone: 'income' | 'expense' | 'saving' | 'worth'; featured?: boolean }) {
   const { formatEuro } = useI18n();
   const styles = { income: 'bg-[var(--money-ok-tenue)] text-[var(--money-ok)]', expense: 'bg-[var(--money-allarme-tenue)] text-[var(--money-allarme)]', saving: 'bg-[var(--money-risparmio-tenue)] text-[var(--money-risparmio)]', worth: 'bg-[var(--money-attenzione-tenue)] text-[var(--money-attenzione)]' };
-  // Sulle spese un delta negativo e' una buona notizia; sulle altre voci il
-  // delta positivo. Senza `delta` (es. card di Budget/Investimenti dove `change`
-  // e' un'etichetta, non un confronto) si cade sul default storico: rosso per
-  // le spese, verde-neutro per il resto.
-  const changeColor = delta !== undefined
-    ? (tone === 'expense'
-        ? (delta <= 0 ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]')
-        : (delta >= 0 ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'))
-    : (tone === 'expense' ? 'text-[var(--money-allarme)]' : 'text-[var(--money-ok)]');
+  const changeColor = comparisonTone(tone, delta);
   return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]"><CardContent className={featured ? 'p-6' : 'p-5'}><div className="mb-4 flex items-center justify-between"><span title={titleHint} className={`${featured ? 'text-base' : 'text-sm'} font-medium text-[var(--money-testo-tenue)]`}>{title}</span><span className={`grid ${featured ? 'size-10' : 'size-8'} place-items-center rounded-lg ${styles[tone]}`}><Icon className={featured ? 'size-5' : 'size-4'} /></span></div><p className={`${featured ? 'text-[32px] sm:text-[36px]' : 'text-[25px]'} font-semibold tracking-[-0.03em] tabular-nums`}>{valueLabel ?? formatEuro(value)}</p><p className={`mt-2 text-xs ${changeColor}`}>{change}</p></CardContent></Card>;
 }
 
