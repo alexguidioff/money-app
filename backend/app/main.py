@@ -28,7 +28,7 @@ from .calculation_engine import (account_balances_series, calculate_account_bala
 from .categorization import PENDING_CATEGORY, applica, carica_regole, categoria_da_nome, scartate
 from .categorie import _prossima_posizione, gruppo_di_categoria, nome_di, nomi as nomi_categorie
 from .core_routes import (BASE_CURRENCY, GOAL_KINDS, MAX_SELEZIONE_MASSA, _cambi_per_valute,
-                          _cambio_al_giorno, _in_euro, _rate_on, _somma_budget, account_currencies,
+                          _cambio_al_giorno, _nella_valuta_letta, _rate_on, _somma_budget, account_currencies,
                           benchmark_symbol, display_currencies, fx_rates_by_month,
                           fx_symbols, movimenti_per_saldi, num, sync_savings_plan, valute_dei_conti)
 from .database import Base, admin_engine, engine, get_session, set_default_user, current_user_id
@@ -5408,7 +5408,7 @@ def _report_num(value: Any) -> float:
 
 def _report_period_total(session: Session, year: int, month: int, tx_type: str) -> float:
     return _report_num(session.scalar(select(func.coalesce(
-        func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)), 0)).where(
+        func.sum(_nella_valuta_letta(Transaction.amount, Transaction.currency, Transaction.occurred_on)), 0)).where(
         extract("year", Transaction.effective_on) == year,
         extract("month", Transaction.effective_on) == month,
         Transaction.transaction_type == tx_type,

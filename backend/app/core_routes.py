@@ -7,9 +7,11 @@ import calendar
 import json
 import re
 from collections import defaultdict
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any, Iterable, Literal, NamedTuple
+from typing import Any, Iterable, Iterator, Literal, NamedTuple
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel
@@ -200,7 +202,7 @@ def _liability_details_for_transactions(session: Session, tx_ids: list[int]) -> 
 def period_total(session: Session, year: int, month: int, tx_type: str) -> float:
     if tx_type in {"Income", "Expenses"}:
         return round(sum(budget_actual(session, year, month, tx_type).values()), 2)
-    return num(session.scalar(select(func.coalesce(func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)), 0)).where(
+    return num(session.scalar(select(func.coalesce(func.sum(_nella_valuta_letta(Transaction.amount, Transaction.currency, Transaction.occurred_on)), 0)).where(
         extract("year", Transaction.effective_on) == year,
         extract("month", Transaction.effective_on) == month,
         Transaction.transaction_type == tx_type,
@@ -354,21 +356,26 @@ def _period_category_breakdown(session: Session, year: int, month: int | None, b
     spesso gia' i yearly aggregates per costruire il `monthly`, e ri-fare la
     groupBy per categoria sarebbe una query in piu' per tipo.
     """
-    # Solo i piani in euro: questa ripartizione legge in euro - e' la Panoramica
-    # - e un piano in franchi sommato qui farebbe crescere una cifra che nessuno
-    # ha toccato.
+    # Solo i piani in euro: un piano e' un numero che si e' scritto, e si e'
+    # scritto in euro - il modello "una valuta per volta, senza conversione" e'
+    # del budget, che la valuta la dichiara. Letto in un'altra valuta quel
+    # numero si porta pero' dietro il cambio di fine periodo
+    # (`_fattore_dei_numeri_scritti`), altrimenti questa pagina confronterebbe
+    # un pianificato in euro con uno speso in franchi.
+    fattore = float(_fattore_dei_numeri_scritti(session, year, month))
     if month is not None:
         plans = session.scalars(select(BudgetPlan).where(
             BudgetPlan.period == date(year, month, 1), BudgetPlan.budget_type == budget_type,
             BudgetPlan.currency == BASE_CURRENCY)).all()
-        planned_by_category: dict[int | None, float] = {plan.category_id: num(plan.amount) for plan in plans}
+        planned_by_category: dict[int | None, float] = {
+            plan.category_id: round(num(plan.amount) * fattore, 2) for plan in plans}
     else:
         plans = session.scalars(select(BudgetPlan).where(
             extract("year", BudgetPlan.period) == year, BudgetPlan.budget_type == budget_type,
             BudgetPlan.currency == BASE_CURRENCY)).all()
         planned_by_category = defaultdict(float)
         for plan in plans:
-            planned_by_category[plan.category_id] += num(plan.amount)
+            planned_by_category[plan.category_id] += round(num(plan.amount) * fattore, 2)
     if actual_rows is None:
         if budget_type == "Savings":
             actual_rows = {savings_category_id(session): derived_savings(session, year, month)}
@@ -752,13 +759,13 @@ def _spese_ultimi_giorni(session: Session, giorni: int = GIORNI_SPESA_RECENTE) -
         for giorno, importo in righe:
             per_giorno[giorno] += float(importo or 0)
 
-    # Il totale di un giorno in euro: ogni riga al cambio del suo giorno e della
-    # sua valuta, come fanno budget e riepiloghi.
-    def somma_in_euro(importo: Any, valuta: Any, giorno: Any) -> Any:
-        return func.sum(_in_euro(importo, valuta, giorno))
+    # Il totale di un giorno nella valuta della pagina: ogni riga al cambio del
+    # suo giorno e della sua valuta, come fanno budget e riepiloghi.
+    def somma_letta(importo: Any, valuta: Any, giorno: Any) -> Any:
+        return func.sum(_nella_valuta_letta(importo, valuta, giorno))
 
     _somma(session.execute(
-        select(Transaction.occurred_on, somma_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on))
+        select(Transaction.occurred_on, somma_letta(Transaction.amount, Transaction.currency, Transaction.occurred_on))
         .where(REAL_MOVEMENT, BUDGET_MOVEMENT, Transaction.transaction_type == "Expenses",
                Transaction.occurred_on >= inizio, Transaction.occurred_on <= oggi)
         .group_by(Transaction.occurred_on)).all())
@@ -768,7 +775,7 @@ def _spese_ultimi_giorni(session: Session, giorni: int = GIORNI_SPESA_RECENTE) -
     # perche' in quei sette giorni erano davvero usciti.
     Originale = aliased(Transaction, name="originale")
     _somma([(giorno, -importo) for giorno, importo in session.execute(
-        select(Transaction.occurred_on, somma_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on))
+        select(Transaction.occurred_on, somma_letta(Transaction.amount, Transaction.currency, Transaction.occurred_on))
         .join(Originale, Transaction.refund_of_id == Originale.id)
         .where(REAL_MOVEMENT, Transaction.refund_of_id.is_not(None),
                Originale.transaction_type == "Expenses",
@@ -777,7 +784,7 @@ def _spese_ultimi_giorni(session: Session, giorni: int = GIORNI_SPESA_RECENTE) -
 
     acquisti = session.execute(
         select(InvestmentTransaction.id, InvestmentTransaction.occurred_on,
-               _in_euro(InvestmentTransaction.amount, InvestmentTransaction.currency, InvestmentTransaction.occurred_on))
+               _nella_valuta_letta(InvestmentTransaction.amount, InvestmentTransaction.currency, InvestmentTransaction.occurred_on))
         .where(InvestmentTransaction.transaction_type == "Buy",
                InvestmentTransaction.occurred_on >= inizio, InvestmentTransaction.occurred_on <= oggi)).all()
     collegati = set(session.scalars(select(TransactionLedgerLink.ledger_id).where(
@@ -804,19 +811,39 @@ def summary(
 ) -> dict[str, Any]:
     """Il riepilogo del periodo, in euro o nella valuta scelta.
 
-    Nella valuta scelta i numeri sono gli stessi di sempre convertiti al cambio
-    di fine periodo: si contano in euro - ogni movimento al cambio del suo
-    giorno, che e' come l'app legge le pagine che sommano conti diversi - e poi
-    si portano nella valuta chiesta con un fattore solo. Convertire movimento
-    per movimento darebbe un altro numero, e soprattutto riscriverebbe il
-    passato a ogni movimento del cambio: la regola del patrimonio vale anche
-    qui ("ognuna al cambio del mese a cui si riferisce, non a quello di oggi").
+    Nella valuta scelta un movimento che e' gia' in quella valuta si legge al
+    suo valore di faccia: si convertono solo i movimenti che non ci sono. E' la
+    regola della pagina - il cambio e' solo per le transazioni non nella valuta
+    in quel momento mostrata - e un movimento in franchi letto in franchi non
+    deve passare per l'euro, perche' dividere e rimoltiplicare per il cambio non
+    torna al numero di partenza (3.409,70 franchi diventavano 3.415,01).
+
+    I piani di budget e gli obiettivi non hanno un giorno: si convertono alla
+    fine del periodo. Il patrimonio a una data sola si converte a quella data.
+    In euro non si legge nessun cambio, e la risposta e' quella di sempre.
     """
     target = valuta_di_display(session, currency)
+    with lettura_in_valuta(target):
+        return _riepilogo(session, year, month, compare_to)
+
+
+def _riepilogo(session: Session, year: int, month: int | None,
+               compare_to: str | None) -> dict[str, Any]:
+    """Il corpo di `/api/summary`, letto nella valuta accesa da `lettura_in_valuta`.
+
+    Qui non si converte piu' niente in blocco: i movimenti arrivano gia' nella
+    valuta di lettura (`_nella_valuta_letta`), i piani pure (`_fattore_dei_numeri_scritti`).
+    Restano da convertire solo i due blocchi del patrimonio, che sono valori di
+    saldo a una data.
+    """
+    fattore = _fattore_dei_numeri_scritti(session, year, month)
     core = _summary_core(session, year, month)
     movimenti_saldi = movimenti_per_saldi(session)
     linea_portafoglio = portfolio_timeline(session)
     net_worth_info = _net_worth_breakdown(session, year, month, movimenti_saldi, linea_portafoglio)
+    # Saldi e valori di mercato a una data sola: il fattore di fine periodo e' il
+    # cambio giusto, e in euro non si chiama nemmeno.
+    patrimonio = _scala_valuta(net_worth_info, fattore) if fattore != 1 else net_worth_info
 
     comparison = None
     net_worth_comparison = None
@@ -833,11 +860,21 @@ def summary(
             "savingsDelta": round(core["savings"] - compare_core["savings"], 2),
         }
         compare_net_worth = _net_worth_breakdown(session, compare_year, compare_month, movimenti_saldi, linea_portafoglio)
+        # Il patrimonio del periodo di confronto si converte col cambio di
+        # *quel* periodo, non di questo: e' la regola del patrimonio - "ognuna
+        # al cambio del mese a cui si riferisce, non a quello di oggi" - e con un
+        # fattore solo le due cifre che si leggono una accanto all'altra
+        # verrebbero da due date diverse. Il delta esce dalle due cifre gia'
+        # convertite: sottrarre due numeri in due valute darebbe la differenza
+        # fra mele e pere.
+        fattore_confronto = _fattore_dei_numeri_scritti(session, compare_year, compare_month)
+        compare_net_worth = (_scala_valuta(compare_net_worth, fattore_confronto)
+                             if fattore_confronto != 1 else compare_net_worth)
         net_worth_comparison = {
             "period": _period_label(compare_year, compare_month),
             **_period_ref(compare_year, compare_month),
             "total": compare_net_worth["total"],
-            "totalDelta": round(net_worth_info["total"] - compare_net_worth["total"], 2),
+            "totalDelta": round(patrimonio["total"] - compare_net_worth["total"], 2),
         }
 
     oggi = date.today()
@@ -845,7 +882,7 @@ def summary(
     # Copertura obiettivi: quello che hai messo da parte davvero, contro quello
     # che i tuoi obiettivi chiedono ogni mese. Senza categorie assegnate ai goal
     # e' l'unico confronto che i dati sostengono.
-    ritmo_obiettivi = goals(session)["monthlyNeededTotal"]
+    ritmo_obiettivi = round(goals(session)["monthlyNeededTotal"] * float(fattore), 2)
     copertura = {"savedThisPeriod": core["savings"], "monthlyNeeded": ritmo_obiettivi,
                  "coverage": round(core["savings"] / ritmo_obiettivi * 100, 1) if ritmo_obiettivi else None}
     risultato = {
@@ -858,7 +895,7 @@ def summary(
         "accountsLastUsed": _ultimo_utilizzo(session),
         "recentExpenses": _spese_ultimi_giorni(session),
         "income": core["income"], "expenses": core["expenses"], "savings": core["savings"],
-        "netWorthDetail": net_worth_info,
+        "netWorthDetail": patrimonio,
         "netWorthComparison": net_worth_comparison,
         "budgetUsed": core["budgetUsed"], "control": core["control"],
         "plannedExpenses": core["plannedExpenses"], "actualExpenses": core["actualExpenses"],
@@ -866,12 +903,6 @@ def summary(
         "savingsRate": core["savingsRate"],
         "comparison": comparison,
     }
-    # Il periodo di confronto e' un altro periodo, quindi il suo cambio e' un
-    # altro: qui si scala tutto con il fattore di questo, che per il confronto
-    # e' un'approssimazione. E' quella giusta lo stesso - le due cifre si
-    # leggono una accanto all'altra, e devono stare nella stessa valuta.
-    if target != BASE_CURRENCY:
-        risultato = _scala_valuta(risultato, fattore_di_display(session, target, fine_periodo(year, month)))
     return risultato
 
 
@@ -936,7 +967,20 @@ def summary_breakdown(
     """Dettaglio Entrate/Spese/Risparmio del periodo per la Panoramica:
     - sections: righe Tracked/Budget/%/Remaining/Excess per categoria (Budget Dashboard X:AD)
     - pie: top 5 categorie + Other per tipo (Budget Dashboard AF:AN, Category Breakdown)
+
+    Nella valuta scelta vale la stessa regola del riepilogo: un movimento gia'
+    in quella valuta si legge al suo valore di faccia, gli altri si convertono
+    al giorno del movimento, i piani alla fine del periodo. Le colonne derivate
+    (Remaining, Excess, % Compl.) le ricalcola `_section_breakdown` sui due
+    numeri gia' convertiti, cosi' restano coerenti fra loro.
     """
+    target = valuta_di_display(session, currency)
+    with lettura_in_valuta(target):
+        return _dettaglio(session, year, month)
+
+
+def _dettaglio(session: Session, year: int, month: int | None) -> dict[str, Any]:
+    """Il corpo di `/api/summary-breakdown`, nella valuta accesa da `lettura_in_valuta`."""
     types = ("Income", "Expenses", "Savings")
     # In year mode, un aggregato annuale per tipo (con self-join rimborsi)
     # copre sia la groupBy per categoria (sommando sui 12 mesi) sia i 12
@@ -976,9 +1020,6 @@ def summary_breakdown(
     # Il "budget contro tracciato mese per mese" dell'anno sta in Andamento annuale:
     # ripeterlo qui lo mostrava due volte nella stessa pagina.
     risultato = {"period": _period_label(year, month), "sections": sections, "pie": pie}
-    target = valuta_di_display(session, currency)
-    if target != BASE_CURRENCY:
-        risultato = _scala_valuta(risultato, fattore_di_display(session, target, fine_periodo(year, month)))
     return risultato
 
 
@@ -1092,7 +1133,7 @@ def _mensili_fra_date(session: Session, inizio: date, fine: date,
     categoria.
     """
     righe = session.execute(select(Transaction.category_id, Transaction.effective_on,
-                                   _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)).where(
+                                   _nella_valuta_letta(Transaction.amount, Transaction.currency, Transaction.occurred_on)).where(
         Transaction.effective_on >= inizio, Transaction.effective_on <= fine,
         Transaction.transaction_type == tipo, BUDGET_MOVEMENT)).all()
     per_categoria: dict[int | None, dict[tuple[int, int], float]] = defaultdict(lambda: defaultdict(float))
@@ -1188,7 +1229,7 @@ def _totali_per_categoria(session: Session, inizio: date, fine: date, tipo: str)
     all'apertura della pagina.
     """
     righe = session.execute(select(Transaction.category_id,
-                                   func.sum(_in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on))).where(
+                                   func.sum(_nella_valuta_letta(Transaction.amount, Transaction.currency, Transaction.occurred_on))).where(
         Transaction.effective_on >= inizio, Transaction.effective_on <= fine,
         Transaction.transaction_type == tipo, BUDGET_MOVEMENT,
     ).group_by(Transaction.category_id)).all()
@@ -1368,7 +1409,7 @@ def analysis(
         # I dieci movimenti piu' pesanti della categoria: qui l'importo e' quello
         # del movimento, quindi si converte e si ordina in euro, se no una spesa
         # in franchi verrebbe fuori piu' pesante di una in euro piu' grande.
-        importo_euro = _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on)
+        importo_euro = _nella_valuta_letta(Transaction.amount, Transaction.currency, Transaction.occurred_on)
         rows = session.execute(select(Transaction, importo_euro).where(
             Transaction.effective_on >= inizio, Transaction.effective_on <= fine,
             Transaction.transaction_type == category_type,
@@ -1635,7 +1676,7 @@ def _ripartizione_evento(session: Session, event_ids: list[int]) -> dict[int, li
     righe = session.execute(
         select(TransactionEvent.event_id, Transaction.id, Transaction.category_id,
                Transaction.transaction_type,
-               _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on))
+               _nella_valuta_letta(Transaction.amount, Transaction.currency, Transaction.occurred_on))
         .join(Transaction, Transaction.id == TransactionEvent.transaction_id)
         .where(TransactionEvent.event_id.in_(event_ids), BUDGET_MOVEMENT)).all()
     # Dove sottrarre il rimborso: la categoria e la parte del movimento che
@@ -1649,7 +1690,7 @@ def _ripartizione_evento(session: Session, event_ids: list[int]) -> dict[int, li
     if originali:
         for original_id, importo in session.execute(select(
                 Transaction.refund_of_id,
-                _in_euro(Transaction.amount, Transaction.currency, Transaction.occurred_on))
+                _nella_valuta_letta(Transaction.amount, Transaction.currency, Transaction.occurred_on))
                 .where(Transaction.refund_of_id.in_(list(originali)), REAL_MOVEMENT)).all():
             event_id, categoria_id, chiave = originali[original_id]
             voci[event_id][categoria_id][chiave] -= num(importo)
@@ -1998,7 +2039,8 @@ def budget_actual(session: Session, year: int, month: int, budget_type: str = "E
 
     Con una valuta dichiarata contano solo i movimenti di quella valuta e non si
     converte niente: un budget in franchi si misura in franchi. Senza, ogni
-    movimento pesa in euro al cambio del giorno, come ha sempre fatto.
+    movimento pesa al cambio del giorno nella valuta in cui si sta leggendo -
+    l'euro, fuori dalla Panoramica (`_nella_valuta_letta`).
     """
     if budget_type == "Savings":
         # Il risparmio effettivo e' calcolato, non sommato dai movimenti.
@@ -2017,7 +2059,7 @@ def budget_actual(session: Session, year: int, month: int, budget_type: str = "E
         if row.category_id is not None:
             importo = Decimal(str(row.amount or 0))
             if currency is None:
-                importo /= _cambio_al_giorno(row.currency, row.occurred_on, cambi)
+                importo = _in_valuta(importo, row.currency, row.occurred_on, cambi)
             totals[row.category_id] += float(importo)
     if budget_type in {"Income", "Expenses"} and rows:
         refunds = session.execute(select(
@@ -2178,11 +2220,17 @@ def previous_month_leftover(session: Session, year: int, month: int,
     if budget_type != "Expenses" or month <= 1:
         return {}
     precedente = date(year, month - 1, 1)
+    # Il piano si converte con il fattore di *questo* periodo, non del suo:
+    # l'avanzo e' una colonna che si legge accanto alle righe di adesso, e
+    # pretendere il cambio di fine agosto per leggere settembre vorrebbe dire
+    # non far vedere la pagina per un numero che sta in una colonna sola. E'
+    # l'unica eccezione alla regola dei piani, ed e' voluta.
+    fattore = float(_fattore_dei_numeri_scritti(session, year, month))
     pianificato: dict[int | None, float] = defaultdict(float)
     for piano in session.scalars(select(BudgetPlan).where(
             BudgetPlan.period == precedente, BudgetPlan.budget_type == budget_type,
             *_piani_della_valuta(currency))).all():
-        pianificato[piano.category_id] += num(piano.amount)
+        pianificato[piano.category_id] += round(num(piano.amount) * fattore, 2)
     effettivo: dict[int | None, float] = defaultdict(float)
     for categoria, totale in session.execute(select(
             Transaction.category_id,
@@ -2294,11 +2342,11 @@ def stima_fine_periodo(session: Session, year: int, month: int, oggi: date) -> d
     """
     inizio = date(year, month, 1)
     mese_corrente = date(oggi.year, oggi.month, 1)
-    # Solo i piani in euro: questa stima legge in euro, e un piano in franchi
-    # sommato qui farebbe salire il pianificato di un mese che non lo tocca.
-    pianificato_mese = num(session.scalar(select(func.coalesce(func.sum(BudgetPlan.amount), 0)).where(
+    # Solo i piani in euro, come la ripartizione: e' lo stesso pianificato, e
+    # letto in un'altra valuta si porta dietro lo stesso cambio di fine periodo.
+    pianificato_mese = round(num(session.scalar(select(func.coalesce(func.sum(BudgetPlan.amount), 0)).where(
         BudgetPlan.period == inizio, BudgetPlan.budget_type == "Expenses",
-        BudgetPlan.currency == BASE_CURRENCY)))
+        BudgetPlan.currency == BASE_CURRENCY))) * float(_fattore_dei_numeri_scritti(session, year, month)), 2)
     speso_mese = budget_actual(session, year, month, "Expenses")
     if inizio < mese_corrente:
         # Un mese chiuso non si stima, si legge: la card resta per non far
@@ -3370,44 +3418,60 @@ def fattore_di_display(session: Session, target: str, cutoff: date) -> Decimal:
     return fattore
 
 
-# I nomi dei campi che portano denaro. E' un elenco di nomi e non di percorsi
-# perche' qui la stessa parola vuol dire la stessa cosa ovunque: `total` e'
-# sempre un importo, `completion` e `gainPercent` mai.
+def _fattore_dei_numeri_scritti(session: Session, year: int, month: int | None) -> Decimal:
+    """Il fattore per i numeri *scritti* di un periodo: piani di budget, obiettivi.
+
+    Un movimento si converte al cambio del suo giorno; un piano no, perche' un
+    giorno non ce l'ha: e' un numero che si e' scritto, in una valuta
+    dichiarata, e l'unica data che ha e' il periodo a cui si riferisce. Quindi
+    il cambio di fine periodo.
+
+    Fuori dalla Panoramica vale 1 e non si legge nemmeno il listino: e' il caso
+    del budget, che una valuta per volta la sceglie lui.
+    """
+    valuta = valuta_di_lettura()
+    if valuta == BASE_CURRENCY:
+        return Decimal(1)
+    return fattore_di_display(session, valuta, fine_periodo(year, month))
+
+
+# I nomi dei campi che il fattore di fine periodo converte: il patrimonio, e
+# basta. E' un elenco di nomi e non di percorsi perche' qui la stessa parola
+# vuol dire la stessa cosa ovunque: `total` e' sempre un importo, `gainPercent`
+# mai.
 #
-# Sta qui, in un posto solo, perche' e' l'unico punto in cui questa conversione
-# puo' sbagliare in silenzio: un campo monetario dimenticato e' un numero in
-# euro in mezzo a numeri in franchi, che si legge come se fosse giusto. Il test
-# `test_panoramica_valuta.py` confronta i campi che cambiano con questa lista,
-# quindi un campo nuovo che porta denaro lo fa diventare rosso finche' non lo
-# si classifica.
+# Prima ci stavano dentro anche entrate, spese, piani e obiettivi, perche' la
+# Panoramica convertiva il payload intero con un fattore solo. Ora i movimenti
+# si convertono riga per riga al loro giorno e i piani alla fonte, quindi
+# lasciarli qui dentro vorrebbe dire convertirli due volte. Il test
+# `test_panoramica_valuta.py` cammina le due letture - euro e valuta - e
+# confronta i campi che cambiano con questa lista: un campo nuovo che porta
+# denaro lo fa diventare rosso finche' non lo si classifica.
 CAMPI_MONETARI = frozenset({
-    # il riepilogo del periodo
-    "income", "expenses", "savings",
-    "incomeDelta", "expensesDelta", "savingsDelta",
-    "plannedExpenses", "actualExpenses",
-    # la ripartizione per categoria e le torte
-    "amount", "budget", "tracked", "remaining", "excess",
-    "trackedWithChildren", "budgetWithChildren", "previousLeftover",
-    "plannedTotal", "actualTotal", "value",
-    # il patrimonio
+    # il patrimonio: saldi e valori di mercato a una data sola
     "total", "totalDelta", "liquid", "marketValue", "investedCapital",
     "gain", "otherBalance",
-    # obiettivi, stima di fine periodo, spese degli ultimi giorni
-    "savedThisPeriod", "monthlyNeeded", "estimate", "planned", "spentSoFar",
 })
 
 
 def _scala_valuta(payload: Any, fattore: Decimal) -> Any:
-    """Il payload con ogni importo moltiplicato per il fattore.
+    """Gli importi di un blocco moltiplicati per il fattore di fine periodo.
 
-    Ricorsivo su dizionari e liste. Le chiavi che non sono in `CAMPI_MONETARI`
-    restano quelle che erano: percentuali, conteggi, giorni e nomi non si
-    convertono, e un rapporto fra due importi scalati dello stesso fattore e'
-    gia' quello giusto senza ricalcolarlo - e' il motivo per cui la conversione
-    si fa qui, sui totali, e non riga per riga sui movimenti.
+    **Non e' piu' la conversione della pagina.** I movimenti si convertono riga
+    per riga, al cambio del loro giorno, dentro `_nella_valuta_letta`; i piani di budget,
+    che un giorno non ce l'hanno, alla fonte (`_fattore_dei_numeri_scritti`).
+    Quello che resta qui e' il **patrimonio**: saldi e valori di mercato a una
+    data sola, dove il fattore di fine periodo e' il cambio giusto e il giro di
+    andata e ritorno e' esatto perche' il saldo e' gia' stato convertito a
+    quella stessa data (`_saldi_in_euro`, `fine_periodo`: "se le due date
+    divergessero, il totale e il cambio che lo converte parlerebbero di due
+    giorni diversi"). Convertirlo riga per riga non vorrebbe dire niente: un
+    saldo non ha un giorno, ha la data a cui lo si guarda.
 
-    Con `fattore == 1` non si chiama nemmeno: chi legge in euro riceve il
-    dizionario di prima, chiave per chiave e nello stesso ordine.
+    Ricorsivo su dizionari e liste, e tocca solo le chiavi di `CAMPI_MONETARI`:
+    `gainPercent` e' una percentuale e resta quella che era. Con `fattore == 1`
+    non si chiama nemmeno: chi legge in euro riceve il dizionario di prima,
+    chiave per chiave e nello stesso ordine.
     """
     if isinstance(payload, dict):
         # `float(fattore)` e non `Decimal(valore)`: gli importi di queste
@@ -3466,8 +3530,15 @@ def _cambi_per_valute(session: Session, valute: Iterable[Any]) -> dict[str, list
     Una lettura per valuta, non una per conto o per movimento: i conti sono
     decine, i movimenti migliaia, e `fx_rates_by_month` e' una query ciascuno.
     Per chi tiene tutto in euro il dizionario torna vuoto e non si legge niente.
+
+    Dentro c'e' sempre anche la valuta in cui si sta leggendo la pagina, anche
+    se non e' la valuta di nessun movimento: `_in_valuta` la usa al numeratore, e
+    una valuta che manca dal dizionario non da' un errore - da' un numero in
+    euro in mezzo a numeri in franchi. Fuori dalla Panoramica e' l'euro, che non
+    si legge dal listino: il dizionario e' quello di prima.
     """
     codici = {str(valuta).strip().upper() for valuta in valute if valuta}
+    codici.add(valuta_di_lettura())
     return {codice: fx_rates_by_month(session, codice)[0]
             for codice in sorted(codici - {BASE_CURRENCY})}
 
@@ -3478,11 +3549,50 @@ def _cambi_dei_conti(session: Session, conti: list[Account]) -> dict[str, list[t
     return _cambi_per_valute(session, (conto.currency or BASE_CURRENCY for conto in conti))
 
 
+# La valuta in cui si sta leggendo la pagina che si sta disegnando.
+#
+# La scrivono i due endpoint della Panoramica e la legge `_nella_valuta_letta`, insieme al
+# suo gemello in Python (`_in_valuta`). Sta in una variabile di contesto e non
+# in un parametro da passare di funzione in funzione perche' la catena che porta
+# ai totali e' lunga - `budget_actual_year`, `budget_actual_fra_date`,
+# `_period_category_breakdown`, `derived_savings`, `period_total_range`,
+# `_spese_ultimi_giorni`, `stima_fine_periodo` e le loro chiamate - e un punto
+# di chiamata che se la dimentica non da' un errore: da' un numero in euro in
+# mezzo a numeri in franchi, che si legge come se fosse giusto. E' lo stesso
+# motivo per cui l'utente della RLS sta in una variabile di contesto
+# (`database.py`): la separazione non dipende dal fatto che cento query se lo
+# ricordino.
+#
+# Fuori da quei due endpoint vale l'euro, ed e' il caso di tutte le altre
+# pagine, dei report, delle notifiche e dei test.
+_VALUTA_LETTA: ContextVar[str] = ContextVar("money_valuta_letta", default=BASE_CURRENCY)
+
+
+def valuta_di_lettura() -> str:
+    """In che valuta si sta leggendo la pagina: l'euro, se nessuno l'ha chiesta."""
+    return _VALUTA_LETTA.get()
+
+
+@contextmanager
+def lettura_in_valuta(valuta: str) -> Iterator[None]:
+    """Legge la pagina in `valuta` per tutto il blocco.
+
+    Si ripristina sempre, anche quando il blocco solleva: un 409 a meta' pagina
+    non deve lasciare la valuta accesa per la richiesta dopo, che su un thread
+    del pool puo' essere la stessa.
+    """
+    gettone = _VALUTA_LETTA.set(valuta or BASE_CURRENCY)
+    try:
+        yield
+    finally:
+        _VALUTA_LETTA.reset(gettone)
+
+
 def _cambio_al_giorno(valuta: Any, giorno: date | None,
                       cambi: dict[str, list[tuple[date, Decimal]]]) -> Decimal:
     """Quante unita' della valuta vale 1 euro a quella data: 1 per l'euro.
 
-    E' `_in_euro` letta in Python, per i pochi punti che sommano i movimenti uno
+    E' `_nella_valuta_letta` letta in Python, per i pochi punti che sommano i movimenti uno
     alla volta invece che con una query. Vale 1 anche quando il cambio manca,
     per lo stesso motivo di la': un movimento che sparisce da un totale non si
     vede, una conversione sbagliata si vede confrontando due mesi.
@@ -3493,29 +3603,33 @@ def _cambio_al_giorno(valuta: Any, giorno: date | None,
     return _rate_on(cambi.get(codice) or [], giorno) or Decimal(1)
 
 
-def _in_euro(importo: Any, valuta: Any, giorno: Any) -> Any:
-    """L'importo di un movimento in euro, al cambio del giorno in cui vale.
+def _in_valuta(importo: Decimal, valuta: Any, giorno: date | None,
+               cambi: dict[str, list[tuple[date, Decimal]]]) -> Decimal:
+    """Il gemello in Python di `_nella_valuta_letta`: l'importo nella valuta letta.
 
-    I totali dell'app - riepiloghi, budget, tendenze, report - sommano movimenti
-    di conti diversi, quindi vanno in euro. Un movimento in franchi pesa quanto
-    valgono quei franchi il giorno in cui e' stato registrato: col cambio di
-    oggi il passato si riscriverebbe a ogni movimento del cambio.
+    Stessa regola della query: chi e' gia' nella valuta della pagina vale quello
+    che dice, gli altri si convertono al cambio del loro giorno. Serve ai punti
+    che sommano i movimenti in memoria invece che in SQL (`budget_actual`), e
+    senza di lei quei totali resterebbero in euro dentro una pagina in franchi.
+    """
+    target = valuta_di_lettura()
+    codice = str(valuta or BASE_CURRENCY).strip().upper()
+    if codice == target:
+        return importo
+    return importo * (_cambio_al_giorno(target, giorno, cambi)
+                      / _cambio_al_giorno(codice, giorno, cambi))
 
-    Due cose la tengono in piedi. In euro il cambio e' 1 per definizione e la
-    riga non legge il listino: per chi ha conti solo in euro i numeri restano
-    esattamente quelli di prima. E un movimento in una valuta di cui non si ha
-    il cambio pesa **1**: sbagliato, ma e' il male minore - una conversione
-    sbagliata si vede confrontando due mesi, un movimento che sparisce da un
-    totale non si vede affatto.
+
+def _cambio_nel_listino(valuta: Any, giorno: Any) -> Any:
+    """Il cambio di `valuta` al giorno, come sottointerrogazione correlata.
 
     Il listino si legge per riga. Il vincolo unico di `market_prices` (simbolo,
     giorno, fonte) e' gia' l'indice che serve; se un giorno pescasse, la via e'
     una tabella dei cambi per giorno da incrociare una volta sola - non prima
-    che serva.
+    che serva. Chi la usa la incarta in un `coalesce` a 1: qui dentro non c'e'
+    niente da cui ripiegare, perche' il ripiego e' una decisione di `_nella_valuta_letta`.
     """
-    if valuta is None or giorno is None:
-        return importo
-    cambio = (
+    return (
         select(MarketPrice.price)
         .where(MarketPrice.symbol == BASE_CURRENCY + valuta + "=X",
                MarketPrice.observed_on <= giorno)
@@ -3523,10 +3637,56 @@ def _in_euro(importo: Any, valuta: Any, giorno: Any) -> Any:
         .limit(1)
         .scalar_subquery()
     )
+
+
+def _nella_valuta_letta(importo: Any, valuta: Any, giorno: Any) -> Any:
+    """L'importo di un movimento in euro, o nella valuta in cui si sta leggendo.
+
+    Il nome dice la cosa e non la meta': per venti chiamanti su venti questa
+    funzione e' "l'importo in euro", ma dentro la Panoramica - `lettura_in_valuta`
+    - e' la valuta in cui la pagina si legge. Chiamarla `_in_euro` mentre
+    restituisce franchi e' il modo piu' corto di far scrivere, un anno dopo, un
+    numero in euro dentro una pagina in franchi.
+
+    I totali dell'app - riepiloghi, budget, tendenze, report - sommano movimenti
+    di conti diversi, quindi vanno in una moneta sola. Il cambio e' quello **del
+    giorno del movimento**: col cambio di oggi il passato si riscriverebbe a
+    ogni movimento del cambio, e una cena del 2024 costerebbe domani una cifra
+    diversa.
+
+    Fuori dalla Panoramica quella moneta e' l'euro, e il corpo e' quello di
+    sempre: la divisione per il cambio della valuta del movimento. Dentro la
+    Panoramica - `lettura_in_valuta` - e' invece la valuta in cui la pagina si
+    legge, e la regola diventa quella chiesta dall'utente: **il cambio vale solo
+    per i movimenti che non sono gia' in quella valuta**. Un movimento in
+    franchi letto in franchi vale i franchi che dice, e non il giro di andata e
+    ritorno dall'euro - che su un'entrata di 3.409,70 franchi ne faceva leggere
+    3.415,01.
+
+    Tre cose la tengono in piedi. In euro il cambio e' 1 per definizione e la
+    riga non legge il listino: per chi ha conti solo in euro i numeri restano
+    esattamente quelli di prima. Chi e' gia' nella valuta della pagina **non
+    passa dal cambio** - un `case`, non una moltiplicazione: dividere e
+    rimoltiplicare per lo stesso cambio non torna alla cifra di partenza in
+    virgola mobile, e "3.409,70" deve restare "3.409,70". E un movimento in una
+    valuta di cui non si ha il cambio pesa **1**: sbagliato, ma e' il male
+    minore - una conversione sbagliata si vede confrontando due mesi, un
+    movimento che sparisce da un totale non si vede affatto.
+    """
+    if valuta is None or giorno is None:
+        return importo
     # L'1 e' scritto come decimale, non come intero: un `case` il cui primo ramo
     # e' un intero si porta dietro il tipo intero, e su SQLite una divisione fra
     # interi tronca - 90,90 euro diventerebbero 90.
-    return importo / func.coalesce(case((valuta == BASE_CURRENCY, Decimal(1)), else_=cambio), Decimal(1))
+    verso_euro = func.coalesce(case((valuta == BASE_CURRENCY, Decimal(1)),
+                                    else_=_cambio_nel_listino(valuta, giorno)), Decimal(1))
+    target = valuta_di_lettura()
+    if target == BASE_CURRENCY:
+        return importo / verso_euro
+    return importo * func.coalesce(case(
+        (valuta == target, Decimal(1)),
+        else_=func.coalesce(_cambio_nel_listino(target, giorno), Decimal(1)) / verso_euro,
+    ), Decimal(1))
 
 
 def _della_valuta(currency: str | None) -> list[Any]:
@@ -3558,7 +3718,7 @@ def _somma_budget(importo: Any, valuta: Any, giorno: Any, currency: str | None) 
     il cambio non c'entra. Senza, resta la conversione di sempre - tutto in euro
     al cambio del giorno - che e' quello che serve a chi somma conti diversi.
     """
-    return importo if currency is not None else _in_euro(importo, valuta, giorno)
+    return importo if currency is not None else _nella_valuta_letta(importo, valuta, giorno)
 
 
 def _saldi_in_euro(saldi: dict[str, Any], conti: list[Account],
