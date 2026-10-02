@@ -1051,7 +1051,7 @@ export function MoneyDashboard() {
 }
 
 function MoneyDashboardInner() {
-  const { t, lang, setLang, locale, formatEuro, formatCompactEuro, formatDate, formatNumber, monthNames, formatPercentNumber } = useI18n();
+  const { t, lang, setLang, locale, formatEuro, formatCompactEuro, formatMoney, formatCompactMoney, formatDate, formatNumber, monthNames, formatPercentNumber } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>('Panoramica');
   const [period, setPeriod] = useState<PeriodSelection>({ year: MESE_CORRENTE.anno, month: MESE_CORRENTE.mese, scope: 'month' });
@@ -1065,6 +1065,11 @@ function MoneyDashboardInner() {
   // quella salvata appena arriva (l'effetto piu' in basso): la scelta vive in
   // Impostazioni, non in questo stato, cosi' sopravvive al ricaricamento.
   const [overviewCurrency, setOverviewCurrency] = useState('EUR');
+  // I formattatori della Panoramica, legati alla sua valuta: le schede che
+  // seguono hanno i numeri gia' convertiti dal server e qui si sceglie solo il
+  // simbolo. Il resto della dashboard continua a usare `formatEuro`.
+  const denaroPanoramica = (valore: number) => formatMoney(valore, overviewCurrency);
+  const compattoPanoramica = (valore: number) => formatCompactMoney(valore, overviewCurrency);
   const [effectivePreview, setEffectivePreview] = useState<{ occurred: string; type: string; amount: number; origine: string }>(MODULO_VUOTO);
   const overviewYear = period.year;
   // "Ultimi dodici mesi" e' una finestra che scorre, e la Panoramica sa
@@ -2920,15 +2925,15 @@ function MoneyDashboardInner() {
                 <SkeletonMetricCard />
                 <SkeletonMetricCard />
               </> : <>
-                <FlowDonutCard income={summary.income} expenses={summary.expenses} comparison={summary.comparison} />
+                <FlowDonutCard income={summary.income} expenses={summary.expenses} comparison={summary.comparison} currency={overviewCurrency} />
                 <HomeAccountsCard accounts={accounts} lastUsed={summary.accountsLastUsed}
                                   onPick={apriMovimentoSu} onAllAccounts={() => navigate('Patrimonio')} />
-                <HomeRecentSpendingCard days={summary.recentExpenses} />
+                <HomeRecentSpendingCard days={summary.recentExpenses} currency={overviewCurrency} />
               </>}
             </div>
 
             <div className="mb-5 grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-              {!summaryLoaded ? <SkeletonNetWorthCard /> : <NetWorthCard detail={summary.netWorthDetail} comparison={summary.netWorthComparison} />}
+              {!summaryLoaded ? <SkeletonNetWorthCard /> : <NetWorthCard detail={summary.netWorthDetail} comparison={summary.netWorthComparison} currency={overviewCurrency} />}
               <DebitCard apiUrl={apiUrl} version={movimentiVersione} onOpen={() => navigate('Debiti')} />
             </div>
 
@@ -2955,12 +2960,12 @@ function MoneyDashboardInner() {
                   {summary.projection.state === 'closed' ? <>
                     <p className="mt-2 text-2xl font-semibold tracking-tight text-[var(--money-testo-tenue)]">—</p>
                     <p className="mt-3 text-xs text-[var(--money-testo-tenue)]">{t('estimateClosedMonth')}</p>
-                    <p className="mt-1 text-[11px] leading-4 text-[var(--money-testo-tenue)]">{t('estimateClosedTotal', { spent: formatCompactEuro(summary.projection.spentSoFar) })}</p>
+                    <p className="mt-1 text-[11px] leading-4 text-[var(--money-testo-tenue)]">{t('estimateClosedTotal', { spent: compattoPanoramica(summary.projection.spentSoFar) })}</p>
                   </> : <>
-                    <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{formatEuro(summary.projection.estimate ?? 0)}</p>
+                    <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{denaroPanoramica(summary.projection.estimate ?? 0)}</p>
                     <p className="mt-3 text-xs text-[var(--money-testo-tenue)]">{summary.projection.planned > 0
-                      ? t('estimateVsPlanned', { spent: formatCompactEuro(summary.projection.spentSoFar), planned: formatCompactEuro(summary.projection.planned) })
-                      : t('estimateSoFar', { spent: formatCompactEuro(summary.projection.spentSoFar) })}</p>
+                      ? t('estimateVsPlanned', { spent: compattoPanoramica(summary.projection.spentSoFar), planned: compattoPanoramica(summary.projection.planned) })
+                      : t('estimateSoFar', { spent: compattoPanoramica(summary.projection.spentSoFar) })}</p>
                     <p className="mt-1 text-[11px] leading-4 text-[var(--money-testo-tenue)]">{t('estimateRule')}</p>
                   </>}
                 </CardContent>
@@ -2969,18 +2974,18 @@ function MoneyDashboardInner() {
                 <CardContent className="p-5">
                   <span className="text-sm font-medium text-[var(--money-testo-tenue)]">{t('goalCoverage')}</span>
                   <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{formatPercentNumber(summary.goalCoverage.coverage ?? 0)}%</p>
-                  <p className="mt-3 text-xs text-[var(--money-testo-tenue)]">{t('goalCoverageDetail', { saved: formatCompactEuro(summary.goalCoverage.savedThisPeriod), needed: formatCompactEuro(summary.goalCoverage.monthlyNeeded) })}</p>
+                  <p className="mt-3 text-xs text-[var(--money-testo-tenue)]">{t('goalCoverageDetail', { saved: compattoPanoramica(summary.goalCoverage.savedThisPeriod), needed: compattoPanoramica(summary.goalCoverage.monthlyNeeded) })}</p>
                 </CardContent>
               </Card>}
             </div>
 
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(310px,0.85fr)]">
-              <PeriodBreakdownCard breakdown={summaryBreakdown} isWholeYear={overviewMonth === null} />
+              <PeriodBreakdownCard breakdown={summaryBreakdown} isWholeYear={overviewMonth === null} currency={overviewCurrency} />
 
               <Card className="flex flex-col border-[var(--money-velo)]/6 bg-[var(--money-deep)] text-white shadow-sm shadow-black/[0.04]">
                 <CardHeader className="pb-2"><div className="flex items-center justify-between"><CardTitle className="text-[17px]">{t('budgetOfPeriod')}</CardTitle><CircleDollarSign className="size-5 text-[var(--money-accent)]" /></div><p className="text-xs text-white/70">{t('howMuchLeftToSpend')}</p></CardHeader>
                 <CardContent className="flex min-h-0 flex-1 flex-col">
-                  <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">{formatEuro(remainingBudget)}</p>
+                  <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">{denaroPanoramica(remainingBudget)}</p>
                   <div className="mt-6 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[var(--money-accent)]" style={{ width: `${Math.min(summary.budgetUsed, 100)}%` }} /></div>
                   <div className="mt-2 flex justify-between text-xs text-white/70"><span>{t('usedPercent', { percent: formatPercentNumber(summary.budgetUsed) })}</span><span>{t('availablePercent', { percent: Math.max(0, 100 - summary.budgetUsed) })}</span></div>
                   {budgetAlerts && budgetAlerts.alert_count > 0 && <p className="mt-3 text-xs font-medium text-[#f6c6b0]">{t('categoriesOverBudgetCount', { count: budgetAlerts.alert_count })}</p>}
@@ -3005,7 +3010,7 @@ function MoneyDashboardInner() {
                         return <div key={categoria.nome} className="space-y-1">
                           <div className="flex items-baseline justify-between gap-2 text-sm">
                             <span className="truncate text-white/72">{categoria.nome}</span>
-                            <span className="shrink-0 font-medium">{formatCompactEuro(categoria.speso)} <span className="font-normal text-white/70">/ {categoria.budget > 0 ? formatCompactEuro(categoria.budget) : '—'}</span></span>
+                            <span className="shrink-0 font-medium">{compattoPanoramica(categoria.speso)} <span className="font-normal text-white/70">/ {categoria.budget > 0 ? compattoPanoramica(categoria.budget) : '—'}</span></span>
                           </div>
                           {categoria.budget > 0 && <div className="h-1 overflow-hidden rounded-full bg-white/12">
                             <div className="h-full rounded-full" style={{ width: `${Math.min((categoria.speso / categoria.budget) * 100, 100)}%`, background: categoria.speso > categoria.budget ? '#ef8e72' : 'var(--money-accent)' }} />
@@ -3029,7 +3034,7 @@ function MoneyDashboardInner() {
             </div>
 
             <div className="mt-5">
-              <PeriodBreakdownTable breakdown={summaryBreakdown} />
+              <PeriodBreakdownTable breakdown={summaryBreakdown} currency={overviewCurrency} />
             </div>
             </>}
             </> : <SectionView
@@ -7247,8 +7252,12 @@ function BalanceSheetChart({ apiUrl, primoAnno }: { apiUrl: string; primoAnno: n
  * Verde e rosso sono quelli delle barre degli ultimi giorni e delle card del
  * resto della pagina: la stessa cosa ha lo stesso colore in tutta la pagina.
  */
-function FlowDonutCard({ income, expenses, comparison }: { income: number; expenses: number; comparison: Summary['comparison'] }) {
-  const { t, formatEuro, monthNames } = useI18n();
+function FlowDonutCard({ income, expenses, comparison, currency }: { income: number; expenses: number; comparison: Summary['comparison']; currency: string }) {
+  const { t, formatMoney, monthNames } = useI18n();
+  // I numeri arrivano gia' nella valuta della pagina: qui si sceglie solo il
+  // simbolo, e non e' una formalita' - un importo in franchi con il simbolo
+  // dell'euro e' la stessa cosa di un numero sbagliato.
+  const denaro = (valore: number) => formatMoney(valore, currency);
   const somma = income + expenses;
   // Un periodo senza ne' entrate ne' uscite resta un anello vuoto invece di
   // saltare: la card dice "zero e zero", che e' un'informazione.
@@ -7265,7 +7274,7 @@ function FlowDonutCard({ income, expenses, comparison }: { income: number; expen
       {/* `-rotate-90`: un cerchio disegnato con `stroke-dasharray` parte dalle
           tre in punto, e l'anello deve partire dalle dodici. */}
       <svg viewBox="0 0 100 100" className="size-[104px] shrink-0 -rotate-90"
-           role="img" aria-label={`${t('homeFlow')}: ${t('income')} ${formatEuro(income)}, ${t('expenses')} ${formatEuro(expenses)}`}>
+           role="img" aria-label={`${t('homeFlow')}: ${t('income')} ${denaro(income)}, ${t('expenses')} ${denaro(expenses)}`}>
         <circle cx="50" cy="50" r={RAGGIO} fill="none" stroke="#eef0ec" strokeWidth="14" />
         {somma > 0 && <>
           <circle cx="50" cy="50" r={RAGGIO} fill="none" stroke="#237056" strokeWidth="14"
@@ -7283,8 +7292,8 @@ function FlowDonutCard({ income, expenses, comparison }: { income: number; expen
               <span className="truncate">{riga.etichetta}</span>
             </dt>
             <dd className="shrink-0 text-right">
-              <span className="block text-sm font-semibold tabular-nums">{formatEuro(riga.valore)}</span>
-              <span className={`block text-[11px] ${comparisonTone(riga.tone, riga.delta)}`}>{formatComparisonChange(t, formatEuro, monthNames, riga.delta, comparison)}</span>
+              <span className="block text-sm font-semibold tabular-nums">{denaro(riga.valore)}</span>
+              <span className={`block text-[11px] ${comparisonTone(riga.tone, riga.delta)}`}>{formatComparisonChange(t, denaro, monthNames, riga.delta, comparison)}</span>
             </dd>
           </div>)}
         </dl>
@@ -7368,8 +7377,10 @@ function HomeAccountsCard({ accounts, lastUsed, onPick, onAllAccounts }: { accou
  * accanto: una barra sotto lo zero non esiste, e inventarle un verso sarebbe
  * un'altra cosa da spiegare.
  */
-function HomeRecentSpendingCard({ days }: { days: Summary['recentExpenses'] }) {
-  const { t, formatEuro, formatCompactEuro, formatDate } = useI18n();
+function HomeRecentSpendingCard({ days, currency }: { days: Summary['recentExpenses']; currency: string }) {
+  const { t, formatMoney, formatCompactMoney, formatDate } = useI18n();
+  const denaro = (valore: number) => formatMoney(valore, currency);
+  const compatto = (valore: number) => formatCompactMoney(valore, currency);
   const massimo = Math.max(...days.map((giorno) => giorno.amount), 0);
   return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
     <CardHeader className="pb-2">
@@ -7378,10 +7389,10 @@ function HomeRecentSpendingCard({ days }: { days: Summary['recentExpenses'] }) {
     </CardHeader>
     <CardContent>
       <ul className="flex items-end gap-1.5">
-        {days.map((giorno) => <li key={giorno.date} title={`${formatDate(`${giorno.date}T12:00:00`)}: ${formatEuro(giorno.amount)}`}
+        {days.map((giorno) => <li key={giorno.date} title={`${formatDate(`${giorno.date}T12:00:00`)}: ${denaro(giorno.amount)}`}
                                   className="flex min-w-0 flex-1 flex-col items-center gap-1">
           <span className="h-4 truncate text-[10px] tabular-nums text-[var(--money-testo-tenue)]">
-            {giorno.amount ? formatCompactEuro(giorno.amount) : ''}
+            {giorno.amount ? compatto(giorno.amount) : ''}
           </span>
           <span className="flex h-24 w-full items-end">
             <span className="w-full rounded-t-md bg-[var(--money-allarme)]/85"
@@ -7418,8 +7429,11 @@ function MetricCard({ title, titleHint, value, valueLabel, change, delta, icon: 
   return <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]"><CardContent className={featured ? 'p-6' : 'p-5'}><div className="mb-4 flex items-center justify-between"><span title={titleHint} className={`${featured ? 'text-base' : 'text-sm'} font-medium text-[var(--money-testo-tenue)]`}>{title}</span><span className={`grid ${featured ? 'size-10' : 'size-8'} place-items-center rounded-lg ${styles[tone]}`}><Icon className={featured ? 'size-5' : 'size-4'} /></span></div><p className={`${featured ? 'text-[32px] sm:text-[36px]' : 'text-[25px]'} font-semibold tracking-[-0.03em] tabular-nums`}>{valueLabel ?? formatEuro(value)}</p><p className={`mt-2 text-xs ${changeColor}`}>{change}</p></CardContent></Card>;
 }
 
-function NetWorthCard({ detail, comparison }: { detail: Summary['netWorthDetail']; comparison: Summary['netWorthComparison'] }) {
-  const { t, formatEuro, locale, monthNames, formatPercentNumber } = useI18n();
+function NetWorthCard({ detail, comparison, currency }: { detail: Summary['netWorthDetail']; comparison: Summary['netWorthComparison']; currency: string }) {
+  const { t, formatMoney, locale, monthNames, formatPercentNumber } = useI18n();
+  // Saldi e valori di mercato a una data sola: si convertono a quella data, e
+  // nella valuta della pagina.
+  const denaro = (valore: number) => formatMoney(valore, currency);
   const gainPositive = detail.gain >= 0;
   return (
     <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
@@ -7428,8 +7442,8 @@ function NetWorthCard({ detail, comparison }: { detail: Summary['netWorthDetail'
           <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-[var(--money-attenzione-tenue)] text-[var(--money-attenzione)]"><Landmark className="size-5" /></span>
           <div>
             <p className="text-sm font-medium text-[var(--money-testo-tenue)]">{t('netWorth')}</p>
-            <p className="mt-1 text-[25px] font-semibold tracking-[-0.03em] tabular-nums">{formatEuro(detail.total)}</p>
-            <p className="mt-1 text-xs text-[var(--money-ok)]">{formatComparisonChange(t, formatEuro, monthNames, comparison?.totalDelta, comparison)}</p>
+            <p className="mt-1 text-[25px] font-semibold tracking-[-0.03em] tabular-nums">{denaro(detail.total)}</p>
+            <p className="mt-1 text-xs text-[var(--money-ok)]">{formatComparisonChange(t, denaro, monthNames, comparison?.totalDelta, comparison)}</p>
           </div>
         </div>
         <div className="flex flex-col gap-2 border-t border-[var(--money-velo)]/6 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
@@ -7437,17 +7451,17 @@ function NetWorthCard({ detail, comparison }: { detail: Summary['netWorthDetail'
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <div>
               <p className="text-[11px] text-[var(--money-testo-tenue)]">{t('marketValue')}</p>
-              <p className="text-sm font-semibold">{formatEuro(detail.marketValue)}</p>
+              <p className="text-sm font-semibold">{denaro(detail.marketValue)}</p>
             </div>
             <div>
               <p className="text-[11px] text-[var(--money-testo-tenue)]">{t('investedCapital')}</p>
-              <p className="text-sm font-semibold">{formatEuro(detail.investedCapital)}</p>
+              <p className="text-sm font-semibold">{denaro(detail.investedCapital)}</p>
             </div>
             <div>
               <p className="text-[11px] text-[var(--money-testo-tenue)]">{t('gainLoss')}</p>
               <p className={`flex items-center gap-1 text-sm font-semibold ${gainPositive ? 'text-[var(--money-ok)]' : 'text-[var(--money-allarme)]'}`}>
                 {gainPositive ? <TrendingUp className="size-3.5" /> : <TrendingDown className="size-3.5" />}
-                {gainPositive ? '+' : '−'}{formatEuro(Math.abs(detail.gain))}
+                {gainPositive ? '+' : '−'}{denaro(Math.abs(detail.gain))}
                 {detail.gainPercent !== null && <span className="text-xs font-normal text-[var(--money-testo-tenue)]">{t('percentOnCapital', { percent: formatPercentNumber(detail.gainPercent) })}</span>}
               </p>
             </div>
@@ -7558,8 +7572,10 @@ function SkeletonMetricCard() {
 }
 
 
-function PeriodBreakdownCard({ breakdown, isWholeYear }: { breakdown: SummaryBreakdown | null; isWholeYear: boolean }) {
-  const { t, formatEuro, formatCompactEuro, formatPeriodLabel, formatPercentNumber } = useI18n();
+function PeriodBreakdownCard({ breakdown, isWholeYear, currency }: { breakdown: SummaryBreakdown | null; isWholeYear: boolean; currency: string }) {
+  const { t, formatMoney, formatCompactMoney, formatPeriodLabel, formatPercentNumber } = useI18n();
+  const denaro = (valore: number) => formatMoney(valore, currency);
+  const compatto = (valore: number) => formatCompactMoney(valore, currency);
   const [tab, setTab] = useState<'expenses' | 'income' | 'savings'>('expenses');
   const BREAKDOWN_TABS = [['expenses', t('expensesType')], ['income', t('incomeType')], ['savings', t('savingsType')]] as const;
   const pieConfig = { value: { label: t('amount') } } satisfies ChartConfig;
@@ -7578,15 +7594,15 @@ function PeriodBreakdownCard({ breakdown, isWholeYear }: { breakdown: SummaryBre
           <div className={isWholeYear ? 'grid gap-6 lg:grid-cols-[280px_1fr]' : 'grid gap-6 sm:grid-cols-[280px_1fr]'}>
             <ChartContainer config={pieConfig} className="mx-auto aspect-square h-[220px]">
               <PieChart>
-                <ChartTooltip content={<ChartTooltipContent formatter={(value) => <span className="font-mono font-medium tabular-nums">{formatEuro(Number(value))}</span>} />} />
+                <ChartTooltip content={<ChartTooltipContent formatter={(value) => <span className="font-mono font-medium tabular-nums">{denaro(Number(value))}</span>} />} />
                 <Pie data={pie.items} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90} paddingAngle={2}>
                   {pie.items.map((item) => <Cell key={item.name} fill={item.color} />)}
                 </Pie>
               </PieChart>
             </ChartContainer>
             <div className="space-y-2.5 self-center">
-              {pie.items.map((item) => <div key={item.name} className="flex items-center justify-between gap-3 text-sm"><span className="flex min-w-0 items-center gap-2 text-[var(--money-testo-muto)]"><i className="size-2.5 shrink-0 rounded-full" style={{ background: item.color }} /><span className="truncate">{item.name}</span></span><span className="flex shrink-0 items-baseline gap-2 tabular-nums"><span className="font-medium">{formatCompactEuro(item.value)}</span><span className="font-normal text-[var(--money-testo-tenue)]">{formatPercentNumber(pie.total ? (item.value / pie.total) * 100 : 0)}%</span></span></div>)}
-              <div className="flex items-center justify-between border-t border-[var(--money-velo)]/8 pt-2.5 text-sm font-semibold"><span>{t('total')}</span><span className="tabular-nums">{formatCompactEuro(pie.total)}</span></div>
+              {pie.items.map((item) => <div key={item.name} className="flex items-center justify-between gap-3 text-sm"><span className="flex min-w-0 items-center gap-2 text-[var(--money-testo-muto)]"><i className="size-2.5 shrink-0 rounded-full" style={{ background: item.color }} /><span className="truncate">{item.name}</span></span><span className="flex shrink-0 items-baseline gap-2 tabular-nums"><span className="font-medium">{compatto(item.value)}</span><span className="font-normal text-[var(--money-testo-tenue)]">{formatPercentNumber(pie.total ? (item.value / pie.total) * 100 : 0)}%</span></span></div>)}
+              <div className="flex items-center justify-between border-t border-[var(--money-velo)]/8 pt-2.5 text-sm font-semibold"><span>{t('total')}</span><span className="tabular-nums">{compatto(pie.total)}</span></div>
             </div>
           </div>
         )}
@@ -7596,8 +7612,9 @@ function PeriodBreakdownCard({ breakdown, isWholeYear }: { breakdown: SummaryBre
   );
 }
 
-function PeriodBreakdownTable({ breakdown }: { breakdown: SummaryBreakdown | null }) {
-  const { t, formatCompactEuro, formatPercentNumber } = useI18n();
+function PeriodBreakdownTable({ breakdown, currency }: { breakdown: SummaryBreakdown | null; currency: string }) {
+  const { t, formatCompactMoney, formatPercentNumber } = useI18n();
+  const compatto = (valore: number) => formatCompactMoney(valore, currency);
   // Le radici aperte. Si tiene l'elenco delle *chiuse* e non di quelle aperte:
   // di partenza l'albero si vede tutto, e una categoria appena spostata sotto
   // un padre non sparisce dietro un clic che nessuno sa di dover fare.
@@ -7632,7 +7649,7 @@ function PeriodBreakdownTable({ breakdown }: { breakdown: SummaryBreakdown | nul
             <div key={key} className="rounded-xl border" style={{ borderColor: stile.bordo }}>
               <div className="sticky top-[72px] z-10 flex flex-wrap items-center justify-between gap-2 rounded-t-xl px-4 py-2.5" style={{ backgroundColor: stile.tinta }}>
                 <h3 className="flex items-center gap-2 text-sm font-semibold" style={{ color: stile.accento }}><IconaSezione className="size-4" />{label}</h3>
-                <span className="text-xs font-medium tabular-nums" style={{ color: stile.accento }}>{t('trackedOfPlanned', { tracked: formatCompactEuro(section.actualTotal), planned: formatCompactEuro(section.plannedTotal) })}</span>
+                <span className="text-xs font-medium tabular-nums" style={{ color: stile.accento }}>{t('trackedOfPlanned', { tracked: compatto(section.actualTotal), planned: compatto(section.plannedTotal) })}</span>
               </div>
               <div className="overflow-x-auto px-4 pb-1">
                 <table className="w-full min-w-[640px] table-fixed text-sm">
@@ -7682,12 +7699,12 @@ function PeriodBreakdownTable({ breakdown }: { breakdown: SummaryBreakdown | nul
                                 </button>
                               : category.name}</span>
                             {avanzo !== 0 && <span className={`block truncate text-[11px] font-normal text-[var(--money-testo-tenue)] ${profondita > 0 ? 'pl-5' : ''}`}>
-                              {avanzo > 0 ? t('budgetPreviousLeft', { amount: formatCompactEuro(avanzo) })
-                                : t('budgetPreviousOver', { amount: formatCompactEuro(Math.abs(avanzo)) })}
+                              {avanzo > 0 ? t('budgetPreviousLeft', { amount: compatto(avanzo) })
+                                : t('budgetPreviousOver', { amount: compatto(Math.abs(avanzo)) })}
                             </span>}
                           </td>
-                          <td className="py-2.5 text-right tabular-nums">{formatCompactEuro(tracked)}</td>
-                          <td className="py-2.5 text-right tabular-nums text-[var(--money-testo-tenue)]">{formatCompactEuro(budget)}</td>
+                          <td className="py-2.5 text-right tabular-nums">{compatto(tracked)}</td>
+                          <td className="py-2.5 text-right tabular-nums text-[var(--money-testo-tenue)]">{compatto(budget)}</td>
                           <td className="py-2.5 pl-4">
                             {completion !== null ? (
                               <div className="flex items-center gap-2">
@@ -7701,8 +7718,8 @@ function PeriodBreakdownTable({ breakdown }: { breakdown: SummaryBreakdown | nul
                               Su entrate e risparmi i due significati si invertono,
                               quindi l'eccedenza prende il colore della sezione e il
                               rimanente resta neutro. */}
-                          <td className="py-2.5 text-right tabular-nums" style={{ color: key === 'expenses' ? '#237056' : '#5e6c68' }}>{remaining ? formatCompactEuro(remaining) : '—'}</td>
-                          <td className="py-2.5 text-right tabular-nums" style={{ color: key === 'expenses' ? '#a94f3a' : stile.accento }}>{excess ? formatCompactEuro(excess) : '—'}</td>
+                          <td className="py-2.5 text-right tabular-nums" style={{ color: key === 'expenses' ? '#237056' : '#5e6c68' }}>{remaining ? compatto(remaining) : '—'}</td>
+                          <td className="py-2.5 text-right tabular-nums" style={{ color: key === 'expenses' ? '#a94f3a' : stile.accento }}>{excess ? compatto(excess) : '—'}</td>
                         </tr>;
                       };
                       return section.categories.flatMap((category) => eRadice(category)
