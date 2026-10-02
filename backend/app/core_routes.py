@@ -882,7 +882,13 @@ def _riepilogo(session: Session, year: int, month: int | None,
     # Copertura obiettivi: quello che hai messo da parte davvero, contro quello
     # che i tuoi obiettivi chiedono ogni mese. Senza categorie assegnate ai goal
     # e' l'unico confronto che i dati sostengono.
-    ritmo_obiettivi = round(goals(session)["monthlyNeededTotal"] * float(fattore), 2)
+    # Il ritmo degli obiettivi e' un numero *scritto*, come i piani: si converte
+    # a fine periodo. In euro si lascia com'e' - nemmeno il passaggio in virgola
+    # mobile: `0 * 1.0` farebbe `0.0`, e la pagina in euro resterebbe quella di
+    # prima nei valori ma non nel testo della risposta.
+    scritto_obiettivi = goals(session)["monthlyNeededTotal"]
+    ritmo_obiettivi = (round(float(scritto_obiettivi) * float(fattore), 2)
+                       if fattore != 1 else scritto_obiettivi)
     copertura = {"savedThisPeriod": core["savings"], "monthlyNeeded": ritmo_obiettivi,
                  "coverage": round(core["savings"] / ritmo_obiettivi * 100, 1) if ritmo_obiettivi else None}
     risultato = {

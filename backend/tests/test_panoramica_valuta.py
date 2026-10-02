@@ -22,6 +22,7 @@ I cambi e i numeri sono inventati e tondi: questo repository e' pubblico.
 
 from __future__ import annotations
 
+import json
 import unittest
 from datetime import date
 from decimal import Decimal
@@ -98,10 +99,18 @@ class ValutaDellaPanoramicaTests(unittest.TestCase):
 
     def test_senza_valuta_la_pagina_e_quella_di_sempre(self) -> None:
         # Il parametro assente e l'euro esplicito sono la stessa pagina, e il
-        # percorso in euro non legge nemmeno il listino.
-        self.assertEqual(self._euro(), self._in("EUR"))
+        # percorso in euro non legge nemmeno il listino. Il confronto e' sulla
+        # risposta *scritta*, non sui due dizionari: in Python `0 == 0.0`, e
+        # un campo che in euro passasse per la conversione uscirebbe `0.0`
+        # invece di `0` - stesso numero per il test, testo diverso per il
+        # client.
+        self.assertEqual(self._scritto(self._euro()), self._scritto(self._in("EUR")))
         self._cambio("CHF")
-        self.assertEqual(self._euro(), self._in("EUR"))
+        self.assertEqual(self._scritto(self._euro()), self._scritto(self._in("EUR")))
+
+    def _scritto(self, payload: dict[str, Any]) -> str:
+        """La risposta come la legge il client: cosi' anche i tipi contano."""
+        return json.dumps(payload, sort_keys=True, default=str)
 
     def test_il_piano_a_fine_periodo_il_movimento_al_suo_giorno(self) -> None:
         # Due date, due cambi. Il piano di settembre non ha un giorno: si legge
