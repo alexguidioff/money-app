@@ -3899,7 +3899,7 @@ function SectionView({
   trendYears: number[];
   onTrendYearsChange: (years: number[]) => void;
 }) {
-  const { t, lang, locale, formatEuro, monthNames } = useI18n();
+  const { t, lang, locale, formatEuro, formatMoney, monthNames } = useI18n();
   // Chi sta sotto chi, per nome: serve a mostrare il padre accanto a una
   // sottocategoria, in modo che "Utilities" non sia ambigua fra casa e bollette.
   const padreDiCategoria = useMemo(() => {
@@ -3967,6 +3967,19 @@ function SectionView({
     } catch { setBulkError(t('bulkFailed')); } finally { setBulkBusy(false); }
   };
   const [accountFilter, setAccountFilter] = useState('all');
+  // Il saldo di oggi del conto filtrato. `accounts` non basta: segue il periodo
+  // della Panoramica, e a un mese passato direbbe il saldo di allora.
+  const [saldoConto, setSaldoConto] = useState<Account | null>(null);
+  useEffect(() => {
+    setSaldoConto(null);
+    if (section !== 'Movimenti' || accountFilter === 'all') return undefined;
+    const controller = new AbortController();
+    fetch(`${apiUrl}/api/accounts`, { signal: controller.signal })
+      .then((risposta) => risposta.ok ? risposta.json() as Promise<AccountsResponse> : Promise.reject(new Error('conti')))
+      .then((dati) => setSaldoConto(dati.items.find((conto) => conto.name === accountFilter) ?? null))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [apiUrl, section, accountFilter, movimentiVersione]);
   // '-' e' il filtro per i movimenti senza obiettivo: e' l'unico modo di
   // trovarli, visto che il campo e' vuoto e la ricerca testuale non li vede.
   const [goalFilter, setGoalFilter] = useState('all');
@@ -4073,7 +4086,8 @@ function SectionView({
           : movementsView === 'recurring' ? <RecurringTransactionsView accounts={accounts} data={recurringTransactions} categoriesByType={settingsData.categoriesByType} categoryTree={settingsData.categoryTree} onCreate={onCreateRecurring} onDelete={onDeleteRecurring} onGenerate={onGenerateRecurring} /> : <>
         <Card className="border-[var(--money-velo)]/6 bg-[var(--money-superficie)] shadow-sm shadow-black/[0.025]">
           <CardHeader className="gap-4">
-            <div><CardTitle className="text-[17px]">{t('allMovements')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('resultsOfTotal', { count: movimenti.length, total: totaleMovimenti })}</p></div>
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="text-[17px]">{t('allMovements')}</CardTitle><p className="mt-1 text-xs text-[var(--money-testo-tenue)]">{t('resultsOfTotal', { count: movimenti.length, total: totaleMovimenti })}</p></div>
+              {saldoConto && <div className="text-right"><p className="text-xs text-[var(--money-testo-tenue)]">{t('accountBalanceToday')} · {saldoConto.name}</p><p className="text-lg font-semibold tabular-nums">{formatMoney(saldoConto.value, saldoConto.currency ?? 'EUR')}</p></div>}</div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(190px,1fr)_150px_180px_130px_150px]">
               <div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--money-velo)]/35" /><Input aria-label={t('searchInMovements')} value={searchQuery} onChange={(event) => onSearchChange(event.target.value)} className="h-10 bg-[var(--money-superficie-tenue)] pl-9" placeholder={t('searchInMovementsPlaceholder')} />{searchQuery && <button aria-label={t('clearSearch')} onClick={() => onSearchChange('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--money-velo)]/40 hover:text-[var(--money-velo)]"><X className="size-4" /></button>}</div>
               <FilterSelect label={t('filterByType')} value={transactionTypeFilter} onChange={setTransactionTypeFilter} options={[["all", t('allTypes')], ["Income", t('incomeType')], ["Expenses", t('expensesType')], ["Transfers", t('transfersType')], ["Investment", t('investmentType')], ["Debt", t('debtTypeMovement')]]} />
